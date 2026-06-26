@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>问题台账 - 巡检宝</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">巡</div>
+          <div><strong>巡检宝</strong><span>无人机巡检平台</span></div>
+        </div>
+        <nav class="nav">
+          <a href="./index.html">首页驾驶舱</a>
+          <a href="./communities.html">小区档案</a>
+          <a href="./roads.html">道路街面</a>
+          <a href="./reports.html">巡检报告</a>
+          <a class="active" href="./issues.html">问题台账</a>
+          <a href="./map-assets.html">地图资产</a>
+        </nav>
+        <div class="side-card">
+          <span>当前页面</span>
+          <strong>问题台账</strong>
+          <p>沉淀发现、整改、复查和归档状态。</p>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">ISSUE LEDGER</p>
+            <h1>问题台账</h1>
+          </div>
+          <button class="primary-button">新增问题</button>
+        </header>
+
+        <section class="content-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">ALL ISSUES</p>
+              <h3>重点问题列表</h3>
+            </div>
+            <div class="filter-bar">
+              <button class="active">全部</button>
+              <button>待处理</button>
+              <button>处理中</button>
+              <button>复查通过</button>
+            </div>
+          </div>
+          <div class="issue-table wide-table">
+            <div class="table-row table-head"><span>对象</span><span>类型</span><span>状态</span><span>等级</span></div>
+            <div class="table-row"><span>玉田新村</span><span>飞线</span><span>待处理</span><strong>较重</strong></div>
+            <div class="table-row"><span>曲阳路</span><span>广告牌</span><span>处理中</span><strong>一般</strong></div>
+            <div class="table-row"><span>密云路</span><span>占道经营</span><span>待处理</span><strong>较重</strong></div>
+            <div class="table-row"><span>运光小区</span><span>违建</span><span>复查通过</span><strong>一般</strong></div>
+          </div>
+        </section>
+
+        <section class="content-section detail-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">ISSUE DETAIL</p>
+              <h3>问题详情示例</h3>
+            </div>
+          </div>
+          <div class="detail-layout">
+            <article class="detail-hero">
+              <div class="detail-title">
+                <span class="status urgent">较重</span>
+                <h4>玉田新村 3 号楼外立面飞线充电</h4>
+                <p>无人机巡检发现外立面存在多处飞线，建议社区先核实住户并安排整改。</p>
+              </div>
+              <div class="photo-strip">
+                <div class="photo-tile amber"><span>问题照片</span></div>
+                <div class="photo-tile blue"><span>位置标注</span></div>
+                <div class="photo-tile green"><span>整改复查</span></div>
+              </div>
+            </article>
+            <aside class="timeline-panel">
+              <h4>处置记录</h4>
+              <div class="timeline">
+                <div><time>06-24</time><strong>发现问题</strong><span>关联巡检报告和现场照片。</span></div>
+                <div><time>06-25</time><strong>社区核实</strong><span>待责任人反馈整改计划。</span></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

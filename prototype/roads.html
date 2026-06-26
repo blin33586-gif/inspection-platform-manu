@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>道路街面 - 巡检宝</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">巡</div>
+          <div><strong>巡检宝</strong><span>无人机巡检平台</span></div>
+        </div>
+        <nav class="nav">
+          <a href="./index.html">首页驾驶舱</a>
+          <a href="./communities.html">小区档案</a>
+          <a class="active" href="./roads.html">道路街面</a>
+          <a href="./reports.html">巡检报告</a>
+          <a href="./issues.html">问题台账</a>
+          <a href="./map-assets.html">地图资产</a>
+        </nav>
+        <div class="side-card">
+          <span>当前页面</span>
+          <strong>道路街面</strong>
+          <p>按道路管理门头广告牌、占道经营、流动摊贩和重点点位。</p>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">ROAD MANAGEMENT</p>
+            <h1>道路街面</h1>
+          </div>
+          <button class="primary-button">新增道路</button>
+        </header>
+
+        <section class="content-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">ROAD ARCHIVES</p>
+              <h3>重点道路档案</h3>
+            </div>
+          </div>
+          <div class="card-grid">
+            <article class="archive-card">
+              <span class="status urgent">重点</span>
+              <h4>曲阳路</h4>
+              <p>沿街广告牌、店外经营和非机动车乱停为重点巡检内容。</p>
+              <div class="mini-stats"><span>本月问题 9</span><span>点位 15</span></div>
+            </article>
+            <article class="archive-card">
+              <span class="status pending">待复查</span>
+              <h4>密云路</h4>
+              <p>占道经营复发频率较高，保留周度复查。</p>
+              <div class="mini-stats"><span>本月问题 7</span><span>点位 8</span></div>
+            </article>
+            <article class="archive-card">
+              <span class="status done">稳定</span>
+              <h4>玉田路</h4>
+              <p>广告牌和沿街堆物整改情况稳定。</p>
+              <div class="mini-stats"><span>本月问题 3</span><span>点位 6</span></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section split-section">
+          <article>
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">SIGNBOARD POINTS</p>
+                <h3>广告牌重点点位</h3>
+              </div>
+            </div>
+            <div class="report-list">
+              <button><span>曲阳路</span><strong>XX 生鲜门头广告牌</strong><em>需复查</em></button>
+              <button><span>曲阳路</span><strong>XX 餐饮店外招牌</strong><em>已整改</em></button>
+              <button><span>密云路</span><strong>沿街临时横幅点位</strong><em>处理中</em></button>
+            </div>
+          </article>
+
+          <article>
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">STREET ISSUES</p>
+                <h3>街面问题</h3>
+              </div>
+            </div>
+            <div class="issue-table">
+              <div class="table-row table-head"><span>道路</span><span>类型</span><span>状态</span><span>等级</span></div>
+              <div class="table-row"><span>曲阳路</span><span>广告牌</span><span>处理中</span><strong>一般</strong></div>
+              <div class="table-row"><span>密云路</span><span>占道经营</span><span>待处理</span><strong>较重</strong></div>
+              <div class="table-row"><span>玉田路</span><span>堆物</span><span>复查通过</span><strong>一般</strong></div>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

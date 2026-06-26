@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>巡检宝 - 曲阳路街道无人机巡检平台</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">巡</div>
+          <div>
+            <strong>巡检宝</strong>
+            <span>无人机巡检平台</span>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <a class="active" href="./index.html">首页驾驶舱</a>
+          <a href="./communities.html">小区档案</a>
+          <a href="./roads.html">道路街面</a>
+          <a href="./reports.html">巡检报告</a>
+          <a href="./issues.html">问题台账</a>
+          <a href="./map-assets.html">地图资产</a>
+        </nav>
+
+        <div class="side-card">
+          <span>当前项目</span>
+          <strong>上海市虹口区曲阳路街道</strong>
+          <p>第一版原型：地图入口、档案查看、报告与问题台账。</p>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">QUYANG ROAD SUBDISTRICT</p>
+            <h1>曲阳路街道无人机巡检驾驶舱</h1>
+          </div>
+          <div class="top-actions">
+            <button class="ghost-button">导入地图</button>
+            <button class="primary-button">上传报告</button>
+          </div>
+        </header>
+
+        <section id="dashboard" class="hero-panel">
+          <div class="hero-copy">
+            <p class="eyebrow">城市综合管理</p>
+            <h2>用一张街道地图进入所有巡检档案</h2>
+            <p>
+              小区、道路、广告牌、河道和重点点位都可以在首页地图上直接点击进入，
+              TIF 原始地图由后台转换为网页展示图或瓦片地图。
+            </p>
+          </div>
+          <div class="hero-stats">
+            <div><span>本月巡检</span><strong>18</strong></div>
+            <div><span>发现问题</span><strong>126</strong></div>
+            <div><span>待处理</span><strong>31</strong></div>
+          </div>
+        </section>
+
+        <section class="workspace-grid">
+          <article class="map-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">INTERACTIVE MAP</p>
+                <h3>街道二维地图</h3>
+              </div>
+              <div class="layer-tabs" role="group" aria-label="地图图层">
+                <button class="active">小区</button>
+                <button>道路</button>
+                <button>问题</button>
+              </div>
+            </div>
+
+            <div class="district-map" aria-label="曲阳路街道二维地图原型">
+              <button class="map-label community one" data-target="玉田新村">
+                玉田新村
+                <span>待处理 6</span>
+              </button>
+              <button class="map-label community two" data-target="赤峰小区">
+                赤峰小区
+                <span>飞线 4</span>
+              </button>
+              <button class="map-label community three" data-target="运光小区">
+                运光小区
+                <span>违建 2</span>
+              </button>
+              <button class="map-label road road-one" data-target="曲阳路">曲阳路</button>
+              <button class="map-label road road-two" data-target="密云路">密云路</button>
+              <button class="issue-dot urgent" aria-label="待处理问题"></button>
+              <button class="issue-dot pending" aria-label="处理中问题"></button>
+              <button class="issue-dot done" aria-label="已整改问题"></button>
+              <div class="map-river">河道绿化带</div>
+              <div class="map-tooltip">
+                <strong>玉田新村</strong>
+                <span>本月巡检 3 次 / 最新报告 06-24</span>
+              </div>
+            </div>
+          </article>
+
+          <aside class="insight-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">ANALYTICS</p>
+                <h3>问题分布</h3>
+              </div>
+            </div>
+            <div class="donut-wrap">
+              <div class="donut"></div>
+              <ul class="legend">
+                <li><span class="blue"></span>飞线整治 32%</li>
+                <li><span class="orange"></span>占道经营 26%</li>
+                <li><span class="red"></span>违建隐患 18%</li>
+                <li><span class="green"></span>绿化河道 14%</li>
+              </ul>
+            </div>
+            <div class="rank-list">
+              <h4>高发对象</h4>
+              <button>玉田新村 <span>12 个问题</span></button>
+              <button>曲阳路沿线 <span>9 个问题</span></button>
+              <button>密云路沿线 <span>7 个问题</span></button>
+            </div>
+          </aside>
+        </section>
+
+      </main>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

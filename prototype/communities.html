@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>小区档案 - 巡检宝</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">巡</div>
+          <div>
+            <strong>巡检宝</strong>
+            <span>无人机巡检平台</span>
+          </div>
+        </div>
+        <nav class="nav">
+          <a href="./index.html">首页驾驶舱</a>
+          <a class="active" href="./communities.html">小区档案</a>
+          <a href="./roads.html">道路街面</a>
+          <a href="./reports.html">巡检报告</a>
+          <a href="./issues.html">问题台账</a>
+          <a href="./map-assets.html">地图资产</a>
+        </nav>
+        <div class="side-card">
+          <span>当前页面</span>
+          <strong>小区档案</strong>
+          <p>按小区管理巡检报告、照片、问题和历史复查。</p>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">COMMUNITY ARCHIVES</p>
+            <h1>小区档案</h1>
+          </div>
+          <div class="top-actions">
+            <button class="ghost-button">导入小区清单</button>
+            <button class="primary-button">新增小区</button>
+          </div>
+        </header>
+
+        <section class="content-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">COMMUNITY LIST</p>
+              <h3>曲阳路街道小区</h3>
+            </div>
+            <div class="filter-bar">
+              <button class="active">全部</button>
+              <button>待复查</button>
+              <button>重点</button>
+              <button>稳定</button>
+            </div>
+          </div>
+          <div class="card-grid">
+            <article class="archive-card">
+              <span class="status pending">待复查</span>
+              <h4>玉田新村</h4>
+              <p>老旧小区，飞线和公共区域堆物为重点关注项。</p>
+              <div class="mini-stats"><span>本月问题 12</span><span>报告 4</span></div>
+            </article>
+            <article class="archive-card">
+              <span class="status urgent">重点</span>
+              <h4>赤峰小区</h4>
+              <p>楼顶违建、装修垃圾和消防通道占用需持续跟踪。</p>
+              <div class="mini-stats"><span>本月问题 9</span><span>报告 3</span></div>
+            </article>
+            <article class="archive-card">
+              <span class="status done">稳定</span>
+              <h4>运光小区</h4>
+              <p>近期整改完成率较高，保留月度复查。</p>
+              <div class="mini-stats"><span>本月问题 4</span><span>报告 2</span></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section detail-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">COMMUNITY DETAIL</p>
+              <h3>小区详情示例：玉田新村</h3>
+            </div>
+            <div class="top-actions">
+              <a class="ghost-link" href="./reports.html">查看全部报告</a>
+              <a class="primary-link" href="./issues.html">新增问题</a>
+            </div>
+          </div>
+
+          <div class="detail-layout">
+            <article class="detail-hero">
+              <div class="detail-title">
+                <span class="status pending">待复查</span>
+                <h4>玉田新村</h4>
+                <p>老旧小区，当前重点关注飞线充电、公共区域堆物和装修垃圾。</p>
+              </div>
+              <div class="detail-kpis">
+                <div><span>本月巡检</span><strong>3</strong></div>
+                <div><span>发现问题</span><strong>12</strong></div>
+                <div><span>待处理</span><strong>6</strong></div>
+                <div><span>关联报告</span><strong>4</strong></div>
+              </div>
+              <div class="photo-strip" aria-label="巡检照片示意">
+                <div class="photo-tile blue"><span>楼顶视角</span></div>
+                <div class="photo-tile amber"><span>飞线点位</span></div>
+                <div class="photo-tile green"><span>复查照片</span></div>
+              </div>
+            </article>
+
+            <aside class="timeline-panel">
+              <h4>问题时间线</h4>
+              <div class="timeline">
+                <div>
+                  <time>06-24</time>
+                  <strong>飞线充电 4 处</strong>
+                  <span>已生成巡检报告，待社区复核。</span>
+                </div>
+                <div>
+                  <time>06-18</time>
+                  <strong>公共区域堆物</strong>
+                  <span>整改中，需下次无人机复查。</span>
+                </div>
+                <div>
+                  <time>06-10</time>
+                  <strong>装修垃圾堆放</strong>
+                  <span>已清运，复查通过。</span>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <div class="archive-drawer">
+            <button><strong>基础档案</strong><span>地址、居委、标签、联系人</span></button>
+            <button><strong>巡检报告</strong><span>PDF、摘要、关联问题</span></button>
+            <button><strong>照片视频</strong><span>原始照片、标注图、复查图</span></button>
+            <button><strong>历史对比</strong><span>同一位置整改前后变化</span></button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

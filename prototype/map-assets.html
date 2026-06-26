@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>地图资产 - 巡检宝</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">巡</div>
+          <div><strong>巡检宝</strong><span>无人机巡检平台</span></div>
+        </div>
+        <nav class="nav">
+          <a href="./index.html">首页驾驶舱</a>
+          <a href="./communities.html">小区档案</a>
+          <a href="./roads.html">道路街面</a>
+          <a href="./reports.html">巡检报告</a>
+          <a href="./issues.html">问题台账</a>
+          <a class="active" href="./map-assets.html">地图资产</a>
+        </nav>
+        <div class="side-card">
+          <span>当前页面</span>
+          <strong>地图资产</strong>
+          <p>管理 TIF、照片地图、网页预览图和地图热区。</p>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">MAP ASSETS</p>
+            <h1>地图资产</h1>
+          </div>
+          <button class="primary-button">上传地图</button>
+        </header>
+
+        <section class="content-section map-assets">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">TIF WORKFLOW</p>
+              <h3>TIF 地图处理流程</h3>
+            </div>
+          </div>
+          <div class="pipeline">
+            <div><strong>1</strong><span>上传 TIF / 照片地图</span></div>
+            <div><strong>2</strong><span>生成 WebP 预览或瓦片</span></div>
+            <div><strong>3</strong><span>绘制小区和道路热区</span></div>
+            <div><strong>4</strong><span>绑定档案并在首页点击进入</span></div>
+          </div>
+        </section>
+
+        <section class="content-section split-section">
+          <article>
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">ASSET LIST</p>
+                <h3>地图文件</h3>
+              </div>
+            </div>
+            <div class="report-list">
+              <button><span>TIF</span><strong>曲阳路街道总览图</strong><em>已生成预览</em></button>
+              <button><span>PNG</span><strong>玉田新村小区示意图</strong><em>已绑定热区</em></button>
+              <button><span>WEBP</span><strong>道路街面预览图</strong><em>待标注</em></button>
+            </div>
+          </article>
+          <article>
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">HOT AREAS</p>
+                <h3>地图热区</h3>
+              </div>
+            </div>
+            <div class="issue-table">
+              <div class="table-row table-head"><span>对象</span><span>类型</span><span>状态</span><span>颜色</span></div>
+              <div class="table-row"><span>玉田新村</span><span>小区</span><span>已绑定</span><strong>蓝</strong></div>
+              <div class="table-row"><span>曲阳路</span><span>道路</span><span>已绑定</span><strong>蓝</strong></div>
+              <div class="table-row"><span>河道绿化带</span><span>点位</span><span>待完善</span><strong>绿</strong></div>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
