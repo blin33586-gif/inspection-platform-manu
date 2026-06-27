@@ -160,7 +160,18 @@ export class InspectionReadRepository {
   async mapAsset(id: string) {
     return this.database.mapAsset.findUnique({
       where: { id },
-      select: { id: true, name: true, mapType: true, processStatus: true, hotAreaCount: true },
+      select: {
+        id: true,
+        name: true,
+        mapType: true,
+        sourceType: true,
+        fileName: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        processStatus: true,
+        hotAreaCount: true,
+      },
     });
   }
 

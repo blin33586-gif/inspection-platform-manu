@@ -22,16 +22,16 @@ model IssueCategoryStat {
 }
 
 model ManagedObject {
-  id          String   @id
-  name        String
-  objectType  String
+  id            String   @id
+  name          String
+  objectType    String
   objectSubtype String?
-  parentName  String?
-  status      String
-  issueCount  Int      @default(0)
-  reportCount Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  parentName    String?
+  status        String
+  issueCount    Int      @default(0)
+  reportCount   Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   issues   Issue[]
   reports  InspectionReport[]
@@ -79,15 +79,19 @@ model InspectionReport {
 }
 
 model MapAsset {
-  id            String   @id
-  name          String
-  mapType       String
-  sourceType    String
-  fileName      String?
-  processStatus String
-  hotAreaCount  Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id               String   @id
+  name             String
+  mapType          String
+  sourceType       String
+  fileName         String?
+  originalFileName String?
+  storagePath      String?
+  mimeType         String?
+  fileSize         Int?
+  processStatus    String
+  hotAreaCount     Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   hotAreas MapHotArea[]
 
