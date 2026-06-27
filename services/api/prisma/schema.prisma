@@ -53,10 +53,30 @@ model Issue {
   updatedAt DateTime @updatedAt
 
   object ManagedObject? @relation(fields: [objectId], references: [id])
+  attachments IssueAttachment[]
 
   @@index([objectId])
   @@index([status])
   @@index([foundAt])
+}
+
+model IssueAttachment {
+  id               String   @id
+  issueId          String
+  attachmentType   String
+  fileName         String
+  originalFileName String
+  storagePath      String
+  mimeType         String
+  fileSize         Int
+  remark           String?
+  createdAt        DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id])
+
+  @@index([issueId])
+  @@index([attachmentType])
+  @@index([createdAt])
 }
 
 model InspectionReport {

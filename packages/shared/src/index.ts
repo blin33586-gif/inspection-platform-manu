@@ -47,6 +47,18 @@ export interface IssueSummary {
   foundAt: string;
 }
 
+export interface IssueAttachmentSummary {
+  id: string;
+  issueId: string;
+  attachmentType: string;
+  fileName: string;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: number;
+  remark?: string | null;
+  createdAt: string;
+}
+
 export interface ReportSummary {
   id: string;
   title: string;

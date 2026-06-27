@@ -1,9 +1,21 @@
-import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { IssueStatus, Severity } from "@xunjianbao/shared";
+import type { Response } from "express";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { AuditService } from "../audit/audit.service.js";
 import { ok, paged } from "../../shared/api-response.js";
 import { IssueWriteService } from "./issue-write.service.js";
+import { IssueAttachmentService } from "./issue-attachment.service.js";
+import { sendStoredFile } from "../../shared/file-download.js";
+
+interface UploadedFileLike {
+  filename: string;
+  originalname: string;
+  mimetype: string;
+  path: string;
+  size: number;
+}
 
 const allowedStatuses: IssueStatus[] = ["pending", "processing", "rectified", "verified", "ignored", "archived"];
 
@@ -13,6 +25,7 @@ export class IssuesController {
     @Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository,
     @Inject(AuditService) private readonly auditService: AuditService,
     @Inject(IssueWriteService) private readonly issueWriteService: IssueWriteService,
+    @Inject(IssueAttachmentService) private readonly attachmentService: IssueAttachmentService,
   ) {}
 
   @Get()
@@ -35,6 +48,29 @@ export class IssuesController {
   @Post()
   async create(@Body() body: { title?: string; category?: string; status?: IssueStatus; severity?: Severity; foundAt?: string; objectId?: string }) {
     return ok(await this.issueWriteService.create(body));
+  }
+
+  @Get(":id/attachments")
+  async attachments(@Param("id") id: string) {
+    return ok(paged(await this.attachmentService.list(id)));
+  }
+
+  @Post(":id/attachments")
+  @UseInterceptors(FileInterceptor("file", {
+    dest: "storage/issues/tmp",
+    limits: { fileSize: 50 * 1024 * 1024 },
+  }))
+  async uploadAttachment(
+    @Param("id") id: string,
+    @UploadedFile() file: UploadedFileLike | undefined,
+    @Body() body: { attachmentType?: string; remark?: string },
+  ) {
+    return ok(await this.attachmentService.create(id, file, body));
+  }
+
+  @Get("attachments/:attachmentId/file")
+  async attachmentFile(@Param("attachmentId") attachmentId: string, @Res() response: Response) {
+    return sendStoredFile(response, await this.attachmentService.file(attachmentId));
   }
 
   @Patch(":id/status")

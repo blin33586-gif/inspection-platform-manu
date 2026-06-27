@@ -12,6 +12,7 @@ async function main() {
   await prisma.mapHotArea.deleteMany();
   await prisma.mapAsset.deleteMany();
   await prisma.inspectionReport.deleteMany();
+  await prisma.issueAttachment.deleteMany();
   await prisma.issue.deleteMany();
   await prisma.managedObject.deleteMany();
   await prisma.issueCategoryStat.deleteMany();
