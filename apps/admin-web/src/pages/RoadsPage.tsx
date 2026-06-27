@@ -25,7 +25,7 @@ export function RoadsPage() {
             <h3>重点道路档案</h3>
           </div>
         </div>
-        <div className="card-grid">{data.items.map((item) => <ObjectCard key={item.id} item={item} />)}</div>
+        <div className="card-grid">{data.items.map((item) => <ObjectCard key={item.id} item={item} to={`/roads/${item.id}`} />)}</div>
       </section>
     </>
   );

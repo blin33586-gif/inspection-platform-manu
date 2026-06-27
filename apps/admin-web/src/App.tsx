@@ -9,6 +9,7 @@ import { IssuesPage } from "./pages/IssuesPage";
 import { MapAssetsPage } from "./pages/MapAssetsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
+import { ManagedObjectDetailPage } from "./pages/ManagedObjectDetailPage";
 
 function RequireAuth() {
   return getToken() ? <Outlet /> : <Navigate to="/login" replace />;
@@ -20,14 +21,16 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RequireAuth />}>
         <Route element={<Shell />}>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/communities" element={<CommunitiesPage />} />
-        <Route path="/roads" element={<RoadsPage />} />
-        <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/issues" element={<IssuesPage />} />
-        <Route path="/map-assets" element={<MapAssetsPage />} />
-        <Route path="/audit-logs" element={<AuditLogsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/communities" element={<CommunitiesPage />} />
+          <Route path="/communities/:id" element={<ManagedObjectDetailPage objectType="community" />} />
+          <Route path="/roads" element={<RoadsPage />} />
+          <Route path="/roads/:id" element={<ManagedObjectDetailPage objectType="road" />} />
+          <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/issues" element={<IssuesPage />} />
+          <Route path="/map-assets" element={<MapAssetsPage />} />
+          <Route path="/audit-logs" element={<AuditLogsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>
     </Routes>

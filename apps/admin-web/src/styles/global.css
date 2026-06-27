@@ -602,6 +602,18 @@ h4 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 251, 255, 0.92));
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.archive-card-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.archive-card-link:hover .archive-card {
+  border-color: rgba(11, 91, 211, 0.3);
+  box-shadow: 0 16px 34px rgba(8, 40, 92, 0.12);
+  transform: translateY(-2px);
 }
 
 .archive-card p {
@@ -736,6 +748,19 @@ h4 {
 .timeline span {
   color: var(--muted);
   line-height: 1.55;
+}
+
+.text-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--blue-700);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.empty-note {
+  margin-bottom: 0;
+  color: var(--muted);
 }
 
 .report-list {
