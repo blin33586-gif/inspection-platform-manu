@@ -816,6 +816,11 @@ h4 {
   color: var(--muted);
 }
 
+.status-action-list {
+  width: 100%;
+  margin-top: 16px;
+}
+
 .detail-download {
   display: inline-flex;
   margin-top: 18px;

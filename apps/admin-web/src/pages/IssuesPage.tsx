@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button, Input, message, Select, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { Link } from "react-router-dom";
 import type { IssueStatus, IssueSummary, PageResult } from "@xunjianbao/shared";
 import { patchJsonApi, withQuery } from "../api/client";
 import { issues } from "../data";
@@ -56,7 +57,7 @@ export function IssuesPage() {
 
   const columns: ColumnsType<IssueSummary> = [
     { title: "对象", dataIndex: "objectName" },
-    { title: "问题", dataIndex: "title" },
+    { title: "问题", dataIndex: "title", render: (value: string, record) => <Link className="text-link compact-link" to={`/issues/${record.id}`}>{value}</Link> },
     { title: "类型", dataIndex: "category" },
     {
       title: "状态",
@@ -72,6 +73,7 @@ export function IssuesPage() {
         <Space>
           <Button size="small" loading={updatingId === record.id} onClick={() => updateStatus(record.id, "processing")}>处理中</Button>
           <Button size="small" type="primary" loading={updatingId === record.id} onClick={() => updateStatus(record.id, "verified")}>复查通过</Button>
+          <Button size="small" href={`/issues/${record.id}`}>详情</Button>
         </Space>
       ),
     },

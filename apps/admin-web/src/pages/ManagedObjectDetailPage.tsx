@@ -67,7 +67,7 @@ export function ManagedObjectDetailPage({ objectType }: ManagedObjectDetailPageP
   const pendingCount = relatedIssues.items.filter((item) => item.status === "pending" || item.status === "processing").length;
 
   const issueColumns: ColumnsType<IssueSummary> = [
-    { title: "问题", dataIndex: "title" },
+    { title: "问题", dataIndex: "title", render: (value: string, record) => <Link className="text-link compact-link" to={`/issues/${record.id}`}>{value}</Link> },
     { title: "类型", dataIndex: "category" },
     {
       title: "状态",

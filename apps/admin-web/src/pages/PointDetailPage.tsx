@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Button, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import type { IssueStatus, IssueSummary, PageResult, PointSummary, ReportSummary } from "@xunjianbao/shared";
 import { points, issues, reports } from "../data";
 import { PageHeader } from "../components/PageHeader";
@@ -43,7 +43,7 @@ export function PointDetailPage() {
   const { data: relatedReports } = useApiResource<PageResult<ReportSummary>>(`/points/${id}/reports`, fallbackReportPage);
 
   const issueColumns: ColumnsType<IssueSummary> = [
-    { title: "问题", dataIndex: "title" },
+    { title: "问题", dataIndex: "title", render: (value: string, record) => <Link className="text-link compact-link" to={`/issues/${record.id}`}>{value}</Link> },
     { title: "类型", dataIndex: "category" },
     {
       title: "状态",
