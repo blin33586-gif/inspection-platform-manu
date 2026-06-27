@@ -8,11 +8,13 @@ import { MapAssetsModule } from "./modules/map-assets/map-assets.module.js";
 import { PointsModule } from "./modules/points/points.module.js";
 import { DatabaseModule } from "./database/database.module.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
+import { AuditModule } from "./modules/audit/audit.module.js";
 
 @Module({
   imports: [
     DatabaseModule,
     AuthModule,
+    AuditModule,
     DashboardModule,
     CommunitiesModule,
     RoadsModule,

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
+import { AuditService } from "../audit/audit.service.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -23,7 +24,10 @@ const allowedExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".tif", ".t
 export class MapAssetUploadService {
   private readonly finalDir = "storage/map-assets";
 
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(AuditService) private readonly auditService: AuditService,
+  ) {}
 
   async createFromUpload(file: UploadedFileLike | undefined, input: CreateMapAssetInput) {
     if (!file) throw new BadRequestException("Map file is required");
@@ -68,6 +72,13 @@ export class MapAssetUploadService {
         processStatus: true,
         hotAreaCount: true,
       },
+    });
+
+    await this.auditService.record({
+      action: "map.upload",
+      targetType: "mapAsset",
+      targetId: asset.id,
+      summary: `上传地图资产「${asset.name}」`,
     });
 
     return asset;

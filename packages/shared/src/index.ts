@@ -88,3 +88,13 @@ export interface ApiResponse<T> {
   message: string;
   data: T;
 }
+
+export interface AuditLogSummary {
+  id: string;
+  actor: string;
+  action: string;
+  targetType: string;
+  targetId?: string | null;
+  summary: string;
+  createdAt: string;
+}

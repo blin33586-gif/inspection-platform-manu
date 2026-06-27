@@ -8,6 +8,7 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
+  await prisma.auditLog.deleteMany();
   await prisma.mapHotArea.deleteMany();
   await prisma.mapAsset.deleteMany();
   await prisma.inspectionReport.deleteMany();

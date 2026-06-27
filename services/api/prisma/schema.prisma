@@ -124,3 +124,17 @@ model MapHotArea {
   @@index([mapAssetId])
   @@index([objectId])
 }
+
+model AuditLog {
+  id         String   @id
+  actor      String
+  action     String
+  targetType String
+  targetId   String?
+  summary    String
+  createdAt  DateTime @default(now())
+
+  @@index([action])
+  @@index([targetType])
+  @@index([createdAt])
+}

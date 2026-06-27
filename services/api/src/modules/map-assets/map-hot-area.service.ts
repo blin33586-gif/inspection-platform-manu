@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from "@nes
 import type { ObjectType } from "@xunjianbao/shared";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
+import { AuditService } from "../audit/audit.service.js";
 
 interface CreateHotAreaInput {
   label?: string;
@@ -18,7 +19,10 @@ const allowedObjectTypes: ObjectType[] = ["community", "road", "point", "street"
 
 @Injectable()
 export class MapHotAreaService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(AuditService) private readonly auditService: AuditService,
+  ) {}
 
   async create(mapAssetId: string, input: CreateHotAreaInput) {
     const mapAsset = await this.database.mapAsset.findUnique({ where: { id: mapAssetId } });
@@ -48,6 +52,13 @@ export class MapHotAreaService {
     await this.database.mapAsset.update({
       where: { id: mapAssetId },
       data: { hotAreaCount: { increment: 1 }, processStatus: "processed" },
+    });
+
+    await this.auditService.record({
+      action: "map.hotArea.create",
+      targetType: "mapHotArea",
+      targetId: hotArea.id,
+      summary: `为地图「${mapAsset.name}」新增热区「${hotArea.label}」`,
     });
 
     return hotArea;

@@ -8,6 +8,7 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { IssuesPage } from "./pages/IssuesPage";
 import { MapAssetsPage } from "./pages/MapAssetsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { AuditLogsPage } from "./pages/AuditLogsPage";
 
 function RequireAuth() {
   return getToken() ? <Outlet /> : <Navigate to="/login" replace />;
@@ -25,6 +26,7 @@ export function App() {
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/issues" element={<IssuesPage />} />
         <Route path="/map-assets" element={<MapAssetsPage />} />
+        <Route path="/audit-logs" element={<AuditLogsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>

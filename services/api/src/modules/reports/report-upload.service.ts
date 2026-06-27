@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
+import { AuditService } from "../audit/audit.service.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -29,7 +30,10 @@ const allowedReportTypes: ReportType[] = ["community", "road", "point", "compreh
 export class ReportUploadService {
   private readonly finalDir = "storage/reports";
 
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(AuditService) private readonly auditService: AuditService,
+  ) {}
 
   async createFromUpload(file: UploadedFileLike | undefined, input: CreateReportInput) {
     if (!file) throw new BadRequestException("Report file is required");
@@ -90,6 +94,13 @@ export class ReportUploadService {
         fileSize: true,
         processStatus: true,
       },
+    });
+
+    await this.auditService.record({
+      action: "report.upload",
+      targetType: "report",
+      targetId: report.id,
+      summary: `上传巡检报告「${report.title}」`,
     });
 
     return {

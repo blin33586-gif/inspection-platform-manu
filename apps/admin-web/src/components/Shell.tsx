@@ -1,4 +1,4 @@
-import { LayoutDashboard, Map, FileText, AlertTriangle, Building2, Route, Database } from "lucide-react";
+import { LayoutDashboard, Map, FileText, AlertTriangle, Building2, Route, Database, ClipboardList } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearSession, getUser } from "../auth/session";
 
@@ -9,6 +9,7 @@ const navItems = [
   { to: "/reports", label: "巡检报告", icon: FileText },
   { to: "/issues", label: "问题台账", icon: AlertTriangle },
   { to: "/map-assets", label: "地图资产", icon: Map },
+  { to: "/audit-logs", label: "操作审计", icon: ClipboardList },
 ];
 
 export function Shell() {
