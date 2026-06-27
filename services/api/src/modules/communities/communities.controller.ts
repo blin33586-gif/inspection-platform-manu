@@ -20,11 +20,11 @@ export class CommunitiesController {
 
   @Get(":id/issues")
   async communityIssues(@Param("id") id: string) {
-    return ok(page(await this.readRepository.issues(id)));
+    return ok(page(await this.readRepository.issues({ objectId: id })));
   }
 
   @Get(":id/reports")
   async communityReports(@Param("id") id: string) {
-    return ok(page(await this.readRepository.reports(id)));
+    return ok(page(await this.readRepository.reports({ objectId: id })));
   }
 }

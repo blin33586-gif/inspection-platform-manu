@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, NotFoundException, Param, Post, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Get, Inject, NotFoundException, Param, Post, Query, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { DatabaseService } from "../../database/database.service.js";
@@ -26,8 +26,12 @@ export class MapAssetsController {
   ) {}
 
   @Get()
-  async list() {
-    return ok(page(await this.readRepository.mapAssets()));
+  async list(@Query() query: { keyword?: string; mapType?: string; processStatus?: string }) {
+    return ok(page(await this.readRepository.mapAssets({
+      keyword: query.keyword,
+      mapType: query.mapType,
+      processStatus: query.processStatus,
+    })));
   }
 
   @Post("upload")

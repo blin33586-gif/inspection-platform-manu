@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Button, message, Space, Table, Tag } from "antd";
+import { Button, Input, message, Select, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { IssueStatus, IssueSummary, PageResult } from "@xunjianbao/shared";
-import { patchJsonApi } from "../api/client";
+import { patchJsonApi, withQuery } from "../api/client";
 import { issues } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
@@ -25,7 +25,9 @@ function statusLabel(value: IssueStatus) {
 
 export function IssuesPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const { data, loading, reload } = useApiResource("/issues", fallbackIssues);
+  const [keyword, setKeyword] = useState("");
+  const [status, setStatus] = useState<IssueStatus | undefined>();
+  const { data, loading, reload } = useApiResource(withQuery("/issues", { keyword, status }), fallbackIssues);
 
   const updateStatus = async (id: string, status: IssueStatus) => {
     setUpdatingId(id);
@@ -72,7 +74,21 @@ export function IssuesPage() {
             <p className="eyebrow">ALL ISSUES</p>
             <h3>重点问题列表</h3>
           </div>
-          <div className="filter-bar"><button className="active">全部</button><button>待处理</button><button>处理中</button><button>复查通过</button></div>
+          <div className="filter-controls">
+            <Input.Search placeholder="搜索对象、问题、类型" allowClear onSearch={setKeyword} onChange={(event) => !event.target.value && setKeyword("")} />
+            <Select
+              allowClear
+              placeholder="状态"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { label: "待处理", value: "pending" },
+                { label: "处理中", value: "processing" },
+                { label: "复查通过", value: "verified" },
+                { label: "已整改", value: "rectified" },
+              ]}
+            />
+          </div>
         </div>
         <Table rowKey="id" columns={columns} dataSource={data.items} loading={loading} pagination={false} className="data-table" />
       </section>

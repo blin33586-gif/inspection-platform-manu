@@ -10,6 +10,16 @@ export function getApiUrl(path: string) {
   return url.toString();
 }
 
+export function withQuery(path: string, query: Record<string, string | undefined>) {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+
+  const queryString = params.toString();
+  return queryString ? `${path}?${queryString}` : path;
+}
+
 export async function getApi<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     signal,

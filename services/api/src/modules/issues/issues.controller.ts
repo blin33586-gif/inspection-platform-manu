@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Query } from "@nestjs/common";
 import type { IssueStatus } from "@xunjianbao/shared";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { AuditService } from "../audit/audit.service.js";
@@ -14,8 +14,13 @@ export class IssuesController {
   ) {}
 
   @Get()
-  async list() {
-    return ok(page(await this.readRepository.issues()));
+  async list(@Query() query: { keyword?: string; status?: IssueStatus; category?: string }) {
+    const status = query.status && allowedStatuses.includes(query.status) ? query.status : undefined;
+    return ok(page(await this.readRepository.issues({
+      keyword: query.keyword,
+      status,
+      category: query.category,
+    })));
   }
 
   @Get(":id")

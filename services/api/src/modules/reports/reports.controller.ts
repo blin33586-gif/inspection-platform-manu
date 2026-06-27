@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, NotFoundException, Param, Post, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Get, Inject, NotFoundException, Param, Post, Query, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { ReportType } from "@xunjianbao/shared";
 import type { Response } from "express";
@@ -25,8 +25,11 @@ export class ReportsController {
   ) {}
 
   @Get()
-  async list() {
-    return ok(page(await this.readRepository.reports()));
+  async list(@Query() query: { keyword?: string; reportType?: string }) {
+    return ok(page(await this.readRepository.reports({
+      keyword: query.keyword,
+      reportType: query.reportType,
+    })));
   }
 
   @Post("upload")

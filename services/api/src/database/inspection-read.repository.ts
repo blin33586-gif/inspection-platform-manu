@@ -83,9 +83,22 @@ export class InspectionReadRepository {
     };
   }
 
-  async issues(objectId?: string): Promise<IssueSummary[]> {
+  async issues(filters: { objectId?: string; keyword?: string; status?: IssueStatus; category?: string } = {}): Promise<IssueSummary[]> {
     const issues = await this.database.issue.findMany({
-      where: objectId ? { objectId } : undefined,
+      where: {
+        ...(filters.objectId ? { objectId: filters.objectId } : {}),
+        ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.category ? { category: { contains: filters.category } } : {}),
+        ...(filters.keyword
+          ? {
+              OR: [
+                { title: { contains: filters.keyword } },
+                { category: { contains: filters.keyword } },
+                { object: { is: { name: { contains: filters.keyword } } } },
+              ],
+            }
+          : {}),
+      },
       include: { object: true },
       orderBy: { foundAt: "desc" },
     });
@@ -141,9 +154,21 @@ export class InspectionReadRepository {
     };
   }
 
-  async reports(objectId?: string): Promise<ReportSummary[]> {
+  async reports(filters: { objectId?: string; keyword?: string; reportType?: string } = {}): Promise<ReportSummary[]> {
     const reports = await this.database.inspectionReport.findMany({
-      where: objectId ? { relatedObjectId: objectId } : undefined,
+      where: {
+        ...(filters.objectId ? { relatedObjectId: filters.objectId } : {}),
+        ...(filters.reportType ? { reportType: filters.reportType } : {}),
+        ...(filters.keyword
+          ? {
+              OR: [
+                { title: { contains: filters.keyword } },
+                { relatedObjectName: { contains: filters.keyword } },
+                { contentSummary: { contains: filters.keyword } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { reportDate: "desc" },
     });
 
@@ -181,8 +206,21 @@ export class InspectionReadRepository {
     };
   }
 
-  async mapAssets() {
+  async mapAssets(filters: { keyword?: string; mapType?: string; processStatus?: string } = {}) {
     return this.database.mapAsset.findMany({
+      where: {
+        ...(filters.mapType ? { mapType: { contains: filters.mapType } } : {}),
+        ...(filters.processStatus ? { processStatus: filters.processStatus } : {}),
+        ...(filters.keyword
+          ? {
+              OR: [
+                { name: { contains: filters.keyword } },
+                { mapType: { contains: filters.keyword } },
+                { originalFileName: { contains: filters.keyword } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { updatedAt: "desc" },
       select: {
         id: true,

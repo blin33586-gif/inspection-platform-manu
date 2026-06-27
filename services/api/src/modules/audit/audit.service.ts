@@ -27,8 +27,21 @@ export class AuditService {
     });
   }
 
-  async list() {
+  async list(filters: { keyword?: string; action?: string; targetType?: string } = {}) {
     const logs = await this.database.auditLog.findMany({
+      where: {
+        ...(filters.action ? { action: { contains: filters.action } } : {}),
+        ...(filters.targetType ? { targetType: filters.targetType } : {}),
+        ...(filters.keyword
+          ? {
+              OR: [
+                { actor: { contains: filters.keyword } },
+                { action: { contains: filters.keyword } },
+                { summary: { contains: filters.keyword } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: 100,
     });

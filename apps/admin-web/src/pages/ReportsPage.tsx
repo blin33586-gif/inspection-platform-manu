@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Upload } from "antd";
 import type { UploadFile } from "antd/es/upload/interface";
-import type { PageResult, ReportSummary } from "@xunjianbao/shared";
-import { getApiUrl, postFormApi } from "../api/client";
+import type { PageResult, ReportSummary, ReportType } from "@xunjianbao/shared";
+import { getApiUrl, postFormApi, withQuery } from "../api/client";
 import { reports } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
@@ -26,7 +26,9 @@ export function ReportsPage() {
   }>();
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const { data, reload } = useApiResource("/reports", fallbackReports);
+  const [keyword, setKeyword] = useState("");
+  const [filterReportType, setFilterReportType] = useState<ReportType | undefined>();
+  const { data, reload } = useApiResource(withQuery("/reports", { keyword, reportType: filterReportType }), fallbackReports);
 
   const submitUpload = async () => {
     const values = await form.validateFields();
@@ -65,6 +67,26 @@ export function ReportsPage() {
             <div>
               <p className="eyebrow">REPORT LIST</p>
               <h3>最新报告</h3>
+            </div>
+            <div className="filter-controls">
+              <Input.Search
+                placeholder="搜索标题、对象、摘要"
+                allowClear
+                onSearch={setKeyword}
+                onChange={(event) => !event.target.value && setKeyword("")}
+              />
+              <Select
+                allowClear
+                placeholder="报告类型"
+                value={filterReportType}
+                onChange={setFilterReportType}
+                options={[
+                  { label: "小区巡检", value: "community" },
+                  { label: "道路巡检", value: "road" },
+                  { label: "重点点位", value: "point" },
+                  { label: "综合报告", value: "comprehensive" },
+                ]}
+              />
             </div>
           </div>
           <div className="report-list">
