@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button, Form, Input, InputNumber, message, Modal, Select, Space, Table, Tag, Upload } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { UploadFile } from "antd/es/upload/interface";
+import { Link } from "react-router-dom";
 import type { MapAssetSummary, MapHotAreaSummary, ObjectType, PageResult } from "@xunjianbao/shared";
 import { getApiUrl, postFormApi, postJsonApi, withQuery } from "../api/client";
 import { mapAssets } from "../data";
@@ -126,6 +127,7 @@ export function MapAssetsPage() {
       title: "操作",
       render: (_, record) => (
         <Space>
+          <Link className="table-action-link" to={`/map-assets/${record.id}`}>详情</Link>
           <Button size="small" onClick={() => openHotAreaModal(record)}>新增热区</Button>
           {record.fileName ? <Button size="small" href={getApiUrl(`/map-assets/${record.id}/file`)}>下载</Button> : null}
         </Space>
