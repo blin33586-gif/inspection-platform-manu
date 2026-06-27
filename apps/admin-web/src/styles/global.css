@@ -415,10 +415,46 @@ h4 {
 }
 
 .map-label,
+.dashboard-hot-area,
 .issue-dot {
   position: absolute;
   z-index: 2;
   border: 0;
+}
+
+.dashboard-hot-area {
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--blue-950);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 30px rgba(8, 40, 92, 0.16);
+  font-weight: 900;
+  text-align: center;
+  outline: 4px solid rgba(43, 127, 255, 0.24);
+}
+
+.dashboard-hot-area span {
+  display: block;
+  margin-top: 5px;
+  color: rgba(16, 32, 51, 0.62);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dashboard-hot-area.road {
+  color: white;
+  background: linear-gradient(135deg, var(--blue-700), var(--cyan-400));
+  outline-color: rgba(11, 91, 211, 0.16);
+}
+
+.dashboard-hot-area.road span {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.dashboard-hot-area.point {
+  color: #00606f;
+  background: linear-gradient(90deg, rgba(41, 199, 232, 0.5), rgba(255, 255, 255, 0.8));
+  outline-color: rgba(41, 199, 232, 0.28);
 }
 
 .map-label {

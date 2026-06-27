@@ -1,14 +1,47 @@
 import { useNavigate } from "react-router-dom";
+import type { IssueSummary, MapHotAreaSummary } from "@xunjianbao/shared";
 import { dashboardSummary, issueDistribution } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 
 const legendClasses = ["blue", "orange", "red", "green"];
 
+interface DashboardMapData {
+  mapAssetId: string;
+  hotAreas: MapHotAreaSummary[];
+  issues: IssueSummary[];
+}
+
+const fallbackMapData: DashboardMapData = {
+  mapAssetId: "map-street-main",
+  hotAreas: [
+    { id: "ha-yutian", label: "玉田新村", objectType: "community", objectId: "c-yutian", x: 18, y: 32, width: 24, height: 18 },
+    { id: "ha-quyang", label: "曲阳路", objectType: "road", objectId: "r-quyang", x: 46, y: 50, width: 20, height: 8 },
+    { id: "ha-river", label: "河道绿化带", objectType: "point", objectId: "p-river-001", x: 9, y: 78, width: 31, height: 7 },
+  ],
+  issues: [],
+};
+
+function objectPath(area: MapHotAreaSummary) {
+  if (!area.objectId) return "/map-assets/map-street-main";
+  if (area.objectType === "community") return `/communities/${area.objectId}`;
+  if (area.objectType === "road") return `/roads/${area.objectId}`;
+  if (area.objectType === "point") return `/points/${area.objectId}`;
+  return "/map-assets/map-street-main";
+}
+
+function objectTypeLabel(area: MapHotAreaSummary) {
+  if (area.objectType === "community") return "小区";
+  if (area.objectType === "road") return "道路";
+  if (area.objectType === "point") return "点位";
+  return "街道";
+}
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const { data: summary } = useApiResource("/dashboard/summary", dashboardSummary);
   const { data: distribution } = useApiResource("/dashboard/issue-distribution", issueDistribution);
+  const { data: mapData } = useApiResource<DashboardMapData>("/dashboard/map", fallbackMapData);
 
   return (
     <>
@@ -51,15 +84,28 @@ export function DashboardPage() {
           </div>
 
           <div className="district-map">
-            <button className="map-label community one" onClick={() => navigate("/communities")}>玉田新村<span>待处理 6</span></button>
-            <button className="map-label community two" onClick={() => navigate("/communities")}>赤峰小区<span>飞线 4</span></button>
-            <button className="map-label community three" onClick={() => navigate("/communities")}>运光小区<span>违建 2</span></button>
-            <button className="map-label road road-one" onClick={() => navigate("/roads")}>曲阳路</button>
-            <button className="map-label road road-two" onClick={() => navigate("/roads")}>密云路</button>
+            {mapData.hotAreas.map((area) => {
+              const relatedIssueCount = mapData.issues.filter((issue) => issue.objectName === area.label).length;
+              return (
+                <button
+                  className={`dashboard-hot-area ${area.objectType}`}
+                  key={area.id}
+                  style={{
+                    left: `${area.x ?? 10}%`,
+                    top: `${area.y ?? 10}%`,
+                    width: `${area.width ?? 20}%`,
+                    height: `${area.height ?? 10}%`,
+                  }}
+                  onClick={() => navigate(objectPath(area))}
+                >
+                  {area.label}
+                  <span>{objectTypeLabel(area)} / 问题 {relatedIssueCount}</span>
+                </button>
+              );
+            })}
             <button className="issue-dot urgent" aria-label="待处理问题" onClick={() => navigate("/issues")} />
             <button className="issue-dot pending" aria-label="处理中问题" onClick={() => navigate("/issues")} />
             <button className="issue-dot done" aria-label="已整改问题" onClick={() => navigate("/issues")} />
-            <div className="map-river">河道绿化带</div>
             <div className="map-tooltip">
               <strong>玉田新村</strong>
               <span>本月巡检 3 次 / 最新报告 06-24</span>
