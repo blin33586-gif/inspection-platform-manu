@@ -45,3 +45,29 @@ export interface ReportSummary {
   relatedObjectName: string;
   issueCount: number;
 }
+
+export interface MapAssetSummary {
+  id: string;
+  name: string;
+  mapType: string;
+  sourceType?: string;
+  fileName?: string | null;
+  originalFileName?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  processStatus: string;
+  hotAreaCount: number;
+}
+
+export interface PageResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface ApiResponse<T> {
+  code: number;
+  message: string;
+  data: T;
+}

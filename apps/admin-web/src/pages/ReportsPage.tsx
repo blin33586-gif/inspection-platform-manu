@@ -1,8 +1,19 @@
 import { Button } from "antd";
+import type { PageResult, ReportSummary } from "@xunjianbao/shared";
 import { reports } from "../data";
 import { PageHeader } from "../components/PageHeader";
+import { useApiResource } from "../hooks/useApiResource";
+
+const fallbackReports: PageResult<ReportSummary> = {
+  items: reports,
+  page: 1,
+  pageSize: 20,
+  total: reports.length,
+};
 
 export function ReportsPage() {
+  const { data } = useApiResource("/reports", fallbackReports);
+
   return (
     <>
       <PageHeader eyebrow="REPORT CENTER" title="巡检报告" actions={<Button type="primary">上传报告</Button>} />
@@ -15,7 +26,7 @@ export function ReportsPage() {
             </div>
           </div>
           <div className="report-list">
-            {reports.map((report) => (
+            {data.items.map((report) => (
               <button key={report.id}>
                 <span>{report.reportDate.slice(5)}</span>
                 <strong>{report.title}</strong>

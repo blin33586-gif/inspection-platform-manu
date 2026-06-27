@@ -1,8 +1,16 @@
 import { Button, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import type { IssueSummary } from "@xunjianbao/shared";
+import type { IssueSummary, PageResult } from "@xunjianbao/shared";
 import { issues } from "../data";
 import { PageHeader } from "../components/PageHeader";
+import { useApiResource } from "../hooks/useApiResource";
+
+const fallbackIssues: PageResult<IssueSummary> = {
+  items: issues,
+  page: 1,
+  pageSize: 20,
+  total: issues.length,
+};
 
 const columns: ColumnsType<IssueSummary> = [
   { title: "对象", dataIndex: "objectName" },
@@ -20,6 +28,8 @@ const columns: ColumnsType<IssueSummary> = [
 ];
 
 export function IssuesPage() {
+  const { data, loading } = useApiResource("/issues", fallbackIssues);
+
   return (
     <>
       <PageHeader eyebrow="ISSUE LEDGER" title="问题台账" actions={<Button type="primary">新增问题</Button>} />
@@ -31,7 +41,7 @@ export function IssuesPage() {
           </div>
           <div className="filter-bar"><button className="active">全部</button><button>待处理</button><button>处理中</button><button>复查通过</button></div>
         </div>
-        <Table rowKey="id" columns={columns} dataSource={issues} pagination={false} className="data-table" />
+        <Table rowKey="id" columns={columns} dataSource={data.items} loading={loading} pagination={false} className="data-table" />
       </section>
     </>
   );

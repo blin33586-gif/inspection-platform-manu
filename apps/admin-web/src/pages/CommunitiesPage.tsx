@@ -1,9 +1,20 @@
 import { Button } from "antd";
+import type { ManagedObjectSummary, PageResult } from "@xunjianbao/shared";
 import { communities } from "../data";
 import { ObjectCard } from "../components/ObjectCard";
 import { PageHeader } from "../components/PageHeader";
+import { useApiResource } from "../hooks/useApiResource";
+
+const fallbackCommunities: PageResult<ManagedObjectSummary> = {
+  items: communities,
+  page: 1,
+  pageSize: 20,
+  total: communities.length,
+};
 
 export function CommunitiesPage() {
+  const { data } = useApiResource("/communities", fallbackCommunities);
+
   return (
     <>
       <PageHeader eyebrow="COMMUNITY ARCHIVES" title="小区档案" actions={<Button type="primary">新增小区</Button>} />
@@ -15,7 +26,7 @@ export function CommunitiesPage() {
           </div>
           <div className="filter-bar"><button className="active">全部</button><button>待复查</button><button>重点</button><button>稳定</button></div>
         </div>
-        <div className="card-grid">{communities.map((item) => <ObjectCard key={item.id} item={item} />)}</div>
+        <div className="card-grid">{data.items.map((item) => <ObjectCard key={item.id} item={item} />)}</div>
       </section>
 
       <section className="content-section detail-section">

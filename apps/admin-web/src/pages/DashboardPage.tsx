@@ -1,9 +1,14 @@
 import { useNavigate } from "react-router-dom";
-import { dashboardSummary } from "../data";
+import { dashboardSummary, issueDistribution } from "../data";
 import { PageHeader } from "../components/PageHeader";
+import { useApiResource } from "../hooks/useApiResource";
+
+const legendClasses = ["blue", "orange", "red", "green"];
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const { data: summary } = useApiResource("/dashboard/summary", dashboardSummary);
+  const { data: distribution } = useApiResource("/dashboard/issue-distribution", issueDistribution);
 
   return (
     <>
@@ -25,9 +30,9 @@ export function DashboardPage() {
           <p>小区、道路、广告牌、河道和重点点位都可以在首页地图上直接点击进入。</p>
         </div>
         <div className="hero-stats">
-          <div><span>本月巡检</span><strong>{dashboardSummary.inspectionsThisMonth}</strong></div>
-          <div><span>发现问题</span><strong>{dashboardSummary.issuesThisMonth}</strong></div>
-          <div><span>待处理</span><strong>{dashboardSummary.pendingIssues}</strong></div>
+          <div><span>本月巡检</span><strong>{summary.inspectionsThisMonth}</strong></div>
+          <div><span>发现问题</span><strong>{summary.issuesThisMonth}</strong></div>
+          <div><span>待处理</span><strong>{summary.pendingIssues}</strong></div>
         </div>
       </section>
 
@@ -72,10 +77,12 @@ export function DashboardPage() {
           <div className="donut-wrap">
             <div className="donut" />
             <ul className="legend">
-              <li><span className="blue" />飞线整治 32%</li>
-              <li><span className="orange" />占道经营 26%</li>
-              <li><span className="red" />违建隐患 18%</li>
-              <li><span className="green" />绿化河道 14%</li>
+              {distribution.map((item, index) => (
+                <li key={item.category}>
+                  <span className={legendClasses[index % legendClasses.length]} />
+                  {item.category} {item.value}%
+                </li>
+              ))}
             </ul>
           </div>
         </aside>

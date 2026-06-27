@@ -1,4 +1,4 @@
-import type { DashboardSummary, IssueSummary, ManagedObjectSummary, ReportSummary } from "@xunjianbao/shared";
+import type { DashboardSummary, IssueSummary, ManagedObjectSummary, MapAssetSummary, ReportSummary } from "@xunjianbao/shared";
 
 export const dashboardSummary: DashboardSummary = {
   inspectionsThisMonth: 18,
@@ -29,4 +29,16 @@ export const issues: IssueSummary[] = [
   { id: "is-002", title: "沿街门头广告牌松动", objectName: "曲阳路", category: "广告牌", status: "processing", severity: "normal", foundAt: "2026-06-22" },
   { id: "is-003", title: "路口占道经营复发", objectName: "密云路", category: "占道经营", status: "pending", severity: "medium", foundAt: "2026-06-19" },
   { id: "is-004", title: "楼顶疑似违规搭建", objectName: "运光小区", category: "违建", status: "verified", severity: "normal", foundAt: "2026-06-18" },
+];
+
+export const issueDistribution = [
+  { category: "飞线整治", value: 32 },
+  { category: "占道经营", value: 26 },
+  { category: "违建隐患", value: 18 },
+  { category: "绿化河道", value: 14 },
+];
+
+export const mapAssets: MapAssetSummary[] = [
+  { id: "map-street-main", name: "曲阳路街道总览图", mapType: "街道总览", sourceType: "image", processStatus: "processed", hotAreaCount: 6 },
+  { id: "map-yutian", name: "玉田新村小区示意图", mapType: "小区地图", sourceType: "tiff", processStatus: "processed", hotAreaCount: 3 },
 ];
