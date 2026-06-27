@@ -1,30 +1,30 @@
-import { Controller, Get, NotFoundException, Param } from "@nestjs/common";
-import { issues, reports, roads } from "../../shared/mock-data.js";
+import { Controller, Get, Inject, NotFoundException, Param } from "@nestjs/common";
+import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { ok, page } from "../../shared/api-response.js";
 
 @Controller("roads")
 export class RoadsController {
+  constructor(@Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository) {}
+
   @Get()
-  list() {
-    return ok(page(roads));
+  async list() {
+    return ok(page(await this.readRepository.managedObjects("road")));
   }
 
   @Get(":id")
-  detail(@Param("id") id: string) {
-    const item = roads.find((road) => road.id === id);
+  async detail(@Param("id") id: string) {
+    const item = await this.readRepository.managedObject(id, "road");
     if (!item) throw new NotFoundException("Road not found");
     return ok(item);
   }
 
   @Get(":id/issues")
-  roadIssues(@Param("id") id: string) {
-    const item = roads.find((road) => road.id === id);
-    return ok(page(issues.filter((issue) => issue.objectName === item?.name)));
+  async roadIssues(@Param("id") id: string) {
+    return ok(page(await this.readRepository.issues(id)));
   }
 
   @Get(":id/reports")
-  roadReports(@Param("id") id: string) {
-    const item = roads.find((road) => road.id === id);
-    return ok(page(reports.filter((report) => report.relatedObjectName === item?.name)));
+  async roadReports(@Param("id") id: string) {
+    return ok(page(await this.readRepository.reports(id)));
   }
 }

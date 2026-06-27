@@ -1,17 +1,19 @@
-import { Controller, Get, NotFoundException, Param } from "@nestjs/common";
-import { points } from "../../shared/mock-data.js";
+import { Controller, Get, Inject, NotFoundException, Param } from "@nestjs/common";
+import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { ok, page } from "../../shared/api-response.js";
 
 @Controller("points")
 export class PointsController {
+  constructor(@Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository) {}
+
   @Get()
-  list() {
-    return ok(page(points));
+  async list() {
+    return ok(page(await this.readRepository.points()));
   }
 
   @Get(":id")
-  detail(@Param("id") id: string) {
-    const item = points.find((point) => point.id === id);
+  async detail(@Param("id") id: string) {
+    const item = await this.readRepository.point(id);
     if (!item) throw new NotFoundException("Point not found");
     return ok(item);
   }

@@ -1,30 +1,30 @@
-import { Controller, Get, NotFoundException, Param } from "@nestjs/common";
-import { communities, issues, reports } from "../../shared/mock-data.js";
+import { Controller, Get, Inject, NotFoundException, Param } from "@nestjs/common";
+import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { ok, page } from "../../shared/api-response.js";
 
 @Controller("communities")
 export class CommunitiesController {
+  constructor(@Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository) {}
+
   @Get()
-  list() {
-    return ok(page(communities));
+  async list() {
+    return ok(page(await this.readRepository.managedObjects("community")));
   }
 
   @Get(":id")
-  detail(@Param("id") id: string) {
-    const item = communities.find((community) => community.id === id);
+  async detail(@Param("id") id: string) {
+    const item = await this.readRepository.managedObject(id, "community");
     if (!item) throw new NotFoundException("Community not found");
     return ok(item);
   }
 
   @Get(":id/issues")
-  communityIssues(@Param("id") id: string) {
-    const item = communities.find((community) => community.id === id);
-    return ok(page(issues.filter((issue) => issue.objectName === item?.name)));
+  async communityIssues(@Param("id") id: string) {
+    return ok(page(await this.readRepository.issues(id)));
   }
 
   @Get(":id/reports")
-  communityReports(@Param("id") id: string) {
-    const item = communities.find((community) => community.id === id);
-    return ok(page(reports.filter((report) => report.relatedObjectName === item?.name)));
+  async communityReports(@Param("id") id: string) {
+    return ok(page(await this.readRepository.reports(id)));
   }
 }

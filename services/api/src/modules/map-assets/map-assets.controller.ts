@@ -1,26 +1,25 @@
-import { Controller, Get, NotFoundException, Param } from "@nestjs/common";
-import { mapAssets } from "../../shared/mock-data.js";
+import { Controller, Get, Inject, NotFoundException, Param } from "@nestjs/common";
+import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { ok, page } from "../../shared/api-response.js";
 
 @Controller("map-assets")
 export class MapAssetsController {
+  constructor(@Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository) {}
+
   @Get()
-  list() {
-    return ok(page(mapAssets));
+  async list() {
+    return ok(page(await this.readRepository.mapAssets()));
   }
 
   @Get(":id")
-  detail(@Param("id") id: string) {
-    const item = mapAssets.find((asset) => asset.id === id);
+  async detail(@Param("id") id: string) {
+    const item = await this.readRepository.mapAsset(id);
     if (!item) throw new NotFoundException("Map asset not found");
     return ok(item);
   }
 
   @Get(":id/hot-areas")
-  hotAreas(@Param("id") id: string) {
-    return ok(page([
-      { id: `${id}-ha-community`, label: "玉田新村", objectType: "community", objectId: "c-yutian" },
-      { id: `${id}-ha-road`, label: "曲阳路", objectType: "road", objectId: "r-quyang" },
-    ]));
+  async hotAreas(@Param("id") id: string) {
+    return ok(page(await this.readRepository.mapHotAreas(id)));
   }
 }

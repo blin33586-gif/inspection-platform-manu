@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model DashboardMetric {
+  key       String   @id
+  label     String
+  value     Int
+  remark    String?
+  updatedAt DateTime @updatedAt
+}
+
+model IssueCategoryStat {
+  id       String @id
+  category String
+  value    Int
+  sort     Int    @default(0)
+}
+
+model ManagedObject {
+  id          String   @id
+  name        String
+  objectType  String
+  objectSubtype String?
+  parentName  String?
+  status      String
+  issueCount  Int      @default(0)
+  reportCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  issues   Issue[]
+  reports  InspectionReport[]
+  hotAreas MapHotArea[]
+
+  @@index([objectType])
+  @@index([status])
+}
+
+model Issue {
+  id        String   @id
+  title     String
+  category  String
+  status    String
+  severity  String
+  foundAt   DateTime
+  objectId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  object ManagedObject? @relation(fields: [objectId], references: [id])
+
+  @@index([objectId])
+  @@index([status])
+  @@index([foundAt])
+}
+
+model InspectionReport {
+  id                String   @id
+  title             String
+  reportDate        DateTime
+  reportType        String
+  relatedObjectId   String?
+  relatedObjectName String
+  issueCount        Int      @default(0)
+  contentSummary    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  relatedObject ManagedObject? @relation(fields: [relatedObjectId], references: [id])
+
+  @@index([relatedObjectId])
+  @@index([reportType])
+  @@index([reportDate])
+}
+
+model MapAsset {
+  id            String   @id
+  name          String
+  mapType       String
+  sourceType    String
+  fileName      String?
+  processStatus String
+  hotAreaCount  Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  hotAreas MapHotArea[]
+
+  @@index([mapType])
+  @@index([processStatus])
+}
+
+model MapHotArea {
+  id         String  @id
+  label      String
+  objectType String
+  objectId   String?
+  mapAssetId String
+  x          Float?
+  y          Float?
+  width      Float?
+  height     Float?
+  polygon    String?
+
+  mapAsset      MapAsset       @relation(fields: [mapAssetId], references: [id])
+  managedObject ManagedObject? @relation(fields: [objectId], references: [id])
+
+  @@index([mapAssetId])
+  @@index([objectId])
+}
