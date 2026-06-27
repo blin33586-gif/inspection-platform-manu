@@ -1,5 +1,8 @@
-import { Button } from "antd";
+import { useState } from "react";
+import { Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Upload } from "antd";
+import type { UploadFile } from "antd/es/upload/interface";
 import type { PageResult, ReportSummary } from "@xunjianbao/shared";
+import { postFormApi } from "../api/client";
 import { reports } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
@@ -12,11 +15,50 @@ const fallbackReports: PageResult<ReportSummary> = {
 };
 
 export function ReportsPage() {
-  const { data } = useApiResource("/reports", fallbackReports);
+  const [form] = Form.useForm<{
+    title?: string;
+    reportDate?: { format: (format: string) => string };
+    reportType?: string;
+    relatedObjectName?: string;
+    issueCount?: number;
+    contentSummary?: string;
+    file?: UploadFile[];
+  }>();
+  const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const { data, reload } = useApiResource("/reports", fallbackReports);
+
+  const submitUpload = async () => {
+    const values = await form.validateFields();
+    const uploadFile = values.file?.[0]?.originFileObj;
+    if (!uploadFile) return;
+
+    const formData = new FormData();
+    formData.append("file", uploadFile);
+    if (values.title) formData.append("title", values.title);
+    if (values.reportDate) formData.append("reportDate", values.reportDate.format("YYYY-MM-DD"));
+    if (values.reportType) formData.append("reportType", values.reportType);
+    if (values.relatedObjectName) formData.append("relatedObjectName", values.relatedObjectName);
+    if (values.issueCount !== undefined) formData.append("issueCount", String(values.issueCount));
+    if (values.contentSummary) formData.append("contentSummary", values.contentSummary);
+
+    setSubmitting(true);
+    try {
+      await postFormApi<ReportSummary>("/reports/upload", formData);
+      message.success("报告已上传");
+      form.resetFields();
+      setOpen(false);
+      reload();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "上传失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <>
-      <PageHeader eyebrow="REPORT CENTER" title="巡检报告" actions={<Button type="primary">上传报告</Button>} />
+      <PageHeader eyebrow="REPORT CENTER" title="巡检报告" actions={<Button type="primary" onClick={() => setOpen(true)}>上传报告</Button>} />
       <section className="content-section split-section">
         <article>
           <div className="section-head">
@@ -30,7 +72,7 @@ export function ReportsPage() {
               <button key={report.id}>
                 <span>{report.reportDate.slice(5)}</span>
                 <strong>{report.title}</strong>
-                <em>{report.relatedObjectName} / {report.issueCount} 个问题</em>
+                <em>{report.relatedObjectName} / {report.issueCount} 个问题 / {report.processStatus === "uploaded" ? "已上传" : "已归档"}</em>
               </button>
             ))}
           </div>
@@ -49,6 +91,56 @@ export function ReportsPage() {
           </div>
         </article>
       </section>
+
+      <Modal
+        title="上传巡检报告"
+        open={open}
+        onCancel={() => setOpen(false)}
+        onOk={submitUpload}
+        confirmLoading={submitting}
+        okText="上传"
+        cancelText="取消"
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item name="title" label="报告标题">
+            <Input placeholder="例如：玉田新村飞线与堆物巡检报告" />
+          </Form.Item>
+          <Form.Item name="reportDate" label="巡检日期">
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="reportType" label="报告类型">
+            <Select
+              options={[
+                { label: "小区巡检", value: "community" },
+                { label: "道路巡检", value: "road" },
+                { label: "重点点位", value: "point" },
+                { label: "综合报告", value: "comprehensive" },
+              ]}
+              placeholder="请选择报告类型"
+            />
+          </Form.Item>
+          <Form.Item name="relatedObjectName" label="关联对象">
+            <Input placeholder="例如：玉田新村、曲阳路" />
+          </Form.Item>
+          <Form.Item name="issueCount" label="关联问题数">
+            <InputNumber min={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="contentSummary" label="报告摘要">
+            <Input.TextArea rows={3} placeholder="可填写巡检重点、发现问题和复查建议" />
+          </Form.Item>
+          <Form.Item
+            name="file"
+            label="报告文件"
+            valuePropName="fileList"
+            getValueFromEvent={(event: { fileList?: UploadFile[] }) => event.fileList ?? []}
+            rules={[{ required: true, message: "请选择报告文件" }]}
+          >
+            <Upload accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" beforeUpload={() => false} maxCount={1}>
+              <Button>选择文件</Button>
+            </Upload>
+          </Form.Item>
+        </Form>
+      </Modal>
     </>
   );
 }

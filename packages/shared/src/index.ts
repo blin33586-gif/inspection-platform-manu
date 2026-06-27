@@ -44,6 +44,11 @@ export interface ReportSummary {
   reportType: ReportType;
   relatedObjectName: string;
   issueCount: number;
+  fileName?: string | null;
+  originalFileName?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  processStatus?: string | null;
 }
 
 export interface MapAssetSummary {

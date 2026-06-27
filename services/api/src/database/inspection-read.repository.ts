@@ -154,6 +154,11 @@ export class InspectionReadRepository {
       reportType: report.reportType as ReportSummary["reportType"],
       relatedObjectName: report.relatedObjectName,
       issueCount: report.issueCount,
+      fileName: report.fileName,
+      originalFileName: report.originalFileName,
+      mimeType: report.mimeType,
+      fileSize: report.fileSize,
+      processStatus: report.processStatus,
     }));
   }
 
@@ -168,6 +173,11 @@ export class InspectionReadRepository {
       reportType: report.reportType as ReportSummary["reportType"],
       relatedObjectName: report.relatedObjectName,
       issueCount: report.issueCount,
+      fileName: report.fileName,
+      originalFileName: report.originalFileName,
+      mimeType: report.mimeType,
+      fileSize: report.fileSize,
+      processStatus: report.processStatus,
     };
   }
 

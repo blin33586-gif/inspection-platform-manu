@@ -68,6 +68,12 @@ model InspectionReport {
   relatedObjectName String
   issueCount        Int      @default(0)
   contentSummary    String?
+  fileName          String?
+  originalFileName  String?
+  storagePath       String?
+  mimeType          String?
+  fileSize          Int?
+  processStatus     String   @default("uploaded")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -76,6 +82,7 @@ model InspectionReport {
   @@index([relatedObjectId])
   @@index([reportType])
   @@index([reportDate])
+  @@index([processStatus])
 }
 
 model MapAsset {
