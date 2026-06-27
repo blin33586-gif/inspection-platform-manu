@@ -34,6 +34,23 @@ export class AuthService {
     };
   }
 
+  verifyToken(token: string | undefined) {
+    if (!token) return false;
+
+    const [body, signature] = token.split(".");
+    if (!body || !signature) return false;
+
+    const expectedSignature = createHmac("sha256", this.secret).update(body).digest("base64url");
+    if (!this.matches(signature, expectedSignature)) return false;
+
+    try {
+      const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as { sub?: string };
+      return payload.sub === this.username;
+    } catch {
+      return false;
+    }
+  }
+
   private sign(payload: Record<string, unknown>) {
     const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
     const signature = createHmac("sha256", this.secret).update(body).digest("base64url");

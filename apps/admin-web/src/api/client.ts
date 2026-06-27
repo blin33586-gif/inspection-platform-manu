@@ -4,7 +4,10 @@ import { getToken } from "../auth/session";
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3010/api/v1";
 
 export function getApiUrl(path: string) {
-  return `${apiBaseUrl}${path}`;
+  const token = getToken();
+  const url = new URL(`${apiBaseUrl}${path}`, window.location.origin);
+  if (token) url.searchParams.set("token", token);
+  return url.toString();
 }
 
 export async function getApi<T>(path: string, signal?: AbortSignal): Promise<T> {
