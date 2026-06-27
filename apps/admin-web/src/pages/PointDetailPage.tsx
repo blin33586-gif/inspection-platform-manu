@@ -81,7 +81,7 @@ export function PointDetailPage() {
               {relatedReports.items.length ? relatedReports.items.map((report) => (
                 <div key={report.id}>
                   <time>{report.reportDate.slice(5)}</time>
-                  <strong>{report.title}</strong>
+                  <strong><Link className="text-link compact-link" to={`/reports/${report.id}`}>{report.title}</Link></strong>
                   <span>{report.issueCount} 个问题</span>
                 </div>
               )) : <p className="empty-note">暂无关联报告</p>}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button, DatePicker, Form, Input, InputNumber, message, Modal, Pagination, Select, Upload } from "antd";
 import type { UploadFile } from "antd/es/upload/interface";
+import { Link } from "react-router-dom";
 import type { PageResult, ReportSummary, ReportType } from "@xunjianbao/shared";
 import { getApiUrl, postFormApi, withQuery } from "../api/client";
 import { reports } from "../data";
@@ -105,8 +106,9 @@ export function ReportsPage() {
             {data.items.map((report) => (
               <article className="report-item" key={report.id}>
                 <span>{report.reportDate.slice(5)}</span>
-                <strong>{report.title}</strong>
+                <strong><Link className="text-link compact-link" to={`/reports/${report.id}`}>{report.title}</Link></strong>
                 <em>{report.relatedObjectName} / {report.issueCount} 个问题 / {report.processStatus === "uploaded" ? "已上传" : "已归档"}</em>
+                <Link className="table-action-link" to={`/reports/${report.id}`}>详情</Link>
                 {report.fileName ? <a className="download-link" href={getApiUrl(`/reports/${report.id}/file`)}>下载文件</a> : null}
               </article>
             ))}

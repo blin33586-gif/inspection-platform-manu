@@ -109,7 +109,7 @@ export function ManagedObjectDetailPage({ objectType }: ManagedObjectDetailPageP
               {relatedReports.items.length ? relatedReports.items.map((report) => (
                 <div key={report.id}>
                   <time>{report.reportDate.slice(5)}</time>
-                  <strong>{report.title}</strong>
+                  <strong><Link className="text-link compact-link" to={`/reports/${report.id}`}>{report.title}</Link></strong>
                   <span>{report.issueCount} 个问题 / {report.processStatus === "uploaded" ? "已上传" : "已归档"}</span>
                   {report.fileName ? <a className="text-link" href={getApiUrl(`/reports/${report.id}/file`)}>下载文件</a> : null}
                 </div>

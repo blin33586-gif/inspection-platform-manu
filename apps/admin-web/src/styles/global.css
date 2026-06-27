@@ -953,6 +953,18 @@ h4 {
   line-height: 1.65;
 }
 
+.report-detail-panel {
+  min-width: 0;
+}
+
+.detail-descriptions {
+  margin-top: 18px;
+}
+
+.report-detail-card {
+  min-height: 360px;
+}
+
 .data-table {
   margin-top: 18px;
 }

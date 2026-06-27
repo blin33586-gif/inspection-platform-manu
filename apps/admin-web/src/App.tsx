@@ -14,6 +14,7 @@ import { MapAssetDetailPage } from "./pages/MapAssetDetailPage";
 import { PointsPage } from "./pages/PointsPage";
 import { PointDetailPage } from "./pages/PointDetailPage";
 import { IssueDetailPage } from "./pages/IssueDetailPage";
+import { ReportDetailPage } from "./pages/ReportDetailPage";
 
 function RequireAuth() {
   return getToken() ? <Outlet /> : <Navigate to="/login" replace />;
@@ -33,6 +34,7 @@ export function App() {
           <Route path="/points" element={<PointsPage />} />
           <Route path="/points/:id" element={<PointDetailPage />} />
           <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/reports/:id" element={<ReportDetailPage />} />
           <Route path="/issues" element={<IssuesPage />} />
           <Route path="/issues/:id" element={<IssueDetailPage />} />
           <Route path="/map-assets" element={<MapAssetsPage />} />
