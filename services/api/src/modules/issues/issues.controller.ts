@@ -1,8 +1,9 @@
-import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Query } from "@nestjs/common";
-import type { IssueStatus } from "@xunjianbao/shared";
+import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query } from "@nestjs/common";
+import type { IssueStatus, Severity } from "@xunjianbao/shared";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { AuditService } from "../audit/audit.service.js";
 import { ok, paged } from "../../shared/api-response.js";
+import { IssueWriteService } from "./issue-write.service.js";
 
 const allowedStatuses: IssueStatus[] = ["pending", "processing", "rectified", "verified", "ignored", "archived"];
 
@@ -11,6 +12,7 @@ export class IssuesController {
   constructor(
     @Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository,
     @Inject(AuditService) private readonly auditService: AuditService,
+    @Inject(IssueWriteService) private readonly issueWriteService: IssueWriteService,
   ) {}
 
   @Get()
@@ -28,6 +30,11 @@ export class IssuesController {
     const item = await this.readRepository.issue(id);
     if (!item) throw new NotFoundException("Issue not found");
     return ok(item);
+  }
+
+  @Post()
+  async create(@Body() body: { title?: string; category?: string; status?: IssueStatus; severity?: Severity; foundAt?: string; objectId?: string }) {
+    return ok(await this.issueWriteService.create(body));
   }
 
   @Patch(":id/status")
