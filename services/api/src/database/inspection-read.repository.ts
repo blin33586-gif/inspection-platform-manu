@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { DashboardSummary, IssueSummary, ManagedObjectSummary, ReportSummary } from "@xunjianbao/shared";
+import type { DashboardSummary, IssueStatus, IssueSummary, ManagedObjectSummary, ReportSummary } from "@xunjianbao/shared";
 import { DatabaseService } from "./database.service.js";
 
 function formatDate(date: Date) {
@@ -108,6 +108,27 @@ export class InspectionReadRepository {
     });
 
     if (!issue) return null;
+
+    return {
+      id: issue.id,
+      title: issue.title,
+      objectName: issue.object?.name ?? "未关联对象",
+      category: issue.category,
+      status: issue.status as IssueSummary["status"],
+      severity: issue.severity as IssueSummary["severity"],
+      foundAt: formatDate(issue.foundAt),
+    };
+  }
+
+  async updateIssueStatus(id: string, status: IssueStatus): Promise<IssueSummary | null> {
+    const exists = await this.database.issue.findUnique({ where: { id } });
+    if (!exists) return null;
+
+    const issue = await this.database.issue.update({
+      where: { id },
+      data: { status },
+      include: { object: true },
+    });
 
     return {
       id: issue.id,
