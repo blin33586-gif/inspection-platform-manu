@@ -1,5 +1,6 @@
 import { LayoutDashboard, Map, FileText, AlertTriangle, Building2, Route, Database } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { clearSession, getUser } from "../auth/session";
 
 const navItems = [
   { to: "/", label: "首页驾驶舱", icon: LayoutDashboard },
@@ -11,6 +12,14 @@ const navItems = [
 ];
 
 export function Shell() {
+  const navigate = useNavigate();
+  const user = getUser();
+
+  const logout = () => {
+    clearSession();
+    navigate("/login", { replace: true });
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -38,7 +47,8 @@ export function Shell() {
           <Database size={18} />
           <span>当前项目</span>
           <strong>上海市虹口区曲阳路街道</strong>
-          <p>正式工程基座：路由、页面、共享类型和模拟数据。</p>
+          <p>{user?.name ?? "管理员"} / {user?.role ?? "admin"}</p>
+          <button className="logout-button" onClick={logout}>退出登录</button>
         </div>
       </aside>
 

@@ -7,10 +7,12 @@ import { IssuesModule } from "./modules/issues/issues.module.js";
 import { MapAssetsModule } from "./modules/map-assets/map-assets.module.js";
 import { PointsModule } from "./modules/points/points.module.js";
 import { DatabaseModule } from "./database/database.module.js";
+import { AuthModule } from "./modules/auth/auth.module.js";
 
 @Module({
   imports: [
     DatabaseModule,
+    AuthModule,
     DashboardModule,
     CommunitiesModule,
     RoadsModule,

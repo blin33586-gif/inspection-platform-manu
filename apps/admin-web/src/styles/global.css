@@ -130,6 +130,20 @@ button {
   line-height: 1.6;
 }
 
+.logout-button {
+  width: 100%;
+  min-height: 36px;
+  margin-top: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: white;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.logout-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .main {
   min-width: 0;
   padding: 28px 28px 44px;
@@ -218,6 +232,36 @@ h4 {
   background: rgba(255, 255, 255, 0.78);
   box-shadow: var(--shadow);
   backdrop-filter: blur(22px);
+}
+
+.login-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 28px;
+  background: radial-gradient(circle at 78% 10%, rgba(41, 199, 232, 0.24), transparent 30%),
+    linear-gradient(145deg, #061a3a 0%, #0a3578 48%, #eef7ff 48%, #ffffff 100%);
+}
+
+.login-panel {
+  width: min(460px, 100%);
+  padding: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(24px);
+}
+
+.login-brand {
+  margin-bottom: 28px;
+  color: var(--blue-950);
+}
+
+.login-copy h1 {
+  margin-bottom: 24px;
+  color: var(--blue-950);
+  font-size: 28px;
 }
 
 .hero-panel {
