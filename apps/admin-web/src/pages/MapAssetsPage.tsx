@@ -3,7 +3,7 @@ import { Button, Form, Input, InputNumber, message, Modal, Select, Space, Table,
 import type { ColumnsType } from "antd/es/table";
 import type { UploadFile } from "antd/es/upload/interface";
 import type { MapAssetSummary, MapHotAreaSummary, ObjectType, PageResult } from "@xunjianbao/shared";
-import { postFormApi, postJsonApi } from "../api/client";
+import { getApiUrl, postFormApi, postJsonApi } from "../api/client";
 import { mapAssets } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
@@ -107,6 +107,7 @@ export function MapAssetsPage() {
       render: (_, record) => (
         <Space>
           <Button size="small" onClick={() => openHotAreaModal(record)}>新增热区</Button>
+          {record.fileName ? <Button size="small" href={getApiUrl(`/map-assets/${record.id}/file`)}>下载</Button> : null}
         </Space>
       ),
     },

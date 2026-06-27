@@ -184,7 +184,18 @@ export class InspectionReadRepository {
   async mapAssets() {
     return this.database.mapAsset.findMany({
       orderBy: { updatedAt: "desc" },
-      select: { id: true, name: true, mapType: true, processStatus: true, hotAreaCount: true },
+      select: {
+        id: true,
+        name: true,
+        mapType: true,
+        sourceType: true,
+        fileName: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        processStatus: true,
+        hotAreaCount: true,
+      },
     });
   }
 

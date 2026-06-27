@@ -3,6 +3,10 @@ import { getToken } from "../auth/session";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3010/api/v1";
 
+export function getApiUrl(path: string) {
+  return `${apiBaseUrl}${path}`;
+}
+
 export async function getApi<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     signal,

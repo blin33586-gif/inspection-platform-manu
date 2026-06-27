@@ -717,7 +717,8 @@ h4 {
   margin-top: 18px;
 }
 
-.report-list button {
+.report-list button,
+.report-item {
   display: flex;
   width: 100%;
   min-height: 72px;
@@ -729,6 +730,17 @@ h4 {
   padding: 14px 16px;
   text-align: left;
   background: white;
+}
+
+.download-link {
+  flex: 0 0 auto;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: white;
+  background: var(--blue-700);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
 }
 
 .report-list span {

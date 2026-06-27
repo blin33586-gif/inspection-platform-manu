@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Upload } from "antd";
 import type { UploadFile } from "antd/es/upload/interface";
 import type { PageResult, ReportSummary } from "@xunjianbao/shared";
-import { postFormApi } from "../api/client";
+import { getApiUrl, postFormApi } from "../api/client";
 import { reports } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
@@ -69,11 +69,12 @@ export function ReportsPage() {
           </div>
           <div className="report-list">
             {data.items.map((report) => (
-              <button key={report.id}>
+              <article className="report-item" key={report.id}>
                 <span>{report.reportDate.slice(5)}</span>
                 <strong>{report.title}</strong>
                 <em>{report.relatedObjectName} / {report.issueCount} 个问题 / {report.processStatus === "uploaded" ? "已上传" : "已归档"}</em>
-              </button>
+                {report.fileName ? <a className="download-link" href={getApiUrl(`/reports/${report.id}/file`)}>下载文件</a> : null}
+              </article>
             ))}
           </div>
         </article>

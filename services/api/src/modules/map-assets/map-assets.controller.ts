@@ -1,7 +1,10 @@
-import { Body, Controller, Get, Inject, NotFoundException, Param, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Get, Inject, NotFoundException, Param, Post, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import type { Response } from "express";
+import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { ok, page } from "../../shared/api-response.js";
+import { sendStoredFile } from "../../shared/file-download.js";
 import { MapAssetUploadService } from "./map-asset-upload.service.js";
 import { MapHotAreaService } from "./map-hot-area.service.js";
 
@@ -16,6 +19,7 @@ interface UploadedFileLike {
 @Controller("map-assets")
 export class MapAssetsController {
   constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository,
     @Inject(MapAssetUploadService) private readonly uploadService: MapAssetUploadService,
     @Inject(MapHotAreaService) private readonly hotAreaService: MapHotAreaService,
@@ -40,6 +44,15 @@ export class MapAssetsController {
     const item = await this.readRepository.mapAsset(id);
     if (!item) throw new NotFoundException("Map asset not found");
     return ok(item);
+  }
+
+  @Get(":id/file")
+  async file(@Param("id") id: string, @Res() response: Response) {
+    const item = await this.database.mapAsset.findUnique({
+      where: { id },
+      select: { storagePath: true, originalFileName: true, fileName: true },
+    });
+    return sendStoredFile(response, item);
   }
 
   @Get(":id/hot-areas")
