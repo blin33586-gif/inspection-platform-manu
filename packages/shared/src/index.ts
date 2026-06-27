@@ -27,6 +27,16 @@ export interface ManagedObjectSummary {
   reportCount: number;
 }
 
+export interface PointSummary {
+  id: string;
+  name: string;
+  pointType: string;
+  relatedObjectName: string;
+  status: string;
+  issueCount: number;
+  reportCount: number;
+}
+
 export interface IssueSummary {
   id: string;
   title: string;

@@ -1,4 +1,4 @@
-import type { DashboardSummary, IssueSummary, ManagedObjectSummary, MapAssetSummary, ReportSummary } from "@xunjianbao/shared";
+import type { DashboardSummary, IssueSummary, ManagedObjectSummary, MapAssetSummary, PointSummary, ReportSummary } from "@xunjianbao/shared";
 
 export const dashboardSummary: DashboardSummary = {
   inspectionsThisMonth: 18,
@@ -16,6 +16,11 @@ export const roads: ManagedObjectSummary[] = [
   { id: "r-quyang", name: "曲阳路", objectType: "road", status: "重点", issueCount: 9, reportCount: 3 },
   { id: "r-miyun", name: "密云路", objectType: "road", status: "待复查", issueCount: 7, reportCount: 2 },
   { id: "r-yutian", name: "玉田路", objectType: "road", status: "稳定", issueCount: 3, reportCount: 1 },
+];
+
+export const points: PointSummary[] = [
+  { id: "p-sign-001", name: "曲阳路重点广告牌", pointType: "广告牌", relatedObjectName: "曲阳路", status: "待复查", issueCount: 3, reportCount: 0 },
+  { id: "p-river-001", name: "河道绿化带", pointType: "绿化河道", relatedObjectName: "曲阳路街道", status: "待完善", issueCount: 2, reportCount: 0 },
 ];
 
 export const reports: ReportSummary[] = [

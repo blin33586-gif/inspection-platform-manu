@@ -17,4 +17,14 @@ export class PointsController {
     if (!item) throw new NotFoundException("Point not found");
     return ok(item);
   }
+
+  @Get(":id/issues")
+  async pointIssues(@Param("id") id: string) {
+    return ok(page(await this.readRepository.issues({ objectId: id })));
+  }
+
+  @Get(":id/reports")
+  async pointReports(@Param("id") id: string) {
+    return ok(page(await this.readRepository.reports({ objectId: id })));
+  }
 }

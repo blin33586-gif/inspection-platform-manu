@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { DashboardSummary, IssueStatus, IssueSummary, ManagedObjectSummary, ReportSummary } from "@xunjianbao/shared";
+import type { DashboardSummary, IssueStatus, IssueSummary, ManagedObjectSummary, PointSummary, ReportSummary } from "@xunjianbao/shared";
 import { DatabaseService } from "./database.service.js";
 
 function formatDate(date: Date) {
@@ -53,7 +53,7 @@ export class InspectionReadRepository {
     return object ? this.toManagedObjectSummary(object) : null;
   }
 
-  async points() {
+  async points(): Promise<PointSummary[]> {
     const objects = await this.database.managedObject.findMany({
       where: { objectType: "point" },
       orderBy: [{ issueCount: "desc" }, { name: "asc" }],
@@ -66,10 +66,11 @@ export class InspectionReadRepository {
       relatedObjectName: object.parentName ?? "曲阳路街道",
       status: object.status,
       issueCount: object.issueCount,
+      reportCount: object.reportCount,
     }));
   }
 
-  async point(id: string) {
+  async point(id: string): Promise<PointSummary | null> {
     const object = await this.database.managedObject.findUnique({ where: { id } });
     if (!object || object.objectType !== "point") return null;
 
@@ -80,6 +81,7 @@ export class InspectionReadRepository {
       relatedObjectName: object.parentName ?? "曲阳路街道",
       status: object.status,
       issueCount: object.issueCount,
+      reportCount: object.reportCount,
     };
   }
 

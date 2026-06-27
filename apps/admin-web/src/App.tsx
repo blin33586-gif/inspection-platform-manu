@@ -11,6 +11,8 @@ import { LoginPage } from "./pages/LoginPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { ManagedObjectDetailPage } from "./pages/ManagedObjectDetailPage";
 import { MapAssetDetailPage } from "./pages/MapAssetDetailPage";
+import { PointsPage } from "./pages/PointsPage";
+import { PointDetailPage } from "./pages/PointDetailPage";
 
 function RequireAuth() {
   return getToken() ? <Outlet /> : <Navigate to="/login" replace />;
@@ -27,6 +29,8 @@ export function App() {
           <Route path="/communities/:id" element={<ManagedObjectDetailPage objectType="community" />} />
           <Route path="/roads" element={<RoadsPage />} />
           <Route path="/roads/:id" element={<ManagedObjectDetailPage objectType="road" />} />
+          <Route path="/points" element={<PointsPage />} />
+          <Route path="/points/:id" element={<PointDetailPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/issues" element={<IssuesPage />} />
           <Route path="/map-assets" element={<MapAssetsPage />} />
