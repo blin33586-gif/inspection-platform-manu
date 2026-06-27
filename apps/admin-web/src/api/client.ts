@@ -38,3 +38,17 @@ export async function patchJsonApi<T>(path: string, payload: unknown): Promise<T
 
   return body.data;
 }
+
+export async function postJsonApi<T>(path: string, payload: unknown): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+
+  const body = (await response.json()) as ApiResponse<T>;
+  if (body.code !== 0) throw new Error(body.message);
+
+  return body.data;
+}

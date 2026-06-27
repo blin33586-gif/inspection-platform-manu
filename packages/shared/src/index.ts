@@ -64,6 +64,18 @@ export interface MapAssetSummary {
   hotAreaCount: number;
 }
 
+export interface MapHotAreaSummary {
+  id: string;
+  label: string;
+  objectType: ObjectType;
+  objectId?: string | null;
+  x?: number | null;
+  y?: number | null;
+  width?: number | null;
+  height?: number | null;
+  polygon?: string | null;
+}
+
 export interface PageResult<T> {
   items: T[];
   page: number;

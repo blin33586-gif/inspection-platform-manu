@@ -3,6 +3,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { ok, page } from "../../shared/api-response.js";
 import { MapAssetUploadService } from "./map-asset-upload.service.js";
+import { MapHotAreaService } from "./map-hot-area.service.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -17,6 +18,7 @@ export class MapAssetsController {
   constructor(
     @Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository,
     @Inject(MapAssetUploadService) private readonly uploadService: MapAssetUploadService,
+    @Inject(MapHotAreaService) private readonly hotAreaService: MapHotAreaService,
   ) {}
 
   @Get()
@@ -43,5 +45,22 @@ export class MapAssetsController {
   @Get(":id/hot-areas")
   async hotAreas(@Param("id") id: string) {
     return ok(page(await this.readRepository.mapHotAreas(id)));
+  }
+
+  @Post(":id/hot-areas")
+  async createHotArea(
+    @Param("id") id: string,
+    @Body() body: {
+      label?: string;
+      objectType?: "community" | "road" | "point" | "street";
+      objectId?: string;
+      x?: string;
+      y?: string;
+      width?: string;
+      height?: string;
+      polygon?: string;
+    },
+  ) {
+    return ok(await this.hotAreaService.create(id, body));
   }
 }

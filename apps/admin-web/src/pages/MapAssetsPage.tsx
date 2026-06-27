@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Button, Form, Input, message, Modal, Table, Tag, Upload } from "antd";
+import { Button, Form, Input, InputNumber, message, Modal, Select, Space, Table, Tag, Upload } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { UploadFile } from "antd/es/upload/interface";
-import type { MapAssetSummary, PageResult } from "@xunjianbao/shared";
-import { postFormApi } from "../api/client";
+import type { MapAssetSummary, MapHotAreaSummary, ObjectType, PageResult } from "@xunjianbao/shared";
+import { postFormApi, postJsonApi } from "../api/client";
 import { mapAssets } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
@@ -15,26 +15,22 @@ const fallbackMapAssets: PageResult<MapAssetSummary> = {
   total: mapAssets.length,
 };
 
-const columns: ColumnsType<MapAssetSummary> = [
-  { title: "地图名称", dataIndex: "name" },
-  { title: "地图类型", dataIndex: "mapType" },
-  {
-    title: "来源",
-    dataIndex: "sourceType",
-    render: (value) => <Tag color={value === "tiff" ? "purple" : "blue"}>{value === "tiff" ? "TIF" : "图片"}</Tag>,
-  },
-  {
-    title: "处理状态",
-    dataIndex: "processStatus",
-    render: (value) => <Tag color={value === "processed" ? "green" : "orange"}>{value === "processed" ? "已处理" : "已上传"}</Tag>,
-  },
-  { title: "热区", dataIndex: "hotAreaCount" },
-];
-
 export function MapAssetsPage() {
   const [form] = Form.useForm<{ name?: string; mapType?: string; file?: UploadFile[] }>();
+  const [hotAreaForm] = Form.useForm<{
+    label?: string;
+    objectType?: ObjectType;
+    objectId?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  }>();
   const [open, setOpen] = useState(false);
+  const [hotAreaOpen, setHotAreaOpen] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<MapAssetSummary | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [hotAreaSubmitting, setHotAreaSubmitting] = useState(false);
   const { data, loading, reload } = useApiResource("/map-assets", fallbackMapAssets);
 
   const submitUpload = async () => {
@@ -60,6 +56,61 @@ export function MapAssetsPage() {
       setSubmitting(false);
     }
   };
+
+  const openHotAreaModal = (asset: MapAssetSummary) => {
+    setSelectedAsset(asset);
+    hotAreaForm.resetFields();
+    setHotAreaOpen(true);
+  };
+
+  const submitHotArea = async () => {
+    if (!selectedAsset) return;
+    const values = await hotAreaForm.validateFields();
+
+    setHotAreaSubmitting(true);
+    try {
+      await postJsonApi<MapHotAreaSummary>(`/map-assets/${selectedAsset.id}/hot-areas`, {
+        label: values.label,
+        objectType: values.objectType,
+        objectId: values.objectId,
+        x: values.x,
+        y: values.y,
+        width: values.width,
+        height: values.height,
+      });
+      message.success("热区已新增");
+      setHotAreaOpen(false);
+      reload();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "新增失败");
+    } finally {
+      setHotAreaSubmitting(false);
+    }
+  };
+
+  const columns: ColumnsType<MapAssetSummary> = [
+    { title: "地图名称", dataIndex: "name" },
+    { title: "地图类型", dataIndex: "mapType" },
+    {
+      title: "来源",
+      dataIndex: "sourceType",
+      render: (value) => <Tag color={value === "tiff" ? "purple" : "blue"}>{value === "tiff" ? "TIF" : "图片"}</Tag>,
+    },
+    {
+      title: "处理状态",
+      dataIndex: "processStatus",
+      render: (value) => <Tag color={value === "processed" ? "green" : "orange"}>{value === "processed" ? "已处理" : "已上传"}</Tag>,
+    },
+    { title: "热区", dataIndex: "hotAreaCount" },
+    {
+      title: "操作",
+      render: (_, record) => (
+        <Space>
+          <Button size="small" onClick={() => openHotAreaModal(record)}>新增热区</Button>
+        </Space>
+      ),
+    },
+  ];
 
   return (
     <>
@@ -116,6 +167,50 @@ export function MapAssetsPage() {
               <Button>选择文件</Button>
             </Upload>
           </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`新增热区${selectedAsset ? `：${selectedAsset.name}` : ""}`}
+        open={hotAreaOpen}
+        onCancel={() => setHotAreaOpen(false)}
+        onOk={submitHotArea}
+        confirmLoading={hotAreaSubmitting}
+        okText="保存"
+        cancelText="取消"
+      >
+        <Form form={hotAreaForm} layout="vertical">
+          <Form.Item name="label" label="热区名称" rules={[{ required: true, message: "请输入热区名称" }]}>
+            <Input placeholder="例如：玉田新村、曲阳路、河道绿化带" />
+          </Form.Item>
+          <Form.Item name="objectType" label="对象类型" rules={[{ required: true, message: "请选择对象类型" }]}>
+            <Select
+              options={[
+                { label: "小区", value: "community" },
+                { label: "道路", value: "road" },
+                { label: "重点点位", value: "point" },
+                { label: "街道总览", value: "street" },
+              ]}
+              placeholder="请选择对象类型"
+            />
+          </Form.Item>
+          <Form.Item name="objectId" label="对象 ID">
+            <Input placeholder="例如：c-yutian、r-quyang" />
+          </Form.Item>
+          <div className="coordinate-grid">
+            <Form.Item name="x" label="X%">
+              <InputNumber min={0} max={100} precision={2} />
+            </Form.Item>
+            <Form.Item name="y" label="Y%">
+              <InputNumber min={0} max={100} precision={2} />
+            </Form.Item>
+            <Form.Item name="width" label="宽%">
+              <InputNumber min={0} max={100} precision={2} />
+            </Form.Item>
+            <Form.Item name="height" label="高%">
+              <InputNumber min={0} max={100} precision={2} />
+            </Form.Item>
+          </div>
         </Form>
       </Modal>
     </>

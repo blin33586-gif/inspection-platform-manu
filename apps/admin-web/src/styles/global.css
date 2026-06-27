@@ -767,6 +767,16 @@ h4 {
   line-height: 1.5;
 }
 
+.coordinate-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.coordinate-grid .ant-input-number {
+  width: 100%;
+}
+
 @media (max-width: 900px) {
   .app-shell,
   .hero-panel,
@@ -775,6 +785,7 @@ h4 {
   .detail-layout,
   .detail-kpis,
   .pipeline,
+  .coordinate-grid,
   .card-grid {
     grid-template-columns: 1fr;
   }
