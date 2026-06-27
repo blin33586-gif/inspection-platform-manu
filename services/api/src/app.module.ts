@@ -9,12 +9,14 @@ import { PointsModule } from "./modules/points/points.module.js";
 import { DatabaseModule } from "./database/database.module.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 import { AuditModule } from "./modules/audit/audit.module.js";
+import { ManagedObjectsModule } from "./modules/managed-objects/managed-objects.module.js";
 
 @Module({
   imports: [
     DatabaseModule,
     AuthModule,
     AuditModule,
+    ManagedObjectsModule,
     DashboardModule,
     CommunitiesModule,
     RoadsModule,
