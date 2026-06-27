@@ -6,9 +6,13 @@
   "scripts": {
     "dev:admin": "pnpm --filter @xunjianbao/admin-web dev",
     "dev:api": "pnpm --filter @xunjianbao/api dev",
+    "start:api": "pnpm --filter @xunjianbao/api start",
     "build": "pnpm -r build",
     "build:admin": "pnpm --filter @xunjianbao/admin-web build",
     "build:api": "pnpm --filter @xunjianbao/api build",
+    "db:generate": "pnpm --filter @xunjianbao/api db:generate",
+    "db:push": "pnpm --filter @xunjianbao/api db:push",
+    "db:seed": "pnpm --filter @xunjianbao/api db:seed",
     "typecheck": "pnpm -r typecheck"
   },
   "packageManager": "pnpm@11.7.0"

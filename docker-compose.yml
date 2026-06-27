@@ -1,0 +1,28 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      API_PORT: 3010
+      DATABASE_URL: file:/data/xunjianbao.db
+    volumes:
+      - api-data:/data
+      - api-storage:/app/services/api/storage
+    ports:
+      - "3010:3010"
+
+  admin-web:
+    build:
+      context: .
+      dockerfile: apps/admin-web/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  api-data:
+  api-storage:

@@ -1,0 +1,10 @@
+.DS_Store
+.git
+.pnpm-store
+node_modules
+dist
+build
+*.db
+*.db-journal
+*.log
+services/api/storage
