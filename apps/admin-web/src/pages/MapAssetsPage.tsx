@@ -34,7 +34,24 @@ export function MapAssetsPage() {
   const [keyword, setKeyword] = useState("");
   const [mapType, setMapType] = useState<string | undefined>();
   const [processStatus, setProcessStatus] = useState<string | undefined>();
-  const { data, loading, reload } = useApiResource(withQuery("/map-assets", { keyword, mapType, processStatus }), fallbackMapAssets);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const { data, loading, reload } = useApiResource(withQuery("/map-assets", { keyword, mapType, processStatus, page, pageSize }), fallbackMapAssets);
+
+  const searchKeyword = (value: string) => {
+    setKeyword(value);
+    setPage(1);
+  };
+
+  const changeMapType = (value: string | undefined) => {
+    setMapType(value);
+    setPage(1);
+  };
+
+  const changeProcessStatus = (value: string | undefined) => {
+    setProcessStatus(value);
+    setPage(1);
+  };
 
   const submitUpload = async () => {
     const values = await form.validateFields();
@@ -144,14 +161,14 @@ export function MapAssetsPage() {
             <Input.Search
               placeholder="搜索地图名称、文件名"
               allowClear
-              onSearch={setKeyword}
-              onChange={(event) => !event.target.value && setKeyword("")}
+              onSearch={searchKeyword}
+              onChange={(event) => !event.target.value && searchKeyword("")}
             />
             <Select
               allowClear
               placeholder="地图类型"
               value={mapType}
-              onChange={setMapType}
+              onChange={changeMapType}
               options={[
                 { label: "小区地图", value: "小区" },
                 { label: "街道总览", value: "街道" },
@@ -162,7 +179,7 @@ export function MapAssetsPage() {
               allowClear
               placeholder="处理状态"
               value={processStatus}
-              onChange={setProcessStatus}
+              onChange={changeProcessStatus}
               options={[
                 { label: "已处理", value: "processed" },
                 { label: "已上传", value: "uploaded" },
@@ -170,7 +187,23 @@ export function MapAssetsPage() {
             />
           </div>
         </div>
-        <Table rowKey="id" columns={columns} dataSource={data.items} loading={loading} pagination={false} className="data-table" />
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={data.items}
+          loading={loading}
+          pagination={{
+            current: data.page,
+            pageSize: data.pageSize,
+            total: data.total,
+            showSizeChanger: true,
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
+          }}
+          className="data-table"
+        />
       </section>
 
       <Modal

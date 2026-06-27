@@ -4,7 +4,7 @@ import type { ReportType } from "@xunjianbao/shared";
 import type { Response } from "express";
 import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
-import { ok, page } from "../../shared/api-response.js";
+import { ok, paged } from "../../shared/api-response.js";
 import { sendStoredFile } from "../../shared/file-download.js";
 import { ReportUploadService } from "./report-upload.service.js";
 
@@ -25,11 +25,11 @@ export class ReportsController {
   ) {}
 
   @Get()
-  async list(@Query() query: { keyword?: string; reportType?: string }) {
-    return ok(page(await this.readRepository.reports({
+  async list(@Query() query: { keyword?: string; reportType?: string; page?: string; pageSize?: string }) {
+    return ok(paged(await this.readRepository.reports({
       keyword: query.keyword,
       reportType: query.reportType,
-    })));
+    }), query));
   }
 
   @Post("upload")

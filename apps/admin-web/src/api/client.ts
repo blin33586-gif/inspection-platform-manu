@@ -10,10 +10,10 @@ export function getApiUrl(path: string) {
   return url.toString();
 }
 
-export function withQuery(path: string, query: Record<string, string | undefined>) {
+export function withQuery(path: string, query: Record<string, string | number | undefined>) {
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
-    if (value) params.set(key, value);
+    if (value !== undefined && value !== "") params.set(key, String(value));
   });
 
   const queryString = params.toString();

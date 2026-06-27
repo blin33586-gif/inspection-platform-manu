@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Upload } from "antd";
+import { Button, DatePicker, Form, Input, InputNumber, message, Modal, Pagination, Select, Upload } from "antd";
 import type { UploadFile } from "antd/es/upload/interface";
 import type { PageResult, ReportSummary, ReportType } from "@xunjianbao/shared";
 import { getApiUrl, postFormApi, withQuery } from "../api/client";
@@ -28,7 +28,19 @@ export function ReportsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [filterReportType, setFilterReportType] = useState<ReportType | undefined>();
-  const { data, reload } = useApiResource(withQuery("/reports", { keyword, reportType: filterReportType }), fallbackReports);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const { data, reload } = useApiResource(withQuery("/reports", { keyword, reportType: filterReportType, page, pageSize }), fallbackReports);
+
+  const searchKeyword = (value: string) => {
+    setKeyword(value);
+    setPage(1);
+  };
+
+  const changeReportType = (value: ReportType | undefined) => {
+    setFilterReportType(value);
+    setPage(1);
+  };
 
   const submitUpload = async () => {
     const values = await form.validateFields();
@@ -72,14 +84,14 @@ export function ReportsPage() {
               <Input.Search
                 placeholder="搜索标题、对象、摘要"
                 allowClear
-                onSearch={setKeyword}
-                onChange={(event) => !event.target.value && setKeyword("")}
+                onSearch={searchKeyword}
+                onChange={(event) => !event.target.value && searchKeyword("")}
               />
               <Select
                 allowClear
                 placeholder="报告类型"
                 value={filterReportType}
-                onChange={setFilterReportType}
+                onChange={changeReportType}
                 options={[
                   { label: "小区巡检", value: "community" },
                   { label: "道路巡检", value: "road" },
@@ -99,6 +111,17 @@ export function ReportsPage() {
               </article>
             ))}
           </div>
+          <Pagination
+            className="list-pagination"
+            current={data.page}
+            pageSize={data.pageSize}
+            total={data.total}
+            showSizeChanger
+            onChange={(nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            }}
+          />
         </article>
         <article className="report-preview">
           <div className="section-head">

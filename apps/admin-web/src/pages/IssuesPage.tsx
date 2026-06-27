@@ -27,7 +27,19 @@ export function IssuesPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState<IssueStatus | undefined>();
-  const { data, loading, reload } = useApiResource(withQuery("/issues", { keyword, status }), fallbackIssues);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const { data, loading, reload } = useApiResource(withQuery("/issues", { keyword, status, page, pageSize }), fallbackIssues);
+
+  const searchKeyword = (value: string) => {
+    setKeyword(value);
+    setPage(1);
+  };
+
+  const changeStatus = (value: IssueStatus | undefined) => {
+    setStatus(value);
+    setPage(1);
+  };
 
   const updateStatus = async (id: string, status: IssueStatus) => {
     setUpdatingId(id);
@@ -75,12 +87,17 @@ export function IssuesPage() {
             <h3>重点问题列表</h3>
           </div>
           <div className="filter-controls">
-            <Input.Search placeholder="搜索对象、问题、类型" allowClear onSearch={setKeyword} onChange={(event) => !event.target.value && setKeyword("")} />
+            <Input.Search
+              placeholder="搜索对象、问题、类型"
+              allowClear
+              onSearch={searchKeyword}
+              onChange={(event) => !event.target.value && searchKeyword("")}
+            />
             <Select
               allowClear
               placeholder="状态"
               value={status}
-              onChange={setStatus}
+              onChange={changeStatus}
               options={[
                 { label: "待处理", value: "pending" },
                 { label: "处理中", value: "processing" },
@@ -90,7 +107,23 @@ export function IssuesPage() {
             />
           </div>
         </div>
-        <Table rowKey="id" columns={columns} dataSource={data.items} loading={loading} pagination={false} className="data-table" />
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={data.items}
+          loading={loading}
+          pagination={{
+            current: data.page,
+            pageSize: data.pageSize,
+            total: data.total,
+            showSizeChanger: true,
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
+          }}
+          className="data-table"
+        />
       </section>
     </>
   );

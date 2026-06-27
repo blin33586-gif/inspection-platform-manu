@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, 
 import type { IssueStatus } from "@xunjianbao/shared";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { AuditService } from "../audit/audit.service.js";
-import { ok, page } from "../../shared/api-response.js";
+import { ok, paged } from "../../shared/api-response.js";
 
 const allowedStatuses: IssueStatus[] = ["pending", "processing", "rectified", "verified", "ignored", "archived"];
 
@@ -14,13 +14,13 @@ export class IssuesController {
   ) {}
 
   @Get()
-  async list(@Query() query: { keyword?: string; status?: IssueStatus; category?: string }) {
+  async list(@Query() query: { keyword?: string; status?: IssueStatus; category?: string; page?: string; pageSize?: string }) {
     const status = query.status && allowedStatuses.includes(query.status) ? query.status : undefined;
-    return ok(page(await this.readRepository.issues({
+    return ok(paged(await this.readRepository.issues({
       keyword: query.keyword,
       status,
       category: query.category,
-    })));
+    }), query));
   }
 
   @Get(":id")

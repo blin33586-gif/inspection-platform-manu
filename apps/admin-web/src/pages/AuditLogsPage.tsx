@@ -25,7 +25,24 @@ export function AuditLogsPage() {
   const [keyword, setKeyword] = useState("");
   const [action, setAction] = useState<string | undefined>();
   const [targetType, setTargetType] = useState<string | undefined>();
-  const { data, loading } = useApiResource(withQuery("/audit-logs", { keyword, action, targetType }), fallbackAuditLogs);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const { data, loading } = useApiResource(withQuery("/audit-logs", { keyword, action, targetType, page, pageSize }), fallbackAuditLogs);
+
+  const searchKeyword = (value: string) => {
+    setKeyword(value);
+    setPage(1);
+  };
+
+  const changeAction = (value: string | undefined) => {
+    setAction(value);
+    setPage(1);
+  };
+
+  const changeTargetType = (value: string | undefined) => {
+    setTargetType(value);
+    setPage(1);
+  };
 
   return (
     <>
@@ -40,14 +57,14 @@ export function AuditLogsPage() {
             <Input.Search
               placeholder="搜索人员、动作、说明"
               allowClear
-              onSearch={setKeyword}
-              onChange={(event) => !event.target.value && setKeyword("")}
+              onSearch={searchKeyword}
+              onChange={(event) => !event.target.value && searchKeyword("")}
             />
             <Select
               allowClear
               placeholder="动作"
               value={action}
-              onChange={setAction}
+              onChange={changeAction}
               options={[
                 { label: "状态变更", value: "issue.status.update" },
                 { label: "上传报告", value: "report.upload" },
@@ -59,7 +76,7 @@ export function AuditLogsPage() {
               allowClear
               placeholder="对象"
               value={targetType}
-              onChange={setTargetType}
+              onChange={changeTargetType}
               options={[
                 { label: "问题", value: "issue" },
                 { label: "报告", value: "report" },
@@ -69,7 +86,23 @@ export function AuditLogsPage() {
             />
           </div>
         </div>
-        <Table rowKey="id" columns={columns} dataSource={data.items} loading={loading} pagination={false} className="data-table" />
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={data.items}
+          loading={loading}
+          pagination={{
+            current: data.page,
+            pageSize: data.pageSize,
+            total: data.total,
+            showSizeChanger: true,
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
+          }}
+          className="data-table"
+        />
       </section>
     </>
   );

@@ -3,7 +3,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
-import { ok, page } from "../../shared/api-response.js";
+import { ok, page, paged } from "../../shared/api-response.js";
 import { sendStoredFile } from "../../shared/file-download.js";
 import { MapAssetUploadService } from "./map-asset-upload.service.js";
 import { MapHotAreaService } from "./map-hot-area.service.js";
@@ -26,12 +26,12 @@ export class MapAssetsController {
   ) {}
 
   @Get()
-  async list(@Query() query: { keyword?: string; mapType?: string; processStatus?: string }) {
-    return ok(page(await this.readRepository.mapAssets({
+  async list(@Query() query: { keyword?: string; mapType?: string; processStatus?: string; page?: string; pageSize?: string }) {
+    return ok(paged(await this.readRepository.mapAssets({
       keyword: query.keyword,
       mapType: query.mapType,
       processStatus: query.processStatus,
-    })));
+    }), query));
   }
 
   @Post("upload")
