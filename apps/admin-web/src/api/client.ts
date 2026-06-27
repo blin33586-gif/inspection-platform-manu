@@ -11,3 +11,16 @@ export async function getApi<T>(path: string, signal?: AbortSignal): Promise<T> 
 
   return body.data;
 }
+
+export async function postFormApi<T>(path: string, formData: FormData): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+
+  const body = (await response.json()) as ApiResponse<T>;
+  if (body.code !== 0) throw new Error(body.message);
+
+  return body.data;
+}
