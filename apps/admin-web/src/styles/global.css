@@ -109,10 +109,10 @@ button {
 
 .side-card {
   position: absolute;
-  right: 22px;
-  bottom: 24px;
+  bottom: 18px;
   left: 22px;
-  padding: 18px;
+  width: 196px;
+  padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.1);
@@ -120,23 +120,25 @@ button {
 
 .side-card strong {
   display: block;
-  margin: 8px 0;
+  margin: 6px 0;
+  font-size: 13px;
   line-height: 1.35;
 }
 
 .side-card p {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .logout-button {
   width: 100%;
-  min-height: 36px;
-  margin-top: 14px;
+  min-height: 30px;
+  margin-top: 10px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
   color: white;
+  font-size: 12px;
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -1055,12 +1057,14 @@ h4 {
 
   .sidebar {
     position: relative;
-    height: auto;
+    min-height: 100vh;
   }
 
   .side-card {
-    position: static;
-    margin-top: 24px;
+    position: absolute;
+    bottom: 18px;
+    left: 22px;
+    margin-top: 0;
   }
 
   .main {
