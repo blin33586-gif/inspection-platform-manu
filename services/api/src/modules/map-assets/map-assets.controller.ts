@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Inject, NotFoundException, Param, Post, Query, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Get, Inject, NotFoundException, Param, Post, Query, Res, UnsupportedMediaTypeException, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { ok, page, paged } from "../../shared/api-response.js";
-import { sendStoredFile } from "../../shared/file-download.js";
+import { sendInlineStoredFile, sendStoredFile } from "../../shared/file-download.js";
 import { MapAssetUploadService } from "./map-asset-upload.service.js";
 import { MapHotAreaService } from "./map-hot-area.service.js";
 
@@ -57,6 +57,17 @@ export class MapAssetsController {
       select: { storagePath: true, originalFileName: true, fileName: true },
     });
     return sendStoredFile(response, item);
+  }
+
+  @Get(":id/preview")
+  async preview(@Param("id") id: string, @Res() response: Response) {
+    const item = await this.database.mapAsset.findUnique({
+      where: { id },
+      select: { storagePath: true, originalFileName: true, fileName: true, mimeType: true, sourceType: true },
+    });
+    if (!item) throw new NotFoundException("Map asset not found");
+    if (item.sourceType !== "image") throw new UnsupportedMediaTypeException("Only image maps can be previewed directly");
+    return sendInlineStoredFile(response, item);
   }
 
   @Get(":id/hot-areas")

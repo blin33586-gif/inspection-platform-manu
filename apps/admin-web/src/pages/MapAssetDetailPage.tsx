@@ -33,6 +33,10 @@ function formatCoordinate(area: MapHotAreaSummary) {
   return `${area.x}% / ${area.y}% / ${area.width ?? 0}% / ${area.height ?? 0}%`;
 }
 
+function canPreviewImage(mapAsset: MapAssetSummary) {
+  return mapAsset.sourceType === "image" && Boolean(mapAsset.fileName);
+}
+
 export function MapAssetDetailPage() {
   const { id } = useParams();
   const fallback = useMemo(() => fallbackMapAsset(id), [id]);
@@ -102,8 +106,10 @@ export function MapAssetDetailPage() {
             <h3>热区预览</h3>
           </div>
         </div>
-        <div className="map-preview-frame">
+        <div className={`map-preview-frame ${canPreviewImage(mapAsset) ? "has-image" : ""}`}>
+          {canPreviewImage(mapAsset) ? <img className="map-preview-image" src={getApiUrl(`/map-assets/${mapAsset.id}/preview`)} alt={mapAsset.name} /> : null}
           <div className="map-preview-label">{mapAsset.name}</div>
+          {!canPreviewImage(mapAsset) && mapAsset.sourceType === "tiff" ? <div className="map-preview-note">TIF 地图已保存，后续可生成 WebP 预览或瓦片。</div> : null}
           {hotAreas.items.map((area) => (
             <div
               className={`hot-area-preview ${area.objectType}`}

@@ -843,6 +843,18 @@ h4 {
   background-size: 56px 56px, 56px 56px, cover;
 }
 
+.map-preview-frame.has-image {
+  background: #eef5fb;
+}
+
+.map-preview-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .map-preview-label {
   position: absolute;
   top: 18px;
@@ -853,6 +865,19 @@ h4 {
   color: var(--blue-900);
   background: rgba(255, 255, 255, 0.86);
   font-weight: 900;
+}
+
+.map-preview-note {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2;
+  max-width: 300px;
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--blue-900);
+  background: rgba(255, 255, 255, 0.86);
+  line-height: 1.55;
 }
 
 .hot-area-preview {
