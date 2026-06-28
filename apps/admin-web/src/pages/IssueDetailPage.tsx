@@ -73,7 +73,10 @@ export function IssueDetailPage() {
     if (!id) return;
     const values = await form.validateFields();
     const uploadFile = values.file?.[0]?.originFileObj;
-    if (!uploadFile) return;
+    if (!uploadFile) {
+      message.warning("请先选择要上传的文件");
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", uploadFile);
@@ -132,6 +135,7 @@ export function IssueDetailPage() {
               {allowedNextStatuses.map((item) => (
                 <Button
                   block
+                  disabled={issue.status === item.value}
                   key={item.value}
                   loading={updatingStatus === item.value}
                   onClick={() => updateStatus(item.value)}

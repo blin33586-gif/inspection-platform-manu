@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { IssueSummary, MapHotAreaSummary } from "@xunjianbao/shared";
 import { dashboardSummary, issueDistribution } from "../data";
@@ -5,6 +6,14 @@ import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 
 const legendClasses = ["blue", "orange", "red", "green"];
+type MapLayer = "community" | "road" | "point" | "issue";
+
+const mapLayers: Array<{ label: string; value: MapLayer }> = [
+  { label: "小区", value: "community" },
+  { label: "道路", value: "road" },
+  { label: "点位", value: "point" },
+  { label: "问题", value: "issue" },
+];
 
 interface DashboardMapData {
   mapAssetId: string;
@@ -39,9 +48,14 @@ function objectTypeLabel(area: MapHotAreaSummary) {
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const [activeLayer, setActiveLayer] = useState<MapLayer>("community");
   const { data: summary } = useApiResource("/dashboard/summary", dashboardSummary);
   const { data: distribution } = useApiResource("/dashboard/issue-distribution", issueDistribution);
   const { data: mapData } = useApiResource<DashboardMapData>("/dashboard/map", fallbackMapData);
+  const visibleHotAreas = useMemo(
+    () => mapData.hotAreas.filter((area) => area.objectType === activeLayer),
+    [activeLayer, mapData.hotAreas],
+  );
 
   return (
     <>
@@ -50,8 +64,8 @@ export function DashboardPage() {
         title="曲阳路街道无人机巡检驾驶舱"
         actions={
           <>
-            <button className="ghost-button">导入地图</button>
-            <button className="primary-button">上传报告</button>
+            <button className="ghost-button" type="button" onClick={() => navigate("/map-assets")}>导入地图</button>
+            <button className="primary-button" type="button" onClick={() => navigate("/reports")}>上传报告</button>
           </>
         }
       />
@@ -77,14 +91,22 @@ export function DashboardPage() {
               <h3>街道二维地图</h3>
             </div>
             <div className="layer-tabs">
-              <button className="active">小区</button>
-              <button>道路</button>
-              <button>问题</button>
+              {mapLayers.map((layer) => (
+                <button
+                  className={activeLayer === layer.value ? "active" : ""}
+                  key={layer.value}
+                  type="button"
+                  aria-pressed={activeLayer === layer.value}
+                  onClick={() => setActiveLayer(layer.value)}
+                >
+                  {layer.label}
+                </button>
+              ))}
             </div>
           </div>
 
           <div className="district-map">
-            {mapData.hotAreas.map((area) => {
+            {activeLayer !== "issue" && visibleHotAreas.map((area) => {
               const relatedIssueCount = mapData.issues.filter((issue) => issue.objectName === area.label).length;
               return (
                 <button
@@ -103,12 +125,16 @@ export function DashboardPage() {
                 </button>
               );
             })}
-            <button className="issue-dot urgent" aria-label="待处理问题" onClick={() => navigate("/issues")} />
-            <button className="issue-dot pending" aria-label="处理中问题" onClick={() => navigate("/issues")} />
-            <button className="issue-dot done" aria-label="已整改问题" onClick={() => navigate("/issues")} />
+            {activeLayer === "issue" ? (
+              <>
+                <button className="issue-dot urgent" type="button" aria-label="待处理问题" onClick={() => navigate("/issues?status=pending")} />
+                <button className="issue-dot pending" type="button" aria-label="处理中问题" onClick={() => navigate("/issues?status=processing")} />
+                <button className="issue-dot done" type="button" aria-label="复查通过问题" onClick={() => navigate("/issues?status=verified")} />
+              </>
+            ) : null}
             <div className="map-tooltip">
-              <strong>玉田新村</strong>
-              <span>本月巡检 3 次 / 最新报告 06-24</span>
+              <strong>{activeLayer === "issue" ? "问题点位" : visibleHotAreas[0]?.label ?? "暂无热区"}</strong>
+              <span>{activeLayer === "issue" ? "点击红黄绿点进入对应案件列表" : "点击地图热区进入对象档案"}</span>
             </div>
           </div>
         </article>

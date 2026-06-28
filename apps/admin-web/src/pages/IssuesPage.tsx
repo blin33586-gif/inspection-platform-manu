@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button, DatePicker, Form, Input, message, Modal, Select, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { IssueStatus, IssueSummary, ManagedObjectSummary, PageResult, PointSummary, Severity } from "@xunjianbao/shared";
 import { patchJsonApi, postJsonApi, withQuery } from "../api/client";
 import { communities, issues, points, roads } from "../data";
@@ -29,6 +29,9 @@ function statusLabel(value: IssueStatus) {
 }
 
 export function IssuesPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialStatus = searchParams.get("status") as IssueStatus | null;
   const [form] = Form.useForm<{
     title?: string;
     category?: string;
@@ -41,7 +44,7 @@ export function IssuesPage() {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState<IssueStatus | undefined>();
+  const [status, setStatus] = useState<IssueStatus | undefined>(initialStatus ?? undefined);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const { data, loading, reload } = useApiResource(withQuery("/issues", { keyword, status, page, pageSize }), fallbackIssues);
@@ -118,9 +121,24 @@ export function IssuesPage() {
       title: "操作",
       render: (_, record) => (
         <Space>
-          <Button size="small" loading={updatingId === record.id} onClick={() => updateStatus(record.id, "processing")}>处理中</Button>
-          <Button size="small" type="primary" loading={updatingId === record.id} onClick={() => updateStatus(record.id, "verified")}>复查通过</Button>
-          <Button size="small" href={`/issues/${record.id}`}>详情</Button>
+          <Button
+            size="small"
+            disabled={record.status === "processing"}
+            loading={updatingId === record.id}
+            onClick={() => updateStatus(record.id, "processing")}
+          >
+            处理中
+          </Button>
+          <Button
+            size="small"
+            type="primary"
+            disabled={record.status === "verified"}
+            loading={updatingId === record.id}
+            onClick={() => updateStatus(record.id, "verified")}
+          >
+            复查通过
+          </Button>
+          <Button size="small" onClick={() => navigate(`/issues/${record.id}`)}>详情</Button>
         </Space>
       ),
     },

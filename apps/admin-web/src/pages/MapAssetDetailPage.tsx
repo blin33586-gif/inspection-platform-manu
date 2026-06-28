@@ -25,6 +25,7 @@ function objectLink(area: MapHotAreaSummary) {
   if (!area.objectId) return null;
   if (area.objectType === "community") return `/communities/${area.objectId}`;
   if (area.objectType === "road") return `/roads/${area.objectId}`;
+  if (area.objectType === "point") return `/points/${area.objectId}`;
   return null;
 }
 

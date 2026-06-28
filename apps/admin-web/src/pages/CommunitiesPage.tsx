@@ -14,11 +14,15 @@ const fallbackCommunities: PageResult<ManagedObjectSummary> = {
   total: communities.length,
 };
 
+const statusFilters = ["全部", "待复查", "重点", "稳定"];
+
 export function CommunitiesPage() {
   const [form] = Form.useForm<{ name?: string; status?: string }>();
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("全部");
   const { data, reload } = useApiResource("/communities", fallbackCommunities);
+  const visibleItems = statusFilter === "全部" ? data.items : data.items.filter((item) => item.status === statusFilter);
 
   const submitCommunity = async () => {
     const values = await form.validateFields();
@@ -45,9 +49,23 @@ export function CommunitiesPage() {
             <p className="eyebrow">COMMUNITY LIST</p>
             <h3>曲阳路街道小区</h3>
           </div>
-          <div className="filter-bar"><button className="active">全部</button><button>待复查</button><button>重点</button><button>稳定</button></div>
+          <div className="filter-bar">
+            {statusFilters.map((item) => (
+              <button
+                className={statusFilter === item ? "active" : ""}
+                key={item}
+                type="button"
+                aria-pressed={statusFilter === item}
+                onClick={() => setStatusFilter(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="card-grid">{data.items.map((item) => <ObjectCard key={item.id} item={item} to={`/communities/${item.id}`} />)}</div>
+        {visibleItems.length ? (
+          <div className="card-grid">{visibleItems.map((item) => <ObjectCard key={item.id} item={item} to={`/communities/${item.id}`} />)}</div>
+        ) : <p className="empty-note">当前筛选下暂无小区。</p>}
       </section>
 
       <Modal
