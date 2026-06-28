@@ -1,19 +1,6 @@
-import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { IssueSummary, MapHotAreaSummary } from "@xunjianbao/shared";
-import { dashboardSummary, issueDistribution } from "../data";
-import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
-
-const legendClasses = ["blue", "orange", "red", "green"];
-type MapLayer = "community" | "road" | "point" | "issue";
-
-const mapLayers: Array<{ label: string; value: MapLayer }> = [
-  { label: "小区", value: "community" },
-  { label: "道路", value: "road" },
-  { label: "点位", value: "point" },
-  { label: "问题", value: "issue" },
-];
 
 interface DashboardMapData {
   mapAssetId: string;
@@ -24,12 +11,21 @@ interface DashboardMapData {
 const fallbackMapData: DashboardMapData = {
   mapAssetId: "map-street-main",
   hotAreas: [
-    { id: "ha-yutian", label: "玉田新村", objectType: "community", objectId: "c-yutian", x: 18, y: 32, width: 24, height: 18 },
-    { id: "ha-quyang", label: "曲阳路", objectType: "road", objectId: "r-quyang", x: 46, y: 50, width: 20, height: 8 },
-    { id: "ha-river", label: "河道绿化带", objectType: "point", objectId: "p-river-001", x: 9, y: 78, width: 31, height: 7 },
+    { id: "ha-yutian", label: "玉田新村", objectType: "community", objectId: "c-yutian", x: 17, y: 30, width: 23, height: 18 },
+    { id: "ha-quyang", label: "曲阳路", objectType: "road", objectId: "r-quyang", x: 45, y: 48, width: 21, height: 8 },
+    { id: "ha-river", label: "河道绿化带", objectType: "point", objectId: "p-river-001", x: 8, y: 77, width: 32, height: 7 },
   ],
   issues: [],
 };
+
+const featureLinks = [
+  { label: "小区档案", path: "/communities" },
+  { label: "道路街面", path: "/roads" },
+  { label: "重点点位", path: "/points" },
+  { label: "巡检报告", path: "/reports" },
+  { label: "问题台账", path: "/issues" },
+  { label: "地图资产", path: "/map-assets" },
+];
 
 function objectPath(area: MapHotAreaSummary) {
   if (!area.objectId) return "/map-assets/map-street-main";
@@ -48,117 +44,64 @@ function objectTypeLabel(area: MapHotAreaSummary) {
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const [activeLayer, setActiveLayer] = useState<MapLayer>("community");
-  const { data: summary } = useApiResource("/dashboard/summary", dashboardSummary);
-  const { data: distribution } = useApiResource("/dashboard/issue-distribution", issueDistribution);
   const { data: mapData } = useApiResource<DashboardMapData>("/dashboard/map", fallbackMapData);
-  const visibleHotAreas = useMemo(
-    () => mapData.hotAreas.filter((area) => area.objectType === activeLayer),
-    [activeLayer, mapData.hotAreas],
-  );
 
   return (
-    <>
-      <PageHeader
-        eyebrow="QUYANG ROAD SUBDISTRICT"
-        title="曲阳路街道无人机巡检驾驶舱"
-        actions={
-          <>
-            <button className="ghost-button" type="button" onClick={() => navigate("/map-assets")}>导入地图</button>
-            <button className="primary-button" type="button" onClick={() => navigate("/reports")}>上传报告</button>
-          </>
-        }
-      />
-
-      <section className="hero-panel">
-        <div className="hero-copy">
-          <p className="eyebrow">城市综合管理</p>
-          <h2>用一张街道地图进入所有巡检档案</h2>
-          <p>小区、道路、广告牌、河道和重点点位都可以在首页地图上直接点击进入。</p>
+    <section className="home-landing">
+      <div className="home-copy">
+        <p className="eyebrow">QUYANG ROAD SUBDISTRICT</p>
+        <h1>曲阳路街道 TIF 巡检地图</h1>
+        <p>从一张二维底图进入小区、道路、点位、报告和问题台账。</p>
+        <div className="home-action-bar" aria-label="功能跳转">
+          {featureLinks.map((item, index) => (
+            <button
+              className={index === 0 ? "primary-button" : "ghost-button"}
+              key={item.path}
+              type="button"
+              onClick={() => navigate(item.path)}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
-        <div className="hero-stats">
-          <div><span>本月巡检</span><strong>{summary.inspectionsThisMonth}</strong></div>
-          <div><span>发现问题</span><strong>{summary.issuesThisMonth}</strong></div>
-          <div><span>待处理</span><strong>{summary.pendingIssues}</strong></div>
+      </div>
+
+      <div className="tif-map-stage">
+        <div className="tif-map-toolbar">
+          <span>TIF MAP</span>
+          <strong>曲阳路街道二维底图</strong>
+          <button type="button" onClick={() => navigate("/map-assets")}>导入 / 管理地图</button>
         </div>
-      </section>
 
-      <section className="workspace-grid">
-        <article className="map-panel">
-          <div className="section-head">
-            <div>
-              <p className="eyebrow">INTERACTIVE MAP</p>
-              <h3>街道二维地图</h3>
-            </div>
-            <div className="layer-tabs">
-              {mapLayers.map((layer) => (
-                <button
-                  className={activeLayer === layer.value ? "active" : ""}
-                  key={layer.value}
-                  type="button"
-                  aria-pressed={activeLayer === layer.value}
-                  onClick={() => setActiveLayer(layer.value)}
-                >
-                  {layer.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="district-map">
-            {activeLayer !== "issue" && visibleHotAreas.map((area) => {
-              const relatedIssueCount = mapData.issues.filter((issue) => issue.objectName === area.label).length;
-              return (
-                <button
-                  className={`dashboard-hot-area ${area.objectType}`}
-                  key={area.id}
-                  style={{
-                    left: `${area.x ?? 10}%`,
-                    top: `${area.y ?? 10}%`,
-                    width: `${area.width ?? 20}%`,
-                    height: `${area.height ?? 10}%`,
-                  }}
-                  onClick={() => navigate(objectPath(area))}
-                >
-                  {area.label}
-                  <span>{objectTypeLabel(area)} / 问题 {relatedIssueCount}</span>
-                </button>
-              );
-            })}
-            {activeLayer === "issue" ? (
-              <>
-                <button className="issue-dot urgent" type="button" aria-label="待处理问题" onClick={() => navigate("/issues?status=pending")} />
-                <button className="issue-dot pending" type="button" aria-label="处理中问题" onClick={() => navigate("/issues?status=processing")} />
-                <button className="issue-dot done" type="button" aria-label="复查通过问题" onClick={() => navigate("/issues?status=verified")} />
-              </>
-            ) : null}
-            <div className="map-tooltip">
-              <strong>{activeLayer === "issue" ? "问题点位" : visibleHotAreas[0]?.label ?? "暂无热区"}</strong>
-              <span>{activeLayer === "issue" ? "点击红黄绿点进入对应案件列表" : "点击地图热区进入对象档案"}</span>
-            </div>
-          </div>
-        </article>
-
-        <aside className="insight-panel">
-          <div className="section-head">
-            <div>
-              <p className="eyebrow">ANALYTICS</p>
-              <h3>问题分布</h3>
-            </div>
-          </div>
-          <div className="donut-wrap">
-            <div className="donut" />
-            <ul className="legend">
-              {distribution.map((item, index) => (
-                <li key={item.category}>
-                  <span className={legendClasses[index % legendClasses.length]} />
-                  {item.category} {item.value}%
-                </li>
-              ))}
-            </ul>
-          </div>
-        </aside>
-      </section>
-    </>
+        <div className="tif-map-canvas">
+          <div className="tif-road tif-road-main">曲阳路</div>
+          <div className="tif-road tif-road-second">密云路</div>
+          <div className="tif-river">河道绿化带</div>
+          {mapData.hotAreas.map((area) => {
+            const relatedIssueCount = mapData.issues.filter((issue) => issue.objectName === area.label).length;
+            return (
+              <button
+                className={`dashboard-hot-area ${area.objectType}`}
+                key={area.id}
+                style={{
+                  left: `${area.x ?? 10}%`,
+                  top: `${area.y ?? 10}%`,
+                  width: `${area.width ?? 20}%`,
+                  height: `${area.height ?? 10}%`,
+                }}
+                type="button"
+                onClick={() => navigate(objectPath(area))}
+              >
+                {area.label}
+                <span>{objectTypeLabel(area)} / 问题 {relatedIssueCount}</span>
+              </button>
+            );
+          })}
+          <button className="issue-dot urgent" type="button" aria-label="待处理问题" onClick={() => navigate("/issues?status=pending")} />
+          <button className="issue-dot pending" type="button" aria-label="处理中问题" onClick={() => navigate("/issues?status=processing")} />
+          <button className="issue-dot done" type="button" aria-label="复查通过问题" onClick={() => navigate("/issues?status=verified")} />
+        </div>
+      </div>
+    </section>
   );
 }
