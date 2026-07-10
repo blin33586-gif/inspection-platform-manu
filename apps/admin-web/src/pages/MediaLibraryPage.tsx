@@ -8,7 +8,6 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
-  Clock3,
   FileText,
   Film,
   Gauge,
@@ -17,7 +16,6 @@ import {
   MapPin,
   PlayCircle,
   ScanSearch,
-  Sparkles,
   Timer,
   UploadCloud,
   Video,
@@ -74,15 +72,6 @@ const sourceMeta: Record<VideoSource, { icon: JSX.Element; tone: string; desc: s
   AI眼镜同步: { icon: <ScanSearch size={18} />, tone: "purple", desc: "RTMP / MIO 同步" },
   人工上传: { icon: <UploadCloud size={18} />, tone: "orange", desc: "本地视频补录" },
 };
-
-const analysisSteps = [
-  { title: "上传巡检视频", desc: "支持 MP4、MOV，保留原始视频文件。", icon: <UploadCloud size={18} /> },
-  { title: "创建分析任务", desc: "按任务、小区、街道或点位关联管理对象。", icon: <ListChecks size={18} /> },
-  { title: "后台抽帧", desc: "默认每 3 秒抽 1 帧，可按视频长度调整。", icon: <Clock3 size={18} /> },
-  { title: "AI 识别", desc: "识别工程机械、工程车辆、施工区域、裸土和堆料。", icon: <Bot size={18} /> },
-  { title: "事件合并", desc: "连续多帧命中合并为一个疑似问题事件。", icon: <Sparkles size={18} /> },
-  { title: "人工复核出报告", desc: "确认后进入问题台账，并可加入巡检报告。", icon: <FileText size={18} /> },
-];
 
 const videoTasks: VideoAnalysisTask[] = [
   {
@@ -370,25 +359,6 @@ export function MediaLibraryPage() {
 
         <div className={`media-main-grid video-main-grid ${selectedEvent ? "detail-open" : ""}`}>
           <aside className="media-left-panel">
-            <section className="media-panel-card">
-              <div className="media-panel-head">
-                <h3>后台分析流程</h3>
-                <button type="button">离线任务</button>
-              </div>
-              <div className="video-flow-list">
-                {analysisSteps.map((item, index) => (
-                  <article key={item.title}>
-                    <span>{index + 1}</span>
-                    <i>{item.icon}</i>
-                    <div>
-                      <strong>{item.title}</strong>
-                      <p>{item.desc}</p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
             <section className="media-panel-card">
               <div className="media-panel-head">
                 <h3>待复核类型</h3>
