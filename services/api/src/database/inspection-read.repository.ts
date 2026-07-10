@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { DashboardSummary, IssueStatus, IssueSummary, ManagedObjectSummary, PointSummary, ReportSummary } from "@xunjianbao/shared";
+import type { DashboardSummary, IssueStatus, IssueSummary, ManagedObjectSummary, MapAssetSummary, PointSummary, ReportSummary, TileMapMetadata } from "@xunjianbao/shared";
 import { DatabaseService } from "./database.service.js";
 
 function formatDate(date: Date) {
@@ -209,7 +209,7 @@ export class InspectionReadRepository {
   }
 
   async mapAssets(filters: { keyword?: string; mapType?: string; processStatus?: string } = {}) {
-    return this.database.mapAsset.findMany({
+    const assets = await this.database.mapAsset.findMany({
       where: {
         ...(filters.mapType ? { mapType: { contains: filters.mapType } } : {}),
         ...(filters.processStatus ? { processStatus: filters.processStatus } : {}),
@@ -233,14 +233,17 @@ export class InspectionReadRepository {
         originalFileName: true,
         mimeType: true,
         fileSize: true,
+        tileMetadata: true,
+        isActive: true,
         processStatus: true,
         hotAreaCount: true,
       },
     });
+    return assets.map((asset) => this.toMapAssetSummary(asset));
   }
 
   async mapAsset(id: string) {
-    return this.database.mapAsset.findUnique({
+    const asset = await this.database.mapAsset.findUnique({
       where: { id },
       select: {
         id: true,
@@ -251,10 +254,35 @@ export class InspectionReadRepository {
         originalFileName: true,
         mimeType: true,
         fileSize: true,
+        tileMetadata: true,
+        isActive: true,
         processStatus: true,
         hotAreaCount: true,
       },
     });
+    return asset ? this.toMapAssetSummary(asset) : null;
+  }
+
+  async activeTileMap() {
+    const asset = await this.database.mapAsset.findFirst({
+      where: { sourceType: "tile", isActive: true },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        mapType: true,
+        sourceType: true,
+        fileName: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        tileMetadata: true,
+        isActive: true,
+        processStatus: true,
+        hotAreaCount: true,
+      },
+    });
+    return asset ? this.toMapAssetSummary(asset) : null;
   }
 
   async mapHotAreas(mapAssetId: string) {
@@ -266,14 +294,58 @@ export class InspectionReadRepository {
   }
 
   async dashboardMap() {
-    const hotAreas = await this.mapHotAreas("map-street-main");
+    const activeTileMap = await this.activeTileMap();
+    const mapAssetId = activeTileMap?.id ?? "map-street-main";
+    const hotAreas = await this.mapHotAreas(mapAssetId);
     const issues = await this.issues();
 
     return {
-      mapAssetId: "map-street-main",
-      hotAreas: hotAreas.slice(0, 3),
+      mapAssetId,
+      activeTileMap,
+      hotAreas,
       issues: issues.slice(0, 3),
     };
+  }
+
+  private toMapAssetSummary(asset: {
+    id: string;
+    name: string;
+    mapType: string;
+    sourceType: string;
+    fileName: string | null;
+    originalFileName: string | null;
+    mimeType: string | null;
+    fileSize: number | null;
+    tileMetadata: string | null;
+    isActive: boolean;
+    processStatus: string;
+    hotAreaCount: number;
+  }): MapAssetSummary {
+    return {
+      id: asset.id,
+      name: asset.name,
+      mapType: asset.mapType,
+      sourceType: asset.sourceType,
+      fileName: asset.fileName,
+      originalFileName: asset.originalFileName,
+      mimeType: asset.mimeType,
+      fileSize: asset.fileSize,
+      tileMetadata: this.parseTileMetadata(asset.tileMetadata),
+      isActive: asset.isActive,
+      processStatus: asset.processStatus,
+      hotAreaCount: asset.hotAreaCount,
+    };
+  }
+
+  private parseTileMetadata(value: string | null): TileMapMetadata | null {
+    if (!value) return null;
+    try {
+      const parsed = JSON.parse(value) as TileMapMetadata;
+      if (!parsed || !Number.isFinite(parsed.minZoom) || !Number.isFinite(parsed.maxZoom) || !Number.isFinite(parsed.tileCount)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
   }
 
   private toManagedObjectSummary(object: {

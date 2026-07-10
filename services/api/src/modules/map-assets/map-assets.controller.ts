@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Inject, NotFoundException, Param, Post, Query, Res, UnsupportedMediaTypeException, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Post, Query, Res, UnsupportedMediaTypeException, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
+import { access } from "node:fs/promises";
+import { resolve, sep } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { ok, page, paged } from "../../shared/api-response.js";
@@ -41,6 +43,46 @@ export class MapAssetsController {
   }))
   async upload(@UploadedFile() file: UploadedFileLike | undefined, @Body() body: { name?: string; mapType?: string }) {
     return ok(await this.uploadService.createFromUpload(file, body));
+  }
+
+  @Post("tile-packages/upload")
+  @UseInterceptors(FileInterceptor("file", {
+    dest: "storage/map-assets/tmp",
+    limits: { fileSize: 1024 * 1024 * 1024 },
+  }))
+  async uploadTilePackage(@UploadedFile() file: UploadedFileLike | undefined, @Body() body: { name?: string; mapType?: string }) {
+    return ok(await this.uploadService.createTilePackageFromUpload(file, body));
+  }
+
+  @Get("active")
+  async activeTileMap() {
+    return ok(await this.readRepository.activeTileMap());
+  }
+
+  @Post(":id/publish")
+  async publish(@Param("id") id: string) {
+    await this.uploadService.publishTileMap(id);
+    const item = await this.readRepository.mapAsset(id);
+    if (!item) throw new NotFoundException("Map asset not found");
+    return ok(item);
+  }
+
+  @Get(":id/tiles/:z/:x/:y")
+  async tile(@Param("id") id: string, @Param("z") z: string, @Param("x") x: string, @Param("y") y: string, @Res() response: Response) {
+    if (![z, x, y].every((part) => /^\d+$/.test(part))) throw new BadRequestException("瓦片坐标无效");
+    const item = await this.database.mapAsset.findUnique({ where: { id }, select: { sourceType: true, tilePath: true } });
+    if (!item || item.sourceType !== "tile" || !item.tilePath) throw new NotFoundException("瓦片底图不存在");
+
+    const root = resolve(process.cwd(), item.tilePath);
+    const filePath = resolve(root, z, x, `${y}.png`);
+    if (!filePath.startsWith(`${root}${sep}`)) throw new BadRequestException("瓦片路径无效");
+    await access(filePath).catch(() => {
+      throw new NotFoundException("瓦片不存在");
+    });
+
+    response.type("png");
+    response.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    return response.sendFile(filePath);
   }
 
   @Get(":id")

@@ -3,6 +3,7 @@ import type { ObjectType } from "@xunjianbao/shared";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
+import { parseMapGeometry } from "./map-geometry.js";
 
 interface CreateHotAreaInput {
   label?: string;
@@ -33,6 +34,10 @@ export class MapHotAreaService {
       throw new BadRequestException("Invalid object type");
     }
 
+    const polygon = input.polygon?.trim()
+      ? JSON.stringify(parseMapGeometry(input.polygon))
+      : null;
+
     const hotArea = await this.database.mapHotArea.create({
       data: {
         id: `ha-${randomUUID()}`,
@@ -44,14 +49,17 @@ export class MapHotAreaService {
         y: this.parseOptionalNumber(input.y),
         width: this.parseOptionalNumber(input.width),
         height: this.parseOptionalNumber(input.height),
-        polygon: input.polygon?.trim() || null,
+        polygon,
       },
       select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true },
     });
 
     await this.database.mapAsset.update({
       where: { id: mapAssetId },
-      data: { hotAreaCount: { increment: 1 }, processStatus: "processed" },
+      data: {
+        hotAreaCount: { increment: 1 },
+        ...(mapAsset.processStatus === "uploaded" ? { processStatus: "processed" } : {}),
+      },
     });
 
     await this.auditService.record({

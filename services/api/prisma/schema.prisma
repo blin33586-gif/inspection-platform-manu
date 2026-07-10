@@ -115,6 +115,9 @@ model MapAsset {
   storagePath      String?
   mimeType         String?
   fileSize         Int?
+  tilePath         String?
+  tileMetadata     String?
+  isActive         Boolean  @default(false)
   processStatus    String
   hotAreaCount     Int      @default(0)
   createdAt        DateTime @default(now())
@@ -124,6 +127,7 @@ model MapAsset {
 
   @@index([mapType])
   @@index([processStatus])
+  @@index([isActive])
 }
 
 model MapHotArea {

@@ -19,6 +19,7 @@ const fallbackMapAssets: PageResult<MapAssetSummary> = {
 
 export function MapAssetsPage() {
   const [form] = Form.useForm<{ name?: string; mapType?: string; file?: UploadFile[] }>();
+  const [tileForm] = Form.useForm<{ name?: string; mapType?: string; file?: UploadFile[] }>();
   const [hotAreaForm] = Form.useForm<{
     label?: string;
     objectType?: ObjectType;
@@ -29,9 +30,11 @@ export function MapAssetsPage() {
     height?: number;
   }>();
   const [open, setOpen] = useState(false);
+  const [tileOpen, setTileOpen] = useState(false);
   const [hotAreaOpen, setHotAreaOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<MapAssetSummary | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [tileSubmitting, setTileSubmitting] = useState(false);
   const [hotAreaSubmitting, setHotAreaSubmitting] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [mapType, setMapType] = useState<string | undefined>();
@@ -81,6 +84,43 @@ export function MapAssetsPage() {
     }
   };
 
+  const submitTileUpload = async () => {
+    const values = await tileForm.validateFields();
+    const uploadFile = values.file?.[0]?.originFileObj;
+    if (!uploadFile) return;
+
+    const formData = new FormData();
+    formData.append("file", uploadFile);
+    if (values.name) formData.append("name", values.name);
+    if (values.mapType) formData.append("mapType", values.mapType);
+
+    setTileSubmitting(true);
+    try {
+      await postFormApi<MapAssetSummary>("/map-assets/tile-packages/upload", formData);
+      message.success("瓦片版本已上传，可在列表中发布到首页");
+      tileForm.resetFields();
+      setTileOpen(false);
+      reload();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "瓦片上传失败");
+    } finally {
+      setTileSubmitting(false);
+    }
+  };
+
+  const publishTileMap = async (asset: MapAssetSummary) => {
+    setSubmitting(true);
+    try {
+      await postJsonApi<MapAssetSummary>(`/map-assets/${asset.id}/publish`, {});
+      message.success(`已将「${asset.name}」发布到首页`);
+      reload();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "发布失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const openHotAreaModal = (asset: MapAssetSummary) => {
     setSelectedAsset(asset);
     hotAreaForm.resetFields();
@@ -118,19 +158,21 @@ export function MapAssetsPage() {
     {
       title: "来源",
       dataIndex: "sourceType",
-      render: (value) => <Tag color={value === "tiff" ? "purple" : "blue"}>{value === "tiff" ? "TIF" : "图片"}</Tag>,
+      render: (value) => <Tag color={value === "tile" ? "cyan" : value === "tiff" ? "purple" : "blue"}>{value === "tile" ? "离线瓦片" : value === "tiff" ? "TIF" : "图片"}</Tag>,
     },
     {
       title: "处理状态",
       dataIndex: "processStatus",
-      render: (value) => <Tag color={value === "processed" ? "green" : "orange"}>{value === "processed" ? "已处理" : "已上传"}</Tag>,
+      render: (value) => <Tag color={value === "published" || value === "processed" ? "green" : value === "ready" ? "blue" : "orange"}>{value === "published" ? "已发布" : value === "ready" ? "待发布" : value === "processed" ? "已处理" : "已上传"}</Tag>,
     },
+    { title: "首页版本", render: (_, record) => record.isActive ? <Tag color="success">当前首页</Tag> : record.sourceType === "tile" ? "待发布" : "-" },
     { title: "热区", dataIndex: "hotAreaCount" },
     {
       title: "操作",
       render: (_, record) => (
         <Space>
           <Link className="table-action-link" to={`/map-assets/${record.id}`}>详情</Link>
+          {record.sourceType === "tile" && !record.isActive ? <Button loading={submitting} size="small" type="primary" onClick={() => publishTileMap(record)}>发布首页</Button> : null}
           <Button size="small" onClick={() => openHotAreaModal(record)}>新增热区</Button>
           {record.fileName ? <Button size="small" href={getApiUrl(`/map-assets/${record.id}/file`)}>下载</Button> : null}
         </Space>
@@ -140,7 +182,7 @@ export function MapAssetsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="MAP ASSETS" title="地图资产" actions={<Button type="primary" onClick={() => setOpen(true)}>上传地图</Button>} />
+      <PageHeader eyebrow="MAP ASSETS" title="地图资产" actions={<Space><Button onClick={() => setOpen(true)}>上传普通地图</Button><Button type="primary" onClick={() => setTileOpen(true)}>更新首页瓦片</Button></Space>} />
       <section className="content-section map-assets">
         <div className="section-head">
           <div>
@@ -188,6 +230,8 @@ export function MapAssetsPage() {
               options={[
                 { label: "已处理", value: "processed" },
                 { label: "已上传", value: "uploaded" },
+                { label: "待发布", value: "ready" },
+                { label: "已发布", value: "published" },
               ]}
             />
           </div>
@@ -236,6 +280,37 @@ export function MapAssetsPage() {
           >
             <Upload accept=".png,.jpg,.jpeg,.webp,.tif,.tiff" beforeUpload={() => false} maxCount={1}>
               <Button>选择文件</Button>
+            </Upload>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="更新首页离线瓦片"
+        open={tileOpen}
+        onCancel={() => setTileOpen(false)}
+        onOk={submitTileUpload}
+        confirmLoading={tileSubmitting}
+        okText="上传版本"
+        cancelText="取消"
+      >
+        <Form form={tileForm} layout="vertical">
+          <Form.Item name="name" label="地图版本名称" rules={[{ required: true, message: "请输入版本名称" }]}>
+            <Input placeholder="例如：曲阳街道 2026 年 7 月二维底图" />
+          </Form.Item>
+          <Form.Item name="mapType" label="地图类型" initialValue="街道总览">
+            <Input placeholder="例如：街道总览" />
+          </Form.Item>
+          <Form.Item
+            name="file"
+            label="XYZ 瓦片 ZIP"
+            valuePropName="fileList"
+            getValueFromEvent={(event: { fileList?: UploadFile[] }) => event.fileList ?? []}
+            rules={[{ required: true, message: "请选择瓦片 ZIP 文件" }]}
+            extra="压缩包内应为 z/x/y.png，可包含一个最外层文件夹。上传后需在列表中发布，首页才会切换。"
+          >
+            <Upload accept=".zip,application/zip" beforeUpload={() => false} maxCount={1}>
+              <Button>选择瓦片 ZIP</Button>
             </Upload>
           </Form.Item>
         </Form>

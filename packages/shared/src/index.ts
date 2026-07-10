@@ -82,8 +82,22 @@ export interface MapAssetSummary {
   originalFileName?: string | null;
   mimeType?: string | null;
   fileSize?: number | null;
+  tileMetadata?: TileMapMetadata | null;
+  isActive?: boolean;
   processStatus: string;
   hotAreaCount: number;
+}
+
+export interface TileMapMetadata {
+  minZoom: number;
+  maxZoom: number;
+  tileCount: number;
+  bounds: {
+    west: number;
+    east: number;
+    north: number;
+    south: number;
+  };
 }
 
 export interface MapHotAreaSummary {

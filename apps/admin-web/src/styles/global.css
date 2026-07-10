@@ -430,9 +430,36 @@ h4 {
 }
 
 .dashboard-tile-map {
+  position: relative;
   min-height: 0;
   overflow: hidden;
   background: #dce8ef;
+}
+
+.dashboard-map-draw-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 600;
+  padding: 6px;
+  border: 1px solid rgba(15, 36, 63, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.dashboard-map-draw-tools .ant-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+}
+
+.dashboard-map-draw-tools .ant-btn.is-active {
+  border-color: #0071e3;
+  background: #0071e3;
+  color: #fff;
 }
 
 .dashboard-tile-map .leaflet-container {

@@ -39,6 +39,19 @@ function canPreviewImage(mapAsset: MapAssetSummary) {
   return mapAsset.sourceType === "image" && Boolean(mapAsset.fileName);
 }
 
+function sourceLabel(mapAsset: MapAssetSummary) {
+  if (mapAsset.sourceType === "tile") return "离线瓦片";
+  if (mapAsset.sourceType === "tiff") return "TIF";
+  return "图片";
+}
+
+function statusLabel(status: string) {
+  if (status === "published") return "已发布";
+  if (status === "ready") return "待发布";
+  if (status === "processed") return "已处理";
+  return "已上传";
+}
+
 export function MapAssetDetailPage() {
   const { id } = useParams();
   const fallback = useMemo(() => fallbackMapAsset(id), [id]);
@@ -81,17 +94,17 @@ export function MapAssetDetailPage() {
         <div className="detail-layout">
           <article className="detail-hero">
             <div className="detail-title">
-              <span className={`status ${mapAsset.processStatus === "processed" ? "done" : "pending"}`}>
-                {mapAsset.processStatus === "processed" ? "已处理" : "已上传"}
+              <span className={`status ${mapAsset.processStatus === "processed" || mapAsset.processStatus === "published" ? "done" : "pending"}`}>
+                {statusLabel(mapAsset.processStatus)}
               </span>
               <h4>{mapAsset.mapType}</h4>
-              <p>地图文件用于首页街道总览、小区入口和道路热区绑定。TIF 文件后续可继续生成预览图或瓦片。</p>
+              <p>{mapAsset.sourceType === "tile" ? "当前版本可发布为首页底图，标绘名称可关联小区或道路档案。" : "地图文件用于首页街道总览、小区入口和道路热区绑定。TIF 文件后续可继续生成预览图或瓦片。"}</p>
             </div>
             <div className="detail-kpis">
-              <div><span>来源</span><strong>{mapAsset.sourceType === "tiff" ? "TIF" : "图片"}</strong></div>
+              <div><span>来源</span><strong>{sourceLabel(mapAsset)}</strong></div>
               <div><span>热区数量</span><strong>{mapAsset.hotAreaCount}</strong></div>
-              <div><span>文件大小</span><strong>{mapAsset.fileSize ? `${Math.round(mapAsset.fileSize / 1024)}K` : "-"}</strong></div>
-              <div><span>文件</span><strong>{mapAsset.fileName ? "可下载" : "样例"}</strong></div>
+              <div><span>{mapAsset.sourceType === "tile" ? "瓦片数量" : "文件大小"}</span><strong>{mapAsset.sourceType === "tile" ? mapAsset.tileMetadata?.tileCount ?? "-" : mapAsset.fileSize ? `${Math.round(mapAsset.fileSize / 1024)}K` : "-"}</strong></div>
+              <div><span>{mapAsset.sourceType === "tile" ? "缩放等级" : "文件"}</span><strong>{mapAsset.sourceType === "tile" ? mapAsset.tileMetadata ? `${mapAsset.tileMetadata.minZoom} - ${mapAsset.tileMetadata.maxZoom}` : "-" : mapAsset.fileName ? "可下载" : "样例"}</strong></div>
             </div>
             {mapAsset.fileName ? <a className="download-link detail-download" href={getApiUrl(`/map-assets/${mapAsset.id}/file`)}>下载地图文件</a> : null}
           </article>
@@ -122,6 +135,7 @@ export function MapAssetDetailPage() {
           {canPreviewImage(mapAsset) ? <img className="map-preview-image" src={getApiUrl(`/map-assets/${mapAsset.id}/preview`)} alt={mapAsset.name} /> : null}
           <div className="map-preview-label">{mapAsset.name}</div>
           {!canPreviewImage(mapAsset) && mapAsset.sourceType === "tiff" ? <div className="map-preview-note">TIF 地图已保存，后续可生成 WebP 预览或瓦片。</div> : null}
+          {!canPreviewImage(mapAsset) && mapAsset.sourceType === "tile" ? <div className="map-preview-note">离线瓦片版本已就绪。发布后，首页会按可视范围请求对应瓦片，不会一次性加载全部底图。</div> : null}
           {hotAreas.items.map((area) => (
             <div
               className={`hot-area-preview ${area.objectType}`}
