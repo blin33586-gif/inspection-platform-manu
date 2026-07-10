@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Button, Form, Input, message, Modal, Select } from "antd";
 import type { ManagedObjectSummary, PageResult } from "@xunjianbao/shared";
 import { postJsonApi } from "../api/client";
-import { roads } from "../data";
-import { ObjectCard } from "../components/ObjectCard";
+import { communities, mediaLibraryItems, points, roads } from "../data";
 import { PageHeader } from "../components/PageHeader";
+import { ProjectArchiveWorkspace } from "../components/ProjectArchiveWorkspace";
 import { useApiResource } from "../hooks/useApiResource";
 
 const fallbackRoads: PageResult<ManagedObjectSummary> = {
@@ -19,6 +19,52 @@ export function RoadsPage() {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { data, reload } = useApiResource("/roads", fallbackRoads);
+  const archiveItems = data.items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    status: item.status,
+    issueCount: item.issueCount,
+    reportCount: item.reportCount,
+    typeLabel: "道路街面",
+    path: `/roads/${item.id}`,
+  }));
+  const projectGroups = [
+    {
+      key: "community" as const,
+      label: "小区档案",
+      path: "/communities",
+      items: communities.map((item) => ({
+        id: item.id,
+        name: item.name,
+        status: item.status,
+        issueCount: item.issueCount,
+        reportCount: item.reportCount,
+        typeLabel: "居住小区",
+        path: `/communities/${item.id}`,
+      })),
+    },
+    {
+      key: "road" as const,
+      label: "街道档案",
+      path: "/roads",
+      items: archiveItems,
+    },
+    {
+      key: "point" as const,
+      label: "重点点位",
+      path: "/points",
+      items: points.map((item) => ({
+        id: item.id,
+        name: item.name,
+        status: item.status,
+        issueCount: item.issueCount,
+        reportCount: item.reportCount,
+        typeLabel: item.pointType,
+        relatedName: item.relatedObjectName,
+        path: `/points/${item.id}`,
+      })),
+    },
+  ];
 
   const submitRoad = async () => {
     const values = await form.validateFields();
@@ -38,16 +84,8 @@ export function RoadsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="ROAD MANAGEMENT" title="道路街面" actions={<Button type="primary" onClick={() => setOpen(true)}>新增道路</Button>} />
-      <section className="content-section">
-        <div className="section-head">
-          <div>
-            <p className="eyebrow">ROAD ARCHIVES</p>
-            <h3>重点道路档案</h3>
-          </div>
-        </div>
-        <div className="card-grid">{data.items.map((item) => <ObjectCard key={item.id} item={item} to={`/roads/${item.id}`} />)}</div>
-      </section>
+      <PageHeader title="道路街面" actions={<Button type="primary" onClick={() => setOpen(true)}>新增道路</Button>} />
+      <ProjectArchiveWorkspace activeItem={archiveItems[0]} items={archiveItems} mediaItems={mediaLibraryItems} projectGroups={projectGroups} variant="road" />
 
       <Modal
         title="新增道路"

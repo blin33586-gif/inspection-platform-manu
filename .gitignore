@@ -10,3 +10,4 @@ build/
 *.db
 *.db-journal
 services/api/storage/
+backups/

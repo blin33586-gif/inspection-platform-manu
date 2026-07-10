@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Button, Form, Input, message, Modal, Select } from "antd";
 import type { ManagedObjectSummary, PageResult } from "@xunjianbao/shared";
 import { postJsonApi } from "../api/client";
-import { communities } from "../data";
-import { ObjectCard } from "../components/ObjectCard";
+import { communities, mediaLibraryItems, points, roads } from "../data";
 import { PageHeader } from "../components/PageHeader";
+import { ProjectArchiveWorkspace } from "../components/ProjectArchiveWorkspace";
 import { useApiResource } from "../hooks/useApiResource";
 
 const fallbackCommunities: PageResult<ManagedObjectSummary> = {
@@ -23,6 +23,52 @@ export function CommunitiesPage() {
   const [statusFilter, setStatusFilter] = useState("全部");
   const { data, reload } = useApiResource("/communities", fallbackCommunities);
   const visibleItems = statusFilter === "全部" ? data.items : data.items.filter((item) => item.status === statusFilter);
+  const archiveItems = visibleItems.map((item) => ({
+    id: item.id,
+    name: item.name,
+    status: item.status,
+    issueCount: item.issueCount,
+    reportCount: item.reportCount,
+    typeLabel: "居住小区",
+    path: `/communities/${item.id}`,
+  }));
+  const projectGroups = [
+    {
+      key: "community" as const,
+      label: "小区档案",
+      path: "/communities",
+      items: archiveItems,
+    },
+    {
+      key: "road" as const,
+      label: "街道档案",
+      path: "/roads",
+      items: roads.map((item) => ({
+        id: item.id,
+        name: item.name,
+        status: item.status,
+        issueCount: item.issueCount,
+        reportCount: item.reportCount,
+        typeLabel: "道路街面",
+        path: `/roads/${item.id}`,
+      })),
+    },
+    {
+      key: "point" as const,
+      label: "重点点位",
+      path: "/points",
+      items: points.map((item) => ({
+        id: item.id,
+        name: item.name,
+        status: item.status,
+        issueCount: item.issueCount,
+        reportCount: item.reportCount,
+        typeLabel: item.pointType,
+        relatedName: item.relatedObjectName,
+        path: `/points/${item.id}`,
+      })),
+    },
+  ];
 
   const submitCommunity = async () => {
     const values = await form.validateFields();
@@ -42,31 +88,23 @@ export function CommunitiesPage() {
 
   return (
     <>
-      <PageHeader eyebrow="COMMUNITY ARCHIVES" title="小区档案" actions={<Button type="primary" onClick={() => setOpen(true)}>新增小区</Button>} />
-      <section className="content-section">
-        <div className="section-head">
-          <div>
-            <p className="eyebrow">COMMUNITY LIST</p>
-            <h3>曲阳路街道小区</h3>
-          </div>
-          <div className="filter-bar">
-            {statusFilters.map((item) => (
-              <button
-                className={statusFilter === item ? "active" : ""}
-                key={item}
-                type="button"
-                aria-pressed={statusFilter === item}
-                onClick={() => setStatusFilter(item)}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
+      <PageHeader title="小区档案" actions={<Button type="primary" onClick={() => setOpen(true)}>新增小区</Button>} />
+      <section className="project-filter-row">
+        <div className="filter-bar">
+          {statusFilters.map((item) => (
+            <button
+              className={statusFilter === item ? "active" : ""}
+              key={item}
+              type="button"
+              aria-pressed={statusFilter === item}
+              onClick={() => setStatusFilter(item)}
+            >
+              {item}
+            </button>
+          ))}
         </div>
-        {visibleItems.length ? (
-          <div className="card-grid">{visibleItems.map((item) => <ObjectCard key={item.id} item={item} to={`/communities/${item.id}`} />)}</div>
-        ) : <p className="empty-note">当前筛选下暂无小区。</p>}
       </section>
+      <ProjectArchiveWorkspace activeItem={archiveItems[0]} items={archiveItems} mediaItems={mediaLibraryItems} projectGroups={projectGroups} variant="community" />
 
       <Modal
         title="新增小区"

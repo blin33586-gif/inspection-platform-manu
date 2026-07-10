@@ -15,5 +15,8 @@
     "db:seed": "pnpm --filter @xunjianbao/api db:seed",
     "typecheck": "pnpm -r typecheck"
   },
-  "packageManager": "pnpm@11.7.0"
+  "packageManager": "pnpm@11.7.0",
+  "devDependencies": {
+    "@agent-tars/cli": "^0.3.0"
+  }
 }

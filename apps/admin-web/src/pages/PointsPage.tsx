@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Button, Form, Input, message, Modal, Select, Tag } from "antd";
-import { Link } from "react-router-dom";
+import { Button, Form, Input, message, Modal, Select } from "antd";
 import type { PageResult, PointSummary } from "@xunjianbao/shared";
 import { postJsonApi } from "../api/client";
-import { points } from "../data";
+import { communities, mediaLibraryItems, points, roads } from "../data";
 import { PageHeader } from "../components/PageHeader";
+import { ProjectArchiveWorkspace } from "../components/ProjectArchiveWorkspace";
 import { useApiResource } from "../hooks/useApiResource";
 
 const fallbackPoints: PageResult<PointSummary> = {
@@ -14,18 +14,57 @@ const fallbackPoints: PageResult<PointSummary> = {
   total: points.length,
 };
 
-function statusColor(status: string) {
-  if (status === "待复查") return "orange";
-  if (status === "重点") return "red";
-  if (status === "稳定") return "green";
-  return "blue";
-}
-
 export function PointsPage() {
   const [form] = Form.useForm<{ name?: string; pointType?: string; relatedObjectName?: string; status?: string }>();
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { data, reload } = useApiResource("/points", fallbackPoints);
+  const archiveItems = data.items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    status: item.status,
+    issueCount: item.issueCount,
+    reportCount: item.reportCount,
+    typeLabel: item.pointType,
+    relatedName: item.relatedObjectName,
+    path: `/points/${item.id}`,
+  }));
+  const projectGroups = [
+    {
+      key: "community" as const,
+      label: "小区档案",
+      path: "/communities",
+      items: communities.map((item) => ({
+        id: item.id,
+        name: item.name,
+        status: item.status,
+        issueCount: item.issueCount,
+        reportCount: item.reportCount,
+        typeLabel: "居住小区",
+        path: `/communities/${item.id}`,
+      })),
+    },
+    {
+      key: "road" as const,
+      label: "街道档案",
+      path: "/roads",
+      items: roads.map((item) => ({
+        id: item.id,
+        name: item.name,
+        status: item.status,
+        issueCount: item.issueCount,
+        reportCount: item.reportCount,
+        typeLabel: "道路街面",
+        path: `/roads/${item.id}`,
+      })),
+    },
+    {
+      key: "point" as const,
+      label: "重点点位",
+      path: "/points",
+      items: archiveItems,
+    },
+  ];
 
   const submitPoint = async () => {
     const values = await form.validateFields();
@@ -45,30 +84,8 @@ export function PointsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="KEY POINTS" title="重点点位" actions={<Button type="primary" onClick={() => setOpen(true)}>新增点位</Button>} />
-      <section className="content-section">
-        <div className="section-head">
-          <div>
-            <p className="eyebrow">POINT ARCHIVES</p>
-            <h3>广告牌、河道、重点设施</h3>
-          </div>
-        </div>
-        <div className="card-grid">
-          {data.items.map((item) => (
-            <Link className="archive-card-link" to={`/points/${item.id}`} key={item.id}>
-              <article className="archive-card point-card">
-                <Tag color={statusColor(item.status)}>{item.status}</Tag>
-                <h4>{item.name}</h4>
-                <p>{item.pointType} / 关联 {item.relatedObjectName}，用于沉淀广告牌、河道绿化、重点设施等点位巡检资料。</p>
-                <div className="mini-stats">
-                  <span>问题 {item.issueCount}</span>
-                  <span>报告 {item.reportCount}</span>
-                </div>
-              </article>
-            </Link>
-          ))}
-        </div>
-      </section>
+      <PageHeader title="重点点位" actions={<Button type="primary" onClick={() => setOpen(true)}>新增点位</Button>} />
+      <ProjectArchiveWorkspace activeItem={archiveItems[0]} items={archiveItems} mediaItems={mediaLibraryItems} projectGroups={projectGroups} variant="point" />
 
       <Modal
         title="新增重点点位"

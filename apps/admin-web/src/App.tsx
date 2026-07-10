@@ -7,6 +7,7 @@ import { RoadsPage } from "./pages/RoadsPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { IssuesPage } from "./pages/IssuesPage";
 import { MapAssetsPage } from "./pages/MapAssetsPage";
+import { MediaLibraryPage } from "./pages/MediaLibraryPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { ManagedObjectDetailPage } from "./pages/ManagedObjectDetailPage";
@@ -15,6 +16,7 @@ import { PointsPage } from "./pages/PointsPage";
 import { PointDetailPage } from "./pages/PointDetailPage";
 import { IssueDetailPage } from "./pages/IssueDetailPage";
 import { ReportDetailPage } from "./pages/ReportDetailPage";
+import { ReportWritePage } from "./pages/ReportWritePage";
 
 function RequireAuth() {
   return getToken() ? <Outlet /> : <Navigate to="/login" replace />;
@@ -34,9 +36,11 @@ export function App() {
           <Route path="/points" element={<PointsPage />} />
           <Route path="/points/:id" element={<PointDetailPage />} />
           <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/reports/write" element={<ReportWritePage />} />
           <Route path="/reports/:id" element={<ReportDetailPage />} />
           <Route path="/issues" element={<IssuesPage />} />
           <Route path="/issues/:id" element={<IssueDetailPage />} />
+          <Route path="/media-library" element={<MediaLibraryPage />} />
           <Route path="/map-assets" element={<MapAssetsPage />} />
           <Route path="/map-assets/:id" element={<MapAssetDetailPage />} />
           <Route path="/audit-logs" element={<AuditLogsPage />} />

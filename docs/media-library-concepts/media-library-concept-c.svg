@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f6fbff"/>
+      <stop offset="1" stop-color="#eef4ff"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" x2="1">
+      <stop offset="0" stop-color="#0071e3"/>
+      <stop offset="1" stop-color="#22c1ee"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#0a1f44" flood-opacity=".10"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1600" height="78" fill="#fbfbfd"/>
+  <line x1="0" y1="78" x2="1600" y2="78" stroke="#dfe8f3"/>
+  <rect x="40" y="19" width="42" height="42" rx="12" fill="#050505"/>
+  <text x="61" y="47" text-anchor="middle" font-size="26" fill="#fff" font-family="PingFang SC, Arial" font-weight="800">巡</text>
+  <text x="100" y="47" font-size="25" fill="#111" font-family="PingFang SC, Arial" font-weight="900">巡检宝</text>
+  <text x="260" y="47" font-size="20" fill="#111" font-family="PingFang SC, Arial">媒体流程</text>
+  <text x="382" y="47" font-size="20" fill="#626b78" font-family="PingFang SC, Arial">任务报告</text>
+  <text x="512" y="47" font-size="20" fill="#626b78" font-family="PingFang SC, Arial">项目档案</text>
+  <text x="1420" y="47" font-size="20" fill="#111" font-family="PingFang SC, Arial" font-weight="800">曲阳路街道</text>
+
+  <text x="60" y="136" font-size="18" fill="#0071e3" font-family="PingFang SC, Arial" font-weight="900" letter-spacing="4">SCHEME C</text>
+  <text x="60" y="182" font-size="44" fill="#102033" font-family="PingFang SC, Arial" font-weight="900">媒体流程看板中枢</text>
+  <text x="60" y="218" font-size="22" fill="#6e7f93" font-family="PingFang SC, Arial">强调每张照片的状态流转：入库、分拣、识别、确认、报告、档案沉淀。</text>
+
+  <rect x="60" y="260" width="1480" height="650" rx="24" fill="#fff" stroke="#dfe8f3" filter="url(#shadow)"/>
+  <g font-family="PingFang SC, Arial">
+    <rect x="92" y="296" width="260" height="576" rx="18" fill="#f8fbff" stroke="#e1eaf5"/>
+    <text x="120" y="340" font-size="24" fill="#102033" font-weight="900">1 接入</text>
+    <text x="306" y="340" text-anchor="end" font-size="17" fill="#0071e3" font-weight="900">316</text>
+    <rect x="120" y="374" width="204" height="96" rx="14" fill="#eaf4ff"/><text x="142" y="408" font-size="17" fill="#102033" font-weight="800">无人机 ZIP</text><text x="142" y="438" font-size="14" fill="#6e7f93">186 张 · 刚导入</text>
+    <rect x="120" y="492" width="204" height="96" rx="14" fill="#fff"/><text x="142" y="526" font-size="17" fill="#102033" font-weight="800">摄像头抽帧</text><text x="142" y="556" font-size="14" fill="#6e7f93">92 张 · 自动同步</text>
+    <rect x="120" y="610" width="204" height="96" rx="14" fill="#fff"/><text x="142" y="644" font-size="17" fill="#102033" font-weight="800">智能眼镜</text><text x="142" y="674" font-size="14" fill="#6e7f93">38 张 · MIO同步</text>
+
+    <rect x="382" y="296" width="260" height="576" rx="18" fill="#f8fbff" stroke="#e1eaf5"/>
+    <text x="410" y="340" font-size="24" fill="#102033" font-weight="900">2 分拣</text>
+    <text x="596" y="340" text-anchor="end" font-size="17" fill="#f59a23" font-weight="900">84</text>
+    <rect x="410" y="374" width="204" height="104" rx="14" fill="#fff0d7"/><text x="432" y="410" font-size="17" fill="#102033" font-weight="800">待人工归属</text><text x="432" y="440" font-size="14" fill="#6e7f93">选择小区 / 道路</text>
+    <rect x="410" y="504" width="204" height="104" rx="14" fill="#eaf4ff"/><text x="432" y="540" font-size="17" fill="#102033" font-weight="800">AI预分拣</text><text x="432" y="570" font-size="14" fill="#6e7f93">赤峰小区 82%</text>
+    <rect x="410" y="634" width="204" height="104" rx="14" fill="#fff"/><text x="432" y="670" font-size="17" fill="#102033" font-weight="800">已归属任务</text><text x="432" y="700" font-size="14" fill="#6e7f93">7月日常巡检</text>
+
+    <rect x="672" y="296" width="260" height="576" rx="18" fill="#f8fbff" stroke="#e1eaf5"/>
+    <text x="700" y="340" font-size="24" fill="#102033" font-weight="900">3 标注识别</text>
+    <text x="886" y="340" text-anchor="end" font-size="17" fill="#20a66a" font-weight="900">129</text>
+    <rect x="700" y="374" width="204" height="122" rx="14" fill="#dff7ee"/><text x="722" y="410" font-size="17" fill="#102033" font-weight="800">YOLO已识别</text><text x="722" y="440" font-size="14" fill="#6e7f93">飞线 / 堆物 / 广告牌</text><rect x="722" y="458" width="64" height="22" rx="11" fill="#20a66a"/><text x="754" y="474" text-anchor="middle" font-size="12" fill="#fff" font-weight="800">待确认</text>
+    <rect x="700" y="522" width="204" height="122" rx="14" fill="#eaf4ff"/><text x="722" y="558" font-size="17" fill="#102033" font-weight="800">人工标注</text><text x="722" y="588" font-size="14" fill="#6e7f93">矩形框 / 箭头 / 文字</text>
+    <rect x="700" y="670" width="204" height="122" rx="14" fill="#fff"/><text x="722" y="706" font-size="17" fill="#102033" font-weight="800">问题说明</text><text x="722" y="736" font-size="14" fill="#6e7f93">单图一说明</text>
+
+    <rect x="962" y="296" width="260" height="576" rx="18" fill="#f8fbff" stroke="#e1eaf5"/>
+    <text x="990" y="340" font-size="24" fill="#102033" font-weight="900">4 输出</text>
+    <text x="1176" y="340" text-anchor="end" font-size="17" fill="#0071e3" font-weight="900">双推送</text>
+    <rect x="990" y="374" width="204" height="118" rx="14" fill="#eaf4ff"/><text x="1012" y="412" font-size="17" fill="#102033" font-weight="800">生成巡检报告</text><text x="1012" y="442" font-size="14" fill="#6e7f93">本次任务整体成果</text>
+    <rect x="990" y="526" width="204" height="118" rx="14" fill="#dff7ee"/><text x="1012" y="564" font-size="17" fill="#102033" font-weight="800">进入问题台账</text><text x="1012" y="594" font-size="14" fill="#6e7f93">整改 / 复查 / 闭环</text>
+    <rect x="990" y="678" width="204" height="118" rx="14" fill="#fff0d7"/><text x="1012" y="716" font-size="17" fill="#102033" font-weight="800">推送项目档案</text><text x="1012" y="746" font-size="14" fill="#6e7f93">小区 / 道路 / 点位</text>
+
+    <rect x="1252" y="296" width="260" height="576" rx="18" fill="#061b33"/>
+    <text x="1280" y="340" font-size="24" fill="#fff" font-weight="900">当前选中照片</text>
+    <rect x="1280" y="372" width="204" height="146" rx="16" fill="#d7eeff"/>
+    <path d="M1300 476 C1346 442 1388 462 1436 428" stroke="#fff" stroke-width="18" fill="none" opacity=".82"/>
+    <text x="1280" y="562" font-size="18" fill="#fff" font-weight="900">楼道公共区域堆物</text>
+    <text x="1280" y="596" font-size="15" fill="#bdd4ee">对象：赤峰小区</text>
+    <text x="1280" y="626" font-size="15" fill="#bdd4ee">任务：7月日常巡检</text>
+    <text x="1280" y="656" font-size="15" fill="#bdd4ee">状态：待人工确认</text>
+    <rect x="1280" y="702" width="204" height="46" rx="23" fill="url(#blue)"/>
+    <text x="1382" y="732" text-anchor="middle" font-size="17" fill="#fff" font-weight="900">打开标注</text>
+    <rect x="1280" y="766" width="204" height="46" rx="23" fill="#12395f"/>
+    <text x="1382" y="796" text-anchor="middle" font-size="17" fill="#fff" font-weight="900">查看流转记录</text>
+  </g>
+
+  <text x="60" y="958" font-size="17" fill="#6e7f93" font-family="PingFang SC, Arial">特点：最适合管理层看全流程状态，也适合后续做自动化队列和 AI 处理进度。</text>
+</svg>

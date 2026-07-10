@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#fbfdff"/>
+      <stop offset="1" stop-color="#edf5ff"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" x2="1">
+      <stop offset="0" stop-color="#005fc8"/>
+      <stop offset="1" stop-color="#16b4f2"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0a1f44" flood-opacity=".10"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#bg)"/>
+  <rect x="38" y="34" width="1524" height="86" rx="28" fill="#fff" stroke="#e0e7f1"/>
+  <rect x="66" y="55" width="44" height="44" rx="13" fill="#050505"/>
+  <text x="88" y="84" text-anchor="middle" font-size="27" fill="#fff" font-family="PingFang SC, Arial" font-weight="800">巡</text>
+  <text x="128" y="83" font-size="25" fill="#111" font-family="PingFang SC, Arial" font-weight="900">巡检宝媒体资产中台</text>
+  <rect x="1160" y="55" width="138" height="44" rx="22" fill="#eef4ff"/>
+  <text x="1229" y="83" text-anchor="middle" font-size="17" fill="#0071e3" font-family="PingFang SC, Arial" font-weight="800">上传媒体</text>
+  <rect x="1314" y="55" width="138" height="44" rx="22" fill="url(#blue)"/>
+  <text x="1383" y="83" text-anchor="middle" font-size="17" fill="#fff" font-family="PingFang SC, Arial" font-weight="800">新建任务</text>
+
+  <text x="60" y="176" font-size="18" fill="#0071e3" font-family="PingFang SC, Arial" font-weight="900" letter-spacing="4">SCHEME B</text>
+  <text x="60" y="222" font-size="44" fill="#102033" font-family="PingFang SC, Arial" font-weight="900">媒体资产中台</text>
+  <text x="60" y="258" font-size="22" fill="#6e7f93" font-family="PingFang SC, Arial">强调“所有照片先入媒体库”，适合做长期资产沉淀和多入口统一管理。</text>
+
+  <g font-family="PingFang SC, Arial">
+    <rect x="60" y="298" width="260" height="118" rx="18" fill="#fff" stroke="#dfe8f3" filter="url(#shadow)"/>
+    <text x="90" y="340" font-size="16" fill="#6e7f93" font-weight="800">今日入库</text>
+    <text x="90" y="386" font-size="44" fill="#0071e3" font-weight="900">316</text>
+    <rect x="342" y="298" width="260" height="118" rx="18" fill="#fff" stroke="#dfe8f3" filter="url(#shadow)"/>
+    <text x="372" y="340" font-size="16" fill="#6e7f93" font-weight="800">待分拣</text>
+    <text x="372" y="386" font-size="44" fill="#f59a23" font-weight="900">84</text>
+    <rect x="624" y="298" width="260" height="118" rx="18" fill="#fff" stroke="#dfe8f3" filter="url(#shadow)"/>
+    <text x="654" y="340" font-size="16" fill="#6e7f93" font-weight="800">AI已识别</text>
+    <text x="654" y="386" font-size="44" fill="#20a66a" font-weight="900">129</text>
+    <rect x="906" y="298" width="260" height="118" rx="18" fill="#fff" stroke="#dfe8f3" filter="url(#shadow)"/>
+    <text x="936" y="340" font-size="16" fill="#6e7f93" font-weight="800">已推送档案</text>
+    <text x="936" y="386" font-size="44" fill="#102033" font-weight="900">57</text>
+  </g>
+
+  <rect x="60" y="452" width="300" height="466" rx="20" fill="#fff" stroke="#dfe8f3" filter="url(#shadow)"/>
+  <text x="92" y="502" font-size="24" fill="#102033" font-family="PingFang SC, Arial" font-weight="900">来源与筛选</text>
+  <rect x="92" y="530" width="236" height="44" rx="22" fill="#f5f8fc" stroke="#d8e2ef"/>
+  <text x="116" y="558" font-size="16" fill="#8a96a6" font-family="PingFang SC, Arial">关键词 / 文件名</text>
+  <g font-family="PingFang SC, Arial">
+    <rect x="92" y="604" width="236" height="58" rx="14" fill="#eaf4ff"/><text x="120" y="640" font-size="18" fill="#0071e3" font-weight="800">无人机 ZIP</text><text x="292" y="640" text-anchor="end" font-size="17" fill="#0071e3" font-weight="800">186</text>
+    <rect x="92" y="676" width="236" height="58" rx="14" fill="#fff"/><text x="120" y="712" font-size="18" fill="#102033" font-weight="800">摄像头抽帧</text><text x="292" y="712" text-anchor="end" font-size="17" fill="#6e7f93" font-weight="800">92</text>
+    <rect x="92" y="748" width="236" height="58" rx="14" fill="#fff"/><text x="120" y="784" font-size="18" fill="#102033" font-weight="800">智能眼镜</text><text x="292" y="784" text-anchor="end" font-size="17" fill="#6e7f93" font-weight="800">38</text>
+    <rect x="92" y="820" width="236" height="58" rx="14" fill="#fff"/><text x="120" y="856" font-size="18" fill="#102033" font-weight="800">人工上传</text><text x="292" y="856" text-anchor="end" font-size="17" fill="#6e7f93" font-weight="800">24</text>
+  </g>
+
+  <rect x="390" y="452" width="780" height="466" rx="20" fill="#fff" stroke="#dfe8f3" filter="url(#shadow)"/>
+  <text x="422" y="502" font-size="24" fill="#102033" font-family="PingFang SC, Arial" font-weight="900">媒体资产池</text>
+  <rect x="918" y="472" width="92" height="38" rx="19" fill="#0071e3"/>
+  <text x="964" y="496" text-anchor="middle" font-size="15" fill="#fff" font-family="PingFang SC, Arial" font-weight="800">全部</text>
+  <rect x="1022" y="472" width="112" height="38" rx="19" fill="#eef4ff"/>
+  <text x="1078" y="496" text-anchor="middle" font-size="15" fill="#0071e3" font-family="PingFang SC, Arial" font-weight="800">待处理</text>
+  <g font-family="PingFang SC, Arial">
+    <rect x="422" y="538" width="210" height="138" rx="15" fill="#d7eeff"/>
+    <rect x="646" y="538" width="210" height="138" rx="15" fill="#dff7ee"/>
+    <rect x="870" y="538" width="210" height="138" rx="15" fill="#fff0d7"/>
+    <rect x="422" y="724" width="210" height="138" rx="15" fill="#e8f2ff"/>
+    <rect x="646" y="724" width="210" height="138" rx="15" fill="#d7eeff"/>
+    <rect x="870" y="724" width="210" height="138" rx="15" fill="#e9f8ff"/>
+    <path d="M442 636 C488 604 530 624 578 590" stroke="#fff" stroke-width="18" fill="none" opacity=".85"/>
+    <path d="M666 636 C712 604 754 624 802 590" stroke="#fff" stroke-width="18" fill="none" opacity=".85"/>
+    <path d="M890 636 C936 604 978 624 1026 590" stroke="#fff" stroke-width="18" fill="none" opacity=".85"/>
+    <text x="422" y="708" font-size="17" fill="#102033" font-weight="800">赤峰小区 · 楼道堆物</text>
+    <text x="646" y="708" font-size="17" fill="#102033" font-weight="800">曲阳路 · 广告牌</text>
+    <text x="870" y="708" font-size="17" fill="#102033" font-weight="800">待分拣 · AI建议</text>
+    <text x="422" y="894" font-size="17" fill="#102033" font-weight="800">玉田新村 · 飞线</text>
+    <text x="646" y="894" font-size="17" fill="#102033" font-weight="800">河道绿化带</text>
+    <text x="870" y="894" font-size="17" fill="#102033" font-weight="800">智能眼镜同步</text>
+  </g>
+
+  <rect x="1200" y="452" width="340" height="466" rx="20" fill="#fff" stroke="#dfe8f3" filter="url(#shadow)"/>
+  <text x="1232" y="502" font-size="24" fill="#102033" font-family="PingFang SC, Arial" font-weight="900">媒体详情</text>
+  <rect x="1232" y="534" width="276" height="140" rx="16" fill="#d7eeff"/>
+  <text x="1232" y="716" font-size="18" fill="#102033" font-family="PingFang SC, Arial" font-weight="900">IMG_20260707_0001.jpg</text>
+  <text x="1232" y="754" font-size="15" fill="#6e7f93" font-family="PingFang SC, Arial">来源：无人机 ZIP</text>
+  <text x="1232" y="784" font-size="15" fill="#6e7f93" font-family="PingFang SC, Arial">对象：赤峰小区</text>
+  <text x="1232" y="814" font-size="15" fill="#6e7f93" font-family="PingFang SC, Arial">任务：7月日常巡检</text>
+  <rect x="1232" y="842" width="124" height="42" rx="21" fill="url(#blue)"/>
+  <text x="1294" y="869" text-anchor="middle" font-size="16" fill="#fff" font-family="PingFang SC, Arial" font-weight="800">去标注</text>
+  <rect x="1368" y="842" width="140" height="42" rx="21" fill="#eef4ff"/>
+  <text x="1438" y="869" text-anchor="middle" font-size="16" fill="#0071e3" font-family="PingFang SC, Arial" font-weight="800">推送档案</text>
+</svg>

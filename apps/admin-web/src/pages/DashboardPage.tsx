@@ -18,15 +18,6 @@ const fallbackMapData: DashboardMapData = {
   issues: [],
 };
 
-const featureLinks = [
-  { label: "小区档案", path: "/communities" },
-  { label: "道路街面", path: "/roads" },
-  { label: "重点点位", path: "/points" },
-  { label: "巡检报告", path: "/reports" },
-  { label: "问题台账", path: "/issues" },
-  { label: "地图资产", path: "/map-assets" },
-];
-
 function objectPath(area: MapHotAreaSummary) {
   if (!area.objectId) return "/map-assets/map-street-main";
   if (area.objectType === "community") return `/communities/${area.objectId}`;
@@ -49,30 +40,10 @@ export function DashboardPage() {
   return (
     <section className="home-landing">
       <div className="home-copy">
-        <p className="eyebrow">QUYANG ROAD SUBDISTRICT</p>
-        <h1>曲阳路街道 TIF 巡检地图</h1>
-        <p>从一张二维底图进入小区、道路、点位、报告和问题台账。</p>
-        <div className="home-action-bar" aria-label="功能跳转">
-          {featureLinks.map((item, index) => (
-            <button
-              className={index === 0 ? "primary-button" : "ghost-button"}
-              key={item.path}
-              type="button"
-              onClick={() => navigate(item.path)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <h1>曲阳街道一览</h1>
       </div>
 
       <div className="tif-map-stage">
-        <div className="tif-map-toolbar">
-          <span>TIF MAP</span>
-          <strong>曲阳路街道二维底图</strong>
-          <button type="button" onClick={() => navigate("/map-assets")}>导入 / 管理地图</button>
-        </div>
-
         <div className="tif-map-canvas">
           <div className="tif-road tif-road-main">曲阳路</div>
           <div className="tif-road tif-road-second">密云路</div>
