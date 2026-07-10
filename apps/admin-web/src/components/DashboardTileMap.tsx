@@ -4,18 +4,20 @@ import { Check, Pencil, PencilLine, Save, Trash2, Undo2, X } from "lucide-react"
 import { CircleMarker, MapContainer, Marker, Polygon, Polyline, Rectangle, TileLayer, Tooltip, useMapEvents, ZoomControl } from "react-leaflet";
 import { divIcon } from "leaflet";
 import type { LatLngBoundsExpression, LatLngTuple, PathOptions } from "leaflet";
-import type { MapAssetSummary, MapHotAreaSummary } from "@xunjianbao/shared";
+import { MAP_HOT_AREA_COLOR_OPTIONS, type MapAssetSummary, type MapHotAreaColor, type MapHotAreaSummary } from "@xunjianbao/shared";
 import { getApiUrl } from "../api/client";
 import "leaflet/dist/leaflet.css";
 
 export interface MapDrawingDraft {
   shape: "line" | "polygon";
   coordinates: LatLngTuple[];
+  color: MapHotAreaColor;
 }
 
 export interface MapAreaUpdate {
   label: string;
   polygon: string;
+  color: MapHotAreaColor;
 }
 
 interface DashboardTileMapProps {
@@ -34,6 +36,14 @@ const fallbackBounds: LatLngBoundsExpression = [
   [31.276496883214108, 121.47531509399414],
   [31.297621354424027, 121.49969100952148],
 ];
+
+const defaultMapAreaColor: MapHotAreaColor = MAP_HOT_AREA_COLOR_OPTIONS[0].value;
+const defaultColorByObjectType: Record<MapHotAreaSummary["objectType"], MapHotAreaColor> = {
+  community: "#1677ff",
+  road: "#13c2c2",
+  point: "#52c41a",
+  street: "#722ed1",
+};
 
 const finishDrawingIcon = divIcon({
   className: "map-drawing-finish-icon",
@@ -73,10 +83,15 @@ function areaBounds(area: MapHotAreaSummary, bounds: { west: number; east: numbe
   return [[latitude(top + height), longitude(left)], [latitude(top), longitude(left + width)]];
 }
 
-function areaStyle(type: MapHotAreaSummary["objectType"]): PathOptions {
-  if (type === "road") return { color: "#0a65d8", fillColor: "#1d6fff", fillOpacity: 0.1, weight: 4 };
-  if (type === "point") return { color: "#0c9f90", fillColor: "#29c7e8", fillOpacity: 0.16, weight: 2 };
-  return { color: "#4b83ff", fillColor: "#4b83ff", fillOpacity: 0.14, weight: 2 };
+function areaColor(area: MapHotAreaSummary): MapHotAreaColor {
+  return area.color ?? defaultColorByObjectType[area.objectType];
+}
+
+function areaStyle(area: MapHotAreaSummary): PathOptions {
+  const color = areaColor(area);
+  if (area.objectType === "road") return { color, fillColor: color, fillOpacity: 0.1, weight: 4 };
+  if (area.objectType === "point") return { color, fillColor: color, fillOpacity: 0.16, weight: 2 };
+  return { color, fillColor: color, fillOpacity: 0.14, weight: 2 };
 }
 
 function parseAreaGeometry(area: MapHotAreaSummary): MapDrawingDraft | null {
@@ -87,7 +102,7 @@ function parseAreaGeometry(area: MapHotAreaSummary): MapDrawingDraft | null {
     const coordinates = parsed.coordinates.filter((point): point is [number, number] => (
       Array.isArray(point) && point.length === 2 && Number.isFinite(point[0]) && Number.isFinite(point[1])
     ));
-    return coordinates.length ? { shape: parsed.shape, coordinates } : null;
+    return coordinates.length ? { shape: parsed.shape, coordinates, color: areaColor(area) } : null;
   } catch {
     return null;
   }
@@ -100,6 +115,7 @@ function editableGeometry(area: MapHotAreaSummary, bounds: { west: number; east:
   return {
     shape: "polygon",
     coordinates: [[north, west], [north, east], [south, east], [south, west]],
+    color: areaColor(area),
   };
 }
 
@@ -108,10 +124,10 @@ function geometryCenter(geometry: MapDrawingDraft): LatLngTuple {
   return [latitude / geometry.coordinates.length, longitude / geometry.coordinates.length];
 }
 
-function DrawingLayer({ drawingMode, points, onAddPoint, onClosePolygon }: { drawingMode: "idle" | "line" | "polygon"; points: LatLngTuple[]; onAddPoint: (point: LatLngTuple) => void; onClosePolygon: () => void }) {
+function DrawingLayer({ color, drawingMode, points, onAddPoint, onClosePolygon }: { color: MapHotAreaColor; drawingMode: "idle" | "line" | "polygon"; points: LatLngTuple[]; onAddPoint: (point: LatLngTuple) => void; onClosePolygon: () => void }) {
   useMapEvents({ click(event) { if (drawingMode !== "idle") onAddPoint([event.latlng.lat, event.latlng.lng]); } });
   if (!points.length) return null;
-  const pathOptions: PathOptions = { color: "#0071e3", fillColor: "#0071e3", fillOpacity: 0.14, dashArray: "6 6", weight: 3 };
+  const pathOptions: PathOptions = { color, fillColor: color, fillOpacity: 0.14, dashArray: "6 6", weight: 3 };
   const canClosePolygon = drawingMode === "polygon" && points.length >= 3;
   return (
     <>
@@ -131,8 +147,8 @@ function DrawingLayer({ drawingMode, points, onAddPoint, onClosePolygon }: { dra
   );
 }
 
-function EditableAreaLayer({ drawing, label, onLabelChange, onMoveVertex }: { drawing: MapDrawingDraft; label: string; onLabelChange: (value: string) => void; onMoveVertex: (index: number, position: LatLngTuple) => void }) {
-  const pathOptions: PathOptions = { color: "#0071e3", fillColor: "#0071e3", fillOpacity: 0.1, dashArray: "5 5", weight: 3 };
+function EditableAreaLayer({ color, drawing, label, onLabelChange, onMoveVertex }: { color: MapHotAreaColor; drawing: MapDrawingDraft; label: string; onLabelChange: (value: string) => void; onMoveVertex: (index: number, position: LatLngTuple) => void }) {
+  const pathOptions: PathOptions = { color, fillColor: color, fillOpacity: 0.1, dashArray: "5 5", weight: 3 };
   const center = geometryCenter(drawing);
   return (
     <>
@@ -163,12 +179,33 @@ function EditableAreaLayer({ drawing, label, onLabelChange, onMoveVertex }: { dr
   );
 }
 
+function MapColorPicker({ color, onChange }: { color: MapHotAreaColor; onChange: (nextColor: MapHotAreaColor) => void }) {
+  return (
+    <div aria-label="选择标绘边框颜色" className="map-color-picker">
+      {MAP_HOT_AREA_COLOR_OPTIONS.map((option) => (
+        <button
+          aria-label={`选择${option.label}边框`}
+          aria-pressed={color === option.value}
+          className={color === option.value ? "is-selected" : ""}
+          key={option.value}
+          onClick={() => onChange(option.value)}
+          title={`选择${option.label}边框`}
+          type="button"
+        >
+          <span style={{ backgroundColor: option.value }} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, onOpenArea, onOpenIssues, onCreateDrawing, onUpdateArea }: DashboardTileMapProps) {
   const [mode, setMode] = useState<MapMode>("idle");
   const [drawingPoints, setDrawingPoints] = useState<LatLngTuple[]>([]);
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
   const [selectedDrawing, setSelectedDrawing] = useState<MapDrawingDraft | null>(null);
   const [selectedLabel, setSelectedLabel] = useState("");
+  const [selectedColor, setSelectedColor] = useState<MapHotAreaColor>(defaultMapAreaColor);
   const [savingArea, setSavingArea] = useState(false);
   const tileMetadata = activeTileMap?.tileMetadata;
   const mapBounds = tileMetadata?.bounds ?? { west: 121.47531509399414, east: 121.49969100952148, north: 31.297621354424027, south: 31.276496883214108 };
@@ -193,7 +230,7 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
 
   const finishDrawing = () => {
     if (drawingMode === "idle" || drawingPoints.length < minimumPoints) return;
-    onCreateDrawing({ shape: drawingMode, coordinates: drawingPoints });
+    onCreateDrawing({ shape: drawingMode, coordinates: drawingPoints, color: selectedColor });
     setMode("idle");
     setDrawingPoints([]);
   };
@@ -202,6 +239,7 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
     setSelectedAreaId(area.id);
     setSelectedDrawing(editableGeometry(area, mapBounds));
     setSelectedLabel(area.label);
+    setSelectedColor(areaColor(area));
   };
 
   const cancelEdit = () => {
@@ -218,6 +256,7 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
       await onUpdateArea(selectedArea, {
         label: selectedLabel.trim(),
         polygon: JSON.stringify(selectedDrawing),
+        color: selectedColor,
       });
       cancelEdit();
     } finally {
@@ -238,6 +277,7 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
         <Button aria-label="画道路线" className={mode === "line" ? "is-active" : ""} icon={<PencilLine size={16} />} onClick={() => startDrawing("line")} title="画道路线">画道路</Button>
         <Button aria-label="圈选小区" className={mode === "polygon" ? "is-active" : ""} icon={<PencilLine size={16} />} onClick={() => startDrawing("polygon")} title="圈选小区">圈小区</Button>
         <Button aria-label="编辑标绘" className={editMode ? "is-active" : ""} icon={<Pencil size={16} />} onClick={() => { setMode("edit"); setDrawingPoints([]); }} title="编辑已有标绘">编辑</Button>
+        <MapColorPicker color={selectedColor} onChange={setSelectedColor} />
         {editMode ? (
           <>
             <Button aria-label="保存区域修改" disabled={!selectedArea || !selectedDrawing || !selectedLabel.trim()} icon={<Save size={16} />} loading={savingArea} onClick={saveEdit} title="保存区域修改">保存</Button>
@@ -254,7 +294,7 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
       <MapContainer attributionControl={false} bounds={bounds} center={center} key={activeTileMap?.id ?? "quyang-static-map"} maxBounds={bounds} maxBoundsViscosity={1} maxZoom={tileMetadata?.maxZoom ?? 18} minZoom={tileMetadata?.minZoom ?? 16} scrollWheelZoom zoom={Math.min(tileMetadata?.maxZoom ?? 18, Math.max(tileMetadata?.minZoom ?? 16, 17))} zoomControl={false}>
         <ZoomControl position="bottomright" />
         <TileLayer bounds={bounds} keepBuffer={1} maxNativeZoom={tileMetadata?.maxZoom ?? 18} minNativeZoom={tileMetadata?.minZoom ?? 16} noWrap tileSize={256} updateWhenIdle url={tileUrl} />
-        <DrawingLayer drawingMode={drawingMode} points={drawingPoints} onAddPoint={appendDrawingPoint} onClosePolygon={finishDrawing} />
+        <DrawingLayer color={selectedColor} drawingMode={drawingMode} points={drawingPoints} onAddPoint={appendDrawingPoint} onClosePolygon={finishDrawing} />
         {hotAreas.map((area) => {
           const issueCount = issueCountByObject[area.label] ?? 0;
           const geometry = parseAreaGeometry(area);
@@ -273,11 +313,11 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
             },
           };
           const tooltip = isSelected ? null : <Tooltip className={`dashboard-map-label ${area.objectType}`} direction="center" opacity={1} permanent><strong>{area.label}</strong><span>{objectTypeLabel(area)} / 问题 {issueCount}</span></Tooltip>;
-          if (geometry?.shape === "line") return <Polyline eventHandlers={eventHandlers} key={area.id} pathOptions={areaStyle(area.objectType)} positions={geometry.coordinates}>{tooltip}</Polyline>;
-          if (geometry?.shape === "polygon") return <Polygon eventHandlers={eventHandlers} key={area.id} pathOptions={areaStyle(area.objectType)} positions={geometry.coordinates}>{tooltip}</Polygon>;
-          return <Rectangle bounds={areaBounds(area, mapBounds)} eventHandlers={eventHandlers} key={area.id} pathOptions={areaStyle(area.objectType)}>{tooltip}</Rectangle>;
+          if (geometry?.shape === "line") return <Polyline eventHandlers={eventHandlers} key={area.id} pathOptions={areaStyle(area)} positions={geometry.coordinates}>{tooltip}</Polyline>;
+          if (geometry?.shape === "polygon") return <Polygon eventHandlers={eventHandlers} key={area.id} pathOptions={areaStyle(area)} positions={geometry.coordinates}>{tooltip}</Polygon>;
+          return <Rectangle bounds={areaBounds(area, mapBounds)} eventHandlers={eventHandlers} key={area.id} pathOptions={areaStyle(area)}>{tooltip}</Rectangle>;
         })}
-        {editMode && selectedDrawing ? <EditableAreaLayer drawing={selectedDrawing} label={selectedLabel} onLabelChange={setSelectedLabel} onMoveVertex={updateVertex} /> : null}
+        {editMode && selectedDrawing ? <EditableAreaLayer color={selectedColor} drawing={selectedDrawing} label={selectedLabel} onLabelChange={setSelectedLabel} onMoveVertex={updateVertex} /> : null}
         <CircleMarker center={[31.2875, 121.4868]} eventHandlers={{ click: () => onOpenIssues("pending") }} pathOptions={{ color: "#e74747", fillColor: "#e74747", fillOpacity: 0.95 }} radius={8}><Tooltip direction="top">待处理问题</Tooltip></CircleMarker>
         <CircleMarker center={[31.2839, 121.491]} eventHandlers={{ click: () => onOpenIssues("processing") }} pathOptions={{ color: "#f59a23", fillColor: "#f59a23", fillOpacity: 0.95 }} radius={8}><Tooltip direction="top">处理中问题</Tooltip></CircleMarker>
         <CircleMarker center={[31.2805, 121.4842]} eventHandlers={{ click: () => onOpenIssues("verified") }} pathOptions={{ color: "#20a66a", fillColor: "#20a66a", fillOpacity: 0.95 }} radius={8}><Tooltip direction="top">复查通过问题</Tooltip></CircleMarker>

@@ -289,7 +289,7 @@ export class InspectionReadRepository {
     return this.database.mapHotArea.findMany({
       where: { mapAssetId },
       orderBy: { label: "asc" },
-      select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true },
+      select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true, color: true },
     });
   }
 

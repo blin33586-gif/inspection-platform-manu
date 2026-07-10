@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import type { ObjectType } from "@xunjianbao/shared";
+import { MAP_HOT_AREA_COLOR_OPTIONS, type MapHotAreaColor, type ObjectType } from "@xunjianbao/shared";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
@@ -14,14 +14,17 @@ interface CreateHotAreaInput {
   width?: string;
   height?: string;
   polygon?: string;
+  color?: string;
 }
 
 interface UpdateHotAreaInput {
   label?: string;
   polygon?: string;
+  color?: string;
 }
 
 const allowedObjectTypes: ObjectType[] = ["community", "road", "point", "street"];
+const allowedMapHotAreaColors = new Set<MapHotAreaColor>(MAP_HOT_AREA_COLOR_OPTIONS.map((option) => option.value));
 
 @Injectable()
 export class MapHotAreaService {
@@ -55,8 +58,9 @@ export class MapHotAreaService {
         width: this.parseOptionalNumber(input.width),
         height: this.parseOptionalNumber(input.height),
         polygon,
+        color: this.parseOptionalColor(input.color),
       },
-      select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true },
+      select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true, color: true },
     });
 
     await this.database.mapAsset.update({
@@ -84,7 +88,7 @@ export class MapHotAreaService {
     });
     if (!existing) throw new NotFoundException("Map hot area not found");
 
-    const data: { label?: string; polygon?: string } = {};
+    const data: { label?: string; polygon?: string; color?: MapHotAreaColor } = {};
     if (input.label !== undefined) {
       if (!input.label.trim()) throw new BadRequestException("Hot area label is required");
       data.label = input.label.trim();
@@ -93,12 +97,13 @@ export class MapHotAreaService {
       if (!input.polygon.trim()) throw new BadRequestException("Map geometry is required");
       data.polygon = JSON.stringify(parseMapGeometry(input.polygon));
     }
+    if (input.color !== undefined) data.color = this.parseRequiredColor(input.color);
     if (!Object.keys(data).length) throw new BadRequestException("No map hot area fields to update");
 
     const hotArea = await this.database.mapHotArea.update({
       where: { id: existing.id },
       data,
-      select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true },
+      select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true, color: true },
     });
 
     await this.auditService.record({
@@ -116,5 +121,16 @@ export class MapHotAreaService {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) throw new BadRequestException("Invalid hot area coordinate");
     return parsed;
+  }
+
+  private parseOptionalColor(value: string | undefined): MapHotAreaColor | null {
+    if (value === undefined) return null;
+    return this.parseRequiredColor(value);
+  }
+
+  private parseRequiredColor(value: string): MapHotAreaColor {
+    const color = value.trim() as MapHotAreaColor;
+    if (!allowedMapHotAreaColors.has(color)) throw new BadRequestException("Invalid map hot area color");
+    return color;
   }
 }

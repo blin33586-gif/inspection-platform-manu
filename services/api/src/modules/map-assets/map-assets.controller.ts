@@ -129,6 +129,7 @@ export class MapAssetsController {
       width?: string;
       height?: string;
       polygon?: string;
+      color?: string;
     },
   ) {
     return ok(await this.hotAreaService.create(id, body));
@@ -138,7 +139,7 @@ export class MapAssetsController {
   async updateHotArea(
     @Param("id") id: string,
     @Param("hotAreaId") hotAreaId: string,
-    @Body() body: { label?: string; polygon?: string },
+    @Body() body: { label?: string; polygon?: string; color?: string },
   ) {
     return ok(await this.hotAreaService.update(id, hotAreaId, body));
   }

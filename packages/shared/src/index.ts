@@ -1,5 +1,16 @@
 export type ObjectType = "community" | "road" | "point" | "street";
 
+export const MAP_HOT_AREA_COLOR_OPTIONS = [
+  { value: "#1677ff", label: "蓝色" },
+  { value: "#13c2c2", label: "青色" },
+  { value: "#52c41a", label: "绿色" },
+  { value: "#fa8c16", label: "橙色" },
+  { value: "#f5222d", label: "红色" },
+  { value: "#722ed1", label: "紫色" },
+] as const;
+
+export type MapHotAreaColor = (typeof MAP_HOT_AREA_COLOR_OPTIONS)[number]["value"];
+
 export type IssueStatus =
   | "pending"
   | "processing"
@@ -110,6 +121,7 @@ export interface MapHotAreaSummary {
   width?: number | null;
   height?: number | null;
   polygon?: string | null;
+  color?: MapHotAreaColor | null;
 }
 
 export interface PageResult<T> {

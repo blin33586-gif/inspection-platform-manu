@@ -50,3 +50,41 @@ test("updates a named community area without changing its linked archive", async
   assert.equal(result.objectId, "c-yutian");
   assert.equal(auditRecords[0].action, "map.hotArea.update");
 });
+
+test("stores a selected map boundary color", async () => {
+  const updateCalls: Array<{ data: Record<string, unknown> }> = [];
+  const database = {
+    mapHotArea: {
+      findFirst: async () => ({
+        id: "ha-quyang",
+        label: "曲阳路",
+        objectType: "road",
+        objectId: "r-quyang",
+        mapAsset: { name: "曲阳街道总览图" },
+      }),
+      update: async (input: { data: Record<string, unknown> }) => {
+        updateCalls.push(input);
+        return {
+          id: "ha-quyang",
+          label: "曲阳路",
+          objectType: "road",
+          objectId: "r-quyang",
+          x: null,
+          y: null,
+          width: null,
+          height: null,
+          polygon: null,
+          color: input.data.color,
+        };
+      },
+    },
+  };
+  const auditService = { record: async () => undefined };
+  const service = new MapHotAreaService(database as never, auditService as never);
+
+  const result = await service.update("map-street-main", "ha-quyang", { color: "#52c41a" });
+
+  assert.equal(updateCalls.length, 1);
+  assert.equal(updateCalls[0].data.color, "#52c41a");
+  assert.equal(result.color, "#52c41a");
+});

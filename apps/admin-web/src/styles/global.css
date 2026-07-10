@@ -439,7 +439,9 @@ h4 {
 .dashboard-map-draw-tools {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+  max-width: calc(100% - 32px);
   position: absolute;
   top: 16px;
   left: 16px;
@@ -460,6 +462,40 @@ h4 {
   border-color: #0071e3;
   background: #0071e3;
   color: #fff;
+}
+
+.map-color-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 6px;
+  border-left: 1px solid rgba(15, 36, 63, 0.14);
+}
+
+.map-color-picker button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.map-color-picker button span {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(16, 32, 51, 0.24);
+}
+
+.map-color-picker button.is-selected {
+  border-color: #102033;
+  background: rgba(16, 32, 51, 0.08);
 }
 
 .map-drawing-finish-icon,

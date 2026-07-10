@@ -141,6 +141,7 @@ model MapHotArea {
   width      Float?
   height     Float?
   polygon    String?
+  color      String?
 
   mapAsset      MapAsset       @relation(fields: [mapAssetId], references: [id])
   managedObject ManagedObject? @relation(fields: [objectId], references: [id])

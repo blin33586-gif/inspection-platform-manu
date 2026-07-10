@@ -71,6 +71,7 @@ export function DashboardPage() {
         objectType: values.objectType,
         objectId: values.objectId,
         polygon: JSON.stringify(drawing),
+        color: drawing.color,
       });
       message.success("地图标绘已保存");
       setDrawing(null);
