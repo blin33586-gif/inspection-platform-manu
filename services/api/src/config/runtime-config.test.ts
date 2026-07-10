@@ -28,3 +28,12 @@ test("runtime configuration exposes configured credentials", () => {
   assert.equal(config.adminPassword, "password");
   assert.equal(config.authSecret, "secret");
 });
+
+for (const port of ["", "0", "-1", "65536", "1.5", "not-a-port"]) {
+  test(`runtime configuration rejects invalid API_PORT value ${JSON.stringify(port)}`, () => {
+    assert.throws(
+      () => resolveRuntimeConfig({ API_PORT: port }),
+      /API_PORT must be a valid TCP port/,
+    );
+  });
+}

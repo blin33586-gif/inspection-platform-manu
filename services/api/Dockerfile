@@ -19,6 +19,7 @@ WORKDIR /app/services/api
 
 ENV API_PORT=3010
 ENV DATABASE_URL=file:/data/xunjianbao.db
+ENV NODE_ENV=production
 
 EXPOSE 3010
 

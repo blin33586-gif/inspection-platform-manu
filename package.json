@@ -6,7 +6,7 @@
   "scripts": {
     "dev:admin": "pnpm --filter @xunjianbao/admin-web dev",
     "dev:api": "pnpm --filter @xunjianbao/api dev",
-    "start:api": "pnpm --filter @xunjianbao/api start",
+    "start:api": "NODE_ENV=production corepack pnpm --filter @xunjianbao/api start",
     "build": "pnpm -r build",
     "build:admin": "pnpm --filter @xunjianbao/admin-web build",
     "build:api": "pnpm --filter @xunjianbao/api build",
