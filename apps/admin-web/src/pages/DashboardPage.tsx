@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import type { IssueSummary, MapHotAreaSummary } from "@xunjianbao/shared";
 import { ApiResourceError } from "../components/ApiResourceError";
+import { DashboardTileMap } from "../components/DashboardTileMap";
 import { useApiResource } from "../hooks/useApiResource";
 
 interface DashboardMapData {
@@ -27,16 +28,13 @@ function objectPath(area: MapHotAreaSummary) {
   return "/map-assets/map-street-main";
 }
 
-function objectTypeLabel(area: MapHotAreaSummary) {
-  if (area.objectType === "community") return "小区";
-  if (area.objectType === "road") return "道路";
-  if (area.objectType === "point") return "点位";
-  return "街道";
-}
-
 export function DashboardPage() {
   const navigate = useNavigate();
   const { data: mapData, error, reload } = useApiResource<DashboardMapData>("/dashboard/map", fallbackMapData);
+  const issueCountByObject = mapData.issues.reduce<Record<string, number>>((counts, issue) => {
+    counts[issue.objectName] = (counts[issue.objectName] ?? 0) + 1;
+    return counts;
+  }, {});
 
   if (error) return <ApiResourceError error={error} onRetry={reload} />;
 
@@ -47,34 +45,12 @@ export function DashboardPage() {
       </div>
 
       <div className="tif-map-stage">
-        <div className="tif-map-canvas">
-          <div className="tif-road tif-road-main">曲阳路</div>
-          <div className="tif-road tif-road-second">密云路</div>
-          <div className="tif-river">河道绿化带</div>
-          {mapData.hotAreas.map((area) => {
-            const relatedIssueCount = mapData.issues.filter((issue) => issue.objectName === area.label).length;
-            return (
-              <button
-                className={`dashboard-hot-area ${area.objectType}`}
-                key={area.id}
-                style={{
-                  left: `${area.x ?? 10}%`,
-                  top: `${area.y ?? 10}%`,
-                  width: `${area.width ?? 20}%`,
-                  height: `${area.height ?? 10}%`,
-                }}
-                type="button"
-                onClick={() => navigate(objectPath(area))}
-              >
-                {area.label}
-                <span>{objectTypeLabel(area)} / 问题 {relatedIssueCount}</span>
-              </button>
-            );
-          })}
-          <button className="issue-dot urgent" type="button" aria-label="待处理问题" onClick={() => navigate("/issues?status=pending")} />
-          <button className="issue-dot pending" type="button" aria-label="处理中问题" onClick={() => navigate("/issues?status=processing")} />
-          <button className="issue-dot done" type="button" aria-label="复查通过问题" onClick={() => navigate("/issues?status=verified")} />
-        </div>
+        <DashboardTileMap
+          hotAreas={mapData.hotAreas}
+          issueCountByObject={issueCountByObject}
+          onOpenArea={(area) => navigate(objectPath(area))}
+          onOpenIssues={(status) => navigate(`/issues?status=${status}`)}
+        />
       </div>
     </section>
   );
