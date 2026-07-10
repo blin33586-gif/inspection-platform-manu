@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Input, message, Select } from "antd";
+import { Button, Input, message, Modal, Select } from "antd";
 import {
   AlertTriangle,
   Bell,
@@ -15,8 +15,11 @@ import {
   ListChecks,
   MapPin,
   PlayCircle,
+  Plus,
   ScanSearch,
+  Settings2,
   Timer,
+  Trash2,
   UploadCloud,
   Video,
   Wrench,
@@ -62,6 +65,45 @@ interface IssueEvent {
   linkedObject: string;
   suggestion: string;
   detections: string[];
+}
+
+type ReviewCategoryTone = "orange" | "blue" | "green" | "purple";
+
+interface ReviewCategory {
+  id: string;
+  name: string;
+  keywords: string[];
+  tone: ReviewCategoryTone;
+}
+
+const reviewCategoryStorageKey = "xunjianbao.review-categories";
+
+const defaultReviewCategories: ReviewCategory[] = [
+  { id: "engineering-machinery", name: "工程机械", keywords: ["挖掘机", "推土机", "吊车", "工程机械"], tone: "orange" },
+  { id: "engineering-vehicles", name: "工程车辆", keywords: ["工程车辆", "施工车辆", "渣土车", "车辆"], tone: "blue" },
+  { id: "bare-soil", name: "裸土堆料", keywords: ["裸土", "堆料", "堆放"], tone: "green" },
+  { id: "temporary-buildings", name: "临时建筑", keywords: ["临时建筑", "彩钢板", "工棚"], tone: "purple" },
+];
+
+function loadReviewCategories() {
+  if (typeof window === "undefined") return defaultReviewCategories;
+  try {
+    const stored = window.localStorage.getItem(reviewCategoryStorageKey);
+    const parsed = stored ? JSON.parse(stored) : null;
+    if (Array.isArray(parsed) && parsed.every((item) => item?.id && item?.name && Array.isArray(item?.keywords))) {
+      return parsed as ReviewCategory[];
+    }
+  } catch {
+    // Keep the built-in categories if local configuration is unavailable.
+  }
+  return defaultReviewCategories;
+}
+
+function reviewCategoryIcon(tone: ReviewCategoryTone) {
+  if (tone === "orange") return <Wrench size={16} />;
+  if (tone === "green") return <AlertTriangle size={16} />;
+  if (tone === "purple") return <Film size={16} />;
+  return <Video size={16} />;
 }
 
 const thumb = (index: number) => mediaLibraryItems[index]?.thumbnailUrl ?? mediaLibraryItems[0]?.thumbnailUrl ?? "";
@@ -250,6 +292,10 @@ export function MediaLibraryPage() {
   const [taskStatus, setTaskStatus] = useState<TaskStatus | "全部状态">("全部状态");
   const [selectedTaskId, setSelectedTaskId] = useState(videoTasks[0].id);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [reviewCategories, setReviewCategories] = useState<ReviewCategory[]>(loadReviewCategories);
+  const [selectedReviewCategoryId, setSelectedReviewCategoryId] = useState("all");
+  const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
+  const [categoryDrafts, setCategoryDrafts] = useState<ReviewCategory[]>([]);
 
   const filteredTasks = useMemo(() => videoTasks.filter((item) => {
     const keywordMatched = !keyword || `${item.name}${item.videoName}${item.objectName}${item.source}`.includes(keyword);
@@ -259,7 +305,13 @@ export function MediaLibraryPage() {
   }), [keyword, source, taskStatus]);
 
   const selectedTask = videoTasks.find((item) => item.id === selectedTaskId) ?? videoTasks[0];
-  const selectedTaskEvents = issueEvents.filter((item) => item.taskId === selectedTask.id);
+  const taskReviewEvents = issueEvents.filter((item) => item.taskId === selectedTask.id);
+  const selectedReviewCategory = reviewCategories.find((item) => item.id === selectedReviewCategoryId);
+  const selectedTaskEvents = taskReviewEvents.filter((item) => {
+    if (!selectedReviewCategory) return true;
+    const searchableText = `${item.type} ${item.detections.join(" ")}`;
+    return selectedReviewCategory.keywords.some((keyword) => searchableText.includes(keyword));
+  });
   const selectedEvent = selectedEventId
     ? issueEvents.find((item) => item.id === selectedEventId) ?? null
     : null;
@@ -270,6 +322,50 @@ export function MediaLibraryPage() {
   const selectTask = (id: string) => {
     setSelectedTaskId(id);
     setSelectedEventId(null);
+  };
+
+  const openCategoryManager = () => {
+    setCategoryDrafts(reviewCategories.map((item) => ({ ...item, keywords: [...item.keywords] })));
+    setIsCategoryManagerOpen(true);
+  };
+
+  const updateCategoryDraft = (id: string, field: "name" | "keywords", value: string) => {
+    setCategoryDrafts((items) => items.map((item) => {
+      if (item.id !== id) return item;
+      return field === "name"
+        ? { ...item, name: value }
+        : { ...item, keywords: value.split(/[、,，]/).map((keyword) => keyword.trim()).filter(Boolean) };
+    }));
+  };
+
+  const addCategoryDraft = () => {
+    const nextIndex = categoryDrafts.length + 1;
+    const tones: ReviewCategoryTone[] = ["blue", "green", "orange", "purple"];
+    setCategoryDrafts((items) => [
+      ...items,
+      { id: `custom-${Date.now()}`, name: `识别维度 ${nextIndex}`, keywords: [], tone: tones[items.length % tones.length] },
+    ]);
+  };
+
+  const saveReviewCategories = () => {
+    const normalized = categoryDrafts
+      .map((item) => ({ ...item, name: item.name.trim(), keywords: item.keywords.map((keyword) => keyword.trim()).filter(Boolean) }))
+      .filter((item) => item.name);
+    if (!normalized.length) {
+      message.error("请至少保留一个算法识别维度");
+      return;
+    }
+    if (new Set(normalized.map((item) => item.name)).size !== normalized.length) {
+      message.error("识别维度名称不能重复");
+      return;
+    }
+    setReviewCategories(normalized);
+    window.localStorage.setItem(reviewCategoryStorageKey, JSON.stringify(normalized));
+    if (selectedReviewCategoryId !== "all" && !normalized.some((item) => item.id === selectedReviewCategoryId)) {
+      setSelectedReviewCategoryId("all");
+    }
+    setIsCategoryManagerOpen(false);
+    message.success("算法识别维度已保存");
   };
 
   const createAnalysisTask = () => {
@@ -357,30 +453,44 @@ export function MediaLibraryPage() {
         </section>
 
         <div className="media-main-grid video-main-grid">
-          <section className="media-panel-card video-review-strip">
-            <div className="media-panel-head">
-              <h3>待复核类型</h3>
-              <button type="button" onClick={() => navigate("/issues")}>问题台账</button>
-            </div>
-            <div className="media-source-list review-type-list">
-              {[
-                { name: "工程机械", total: 5, tone: "orange", icon: <Wrench size={18} /> },
-                { name: "工程车辆", total: 4, tone: "blue", icon: <Video size={18} /> },
-                { name: "裸土堆料", total: 3, tone: "green", icon: <AlertTriangle size={18} /> },
-                { name: "临时建筑", total: 2, tone: "purple", icon: <Film size={18} /> },
-              ].map((item) => (
-                <button key={item.name} type="button" onClick={() => message.info(`筛选 ${item.name} 事件`)}>
-                  <span className={`source-icon ${item.tone}`}>{item.icon}</span>
-                  <strong>{item.name}</strong>
-                  <em>{item.total}</em>
+          <section className="media-gallery-panel video-workspace-panel">
+            <div className="video-workspace-header">
+              <div className="video-review-strip">
+                <strong>待复核类型</strong>
+                <div className="video-review-filters" role="group" aria-label="算法识别维度筛选">
+                  <button
+                    className={`video-review-filter ${selectedReviewCategoryId === "all" ? "active" : ""}`}
+                    type="button"
+                    onClick={() => setSelectedReviewCategoryId("all")}
+                  >
+                    全部 <em>{taskReviewEvents.length}</em>
+                  </button>
+                  {reviewCategories.map((item) => {
+                    const categoryCount = taskReviewEvents.filter((event) => {
+                      const searchableText = `${event.type} ${event.detections.join(" ")}`;
+                      return item.keywords.some((keyword) => searchableText.includes(keyword));
+                    }).length;
+                    return (
+                      <button
+                        className={`video-review-filter ${selectedReviewCategoryId === item.id ? "active" : ""}`}
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedReviewCategoryId(item.id)}
+                      >
+                        <span className={`source-icon ${item.tone}`}>{reviewCategoryIcon(item.tone)}</span>
+                        <b>{item.name}</b>
+                        <em>{categoryCount}</em>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button className="video-review-manage" type="button" onClick={openCategoryManager}>
+                  <Settings2 size={16} /> 管理分类
                 </button>
-              ))}
-            </div>
-          </section>
+                <button className="video-review-ledger" type="button" onClick={() => navigate("/issues")}>问题台账</button>
+              </div>
 
-          <div className="video-workspace-split">
-            <section className="media-gallery-panel video-task-panel">
-              <div className="media-gallery-toolbar">
+              <div className="media-gallery-toolbar video-task-toolbar">
                 <strong>视频任务</strong>
                 <span>已筛选 {filteredTasks.length} 个任务</span>
                 <button type="button" onClick={createAnalysisTask}>重新分析</button>
@@ -391,7 +501,10 @@ export function MediaLibraryPage() {
                   <ListChecks size={18} />
                 </div>
               </div>
+            </div>
 
+            <div className="video-workspace-split">
+              <section className="video-task-panel">
               <div className="video-task-list">
                 {filteredTasks.map((item) => (
                   <button
@@ -425,11 +538,11 @@ export function MediaLibraryPage() {
               </div>
             </section>
 
-            <section className="media-gallery-panel event-section video-event-panel">
+              <section className="event-section video-event-panel">
               <div className="event-section-head">
                 <div>
                   <h3>疑似问题事件</h3>
-                  <p>当前任务的 AI 疑似问题，点击查看详情并进行复核。</p>
+                  <p>{selectedReviewCategory ? `当前筛选：${selectedReviewCategory.name}` : "当前任务的 AI 疑似问题"}</p>
                 </div>
                 <span>{selectedTaskEvents.length} 个事件</span>
               </div>
@@ -460,7 +573,8 @@ export function MediaLibraryPage() {
                 ))}
               </div>
             </section>
-          </div>
+            </div>
+          </section>
 
           {selectedEvent ? <div className="event-detail-layer" role="presentation" onClick={() => setSelectedEventId(null)}>
             <aside className="media-detail-panel video-event-detail" role="dialog" aria-modal="true" aria-label="疑似事件详情" onClick={(event) => event.stopPropagation()}>
@@ -502,6 +616,44 @@ export function MediaLibraryPage() {
             </aside>
           </div> : null}
         </div>
+
+        <Modal
+          cancelText="取消"
+          className="review-category-modal"
+          okText="保存维度"
+          onCancel={() => setIsCategoryManagerOpen(false)}
+          onOk={saveReviewCategories}
+          open={isCategoryManagerOpen}
+          title="算法识别维度"
+        >
+          <p className="review-category-hint">名称用于筛选和报告归类；关键词用于匹配 AI 识别结果，可按实际模型能力维护。</p>
+          <div className="review-category-editor">
+            {categoryDrafts.map((item) => (
+              <article key={item.id}>
+                <Input
+                  aria-label={`${item.name}名称`}
+                  placeholder="识别维度名称"
+                  value={item.name}
+                  onChange={(event) => updateCategoryDraft(item.id, "name", event.target.value)}
+                />
+                <Input
+                  aria-label={`${item.name}关键词`}
+                  placeholder="关键词，使用顿号或逗号分隔"
+                  value={item.keywords.join("、")}
+                  onChange={(event) => updateCategoryDraft(item.id, "keywords", event.target.value)}
+                />
+                <Button
+                  aria-label={`删除${item.name}`}
+                  danger
+                  icon={<Trash2 size={16} />}
+                  type="text"
+                  onClick={() => setCategoryDrafts((items) => items.filter((draft) => draft.id !== item.id))}
+                />
+              </article>
+            ))}
+          </div>
+          <Button block icon={<Plus size={16} />} type="dashed" onClick={addCategoryDraft}>新增识别维度</Button>
+        </Modal>
       </main>
     </section>
   );
