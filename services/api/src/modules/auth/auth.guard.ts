@@ -8,7 +8,11 @@ export class AuthGuard implements CanActivate {
 
   canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<Request>();
-    if (request.method === "OPTIONS" || request.path === "/api/v1/auth/login") return true;
+    if (
+      request.method === "OPTIONS"
+      || request.path === "/api/v1/auth/login"
+      || request.path === "/api/v1/health"
+    ) return true;
 
     const token = this.tokenFromRequest(request);
     if (this.authService.verifyToken(token)) return true;

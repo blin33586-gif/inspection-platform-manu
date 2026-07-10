@@ -1,13 +1,13 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module.js";
-
-const port = Number(process.env.API_PORT ?? process.env.PORT ?? 3010);
+import { resolveRuntimeConfig } from "./config/runtime-config.js";
 
 async function bootstrap() {
+  const config = resolveRuntimeConfig(process.env);
   const app = await NestFactory.create(AppModule, { cors: true });
   app.setGlobalPrefix("api/v1");
-  await app.listen(port, "127.0.0.1");
+  await app.listen(config.port, config.host);
 }
 
 void bootstrap();

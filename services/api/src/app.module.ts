@@ -10,11 +10,13 @@ import { DatabaseModule } from "./database/database.module.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 import { AuditModule } from "./modules/audit/audit.module.js";
 import { ManagedObjectsModule } from "./modules/managed-objects/managed-objects.module.js";
+import { HealthModule } from "./modules/health/health.module.js";
 
 @Module({
   imports: [
     DatabaseModule,
     AuthModule,
+    HealthModule,
     AuditModule,
     ManagedObjectsModule,
     DashboardModule,
