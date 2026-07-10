@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: xunjianbao
+      POSTGRES_USER: xunjianbao
+      POSTGRES_PASSWORD: xunjianbao-local-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xunjianbao -d xunjianbao"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  api:
+    environment:
+      DATABASE_URL: postgresql://xunjianbao:xunjianbao-local-dev@postgres:5432/xunjianbao?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

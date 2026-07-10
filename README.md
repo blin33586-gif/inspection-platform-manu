@@ -1,13 +1,13 @@
 # 巡检宝项目运行与打包说明
 
-本项目是一个 Node.js monorepo，包含前端、后端服务、共享类型包和 SQLite 数据库。
+本项目是一个 Node.js monorepo，包含前端、后端服务、共享类型包和 PostgreSQL 数据库。
 
 ## 1. 项目结构
 
 ```text
 inspection-platform-manu/
 ├── apps/admin-web/          # 前端管理端，React + Vite + Ant Design
-├── services/api/            # 后端服务，NestJS + Prisma + SQLite
+├── services/api/            # 后端服务，NestJS + Prisma + PostgreSQL
 ├── packages/shared/         # 前后端共享 TypeScript 类型
 ├── prototype/               # 早期原型资料
 ├── docs/                    # 开发阶段记录
@@ -80,7 +80,7 @@ prisma
 根目录 `.env.example` 内容如下：
 
 ```env
-DATABASE_URL=file:./dev.db
+DATABASE_URL=postgresql://xunjianbao:change-me@127.0.0.1:5432/xunjianbao?schema=public
 API_PORT=3010
 VITE_API_BASE_URL=http://127.0.0.1:3010/api/v1
 ADMIN_USERNAME=admin
@@ -97,7 +97,7 @@ cp .env.example .env
 生产环境必须修改：
 
 ```env
-DATABASE_URL=file:/data/xunjianbao/xunjianbao.db
+DATABASE_URL=postgresql://xunjianbao_app:URL编码后的强密码@腾讯云数据库内网地址:5432/xunjianbao?schema=public&sslmode=require
 API_PORT=3010
 VITE_API_BASE_URL=/api/v1
 ADMIN_USERNAME=你的管理员账号
@@ -107,7 +107,7 @@ AUTH_SECRET=一串随机长密钥
 
 说明：
 
-- `DATABASE_URL`：SQLite 数据库文件位置。
+- `DATABASE_URL`：PostgreSQL 连接串；生产环境使用腾讯云 TencentDB for PostgreSQL 的内网地址。
 - `API_PORT`：后端服务端口，默认 `3010`。
 - `VITE_API_BASE_URL`：前端请求 API 的地址。
 - `ADMIN_USERNAME` / `ADMIN_PASSWORD`：管理端登录账号密码。
@@ -115,35 +115,25 @@ AUTH_SECRET=一串随机长密钥
 
 ## 5. 数据库初始化
 
-后端使用 Prisma + SQLite。
+后端使用 Prisma + PostgreSQL。本地可连接 Homebrew PostgreSQL 或通过 Docker 启动 PostgreSQL；腾讯云生产环境使用 TencentDB for PostgreSQL。
 
 首次运行前执行：
 
 ```bash
 pnpm db:generate
-pnpm db:push
+pnpm db:migrate
 pnpm db:seed
 ```
 
 命令含义：
 
 - `pnpm db:generate`：生成 Prisma Client。
-- `pnpm db:push`：根据 `services/api/prisma/schema.prisma` 创建或更新 SQLite 表结构。
+- `pnpm db:migrate`：在本地开发库创建并应用 Prisma 数据库迁移。
 - `pnpm db:seed`：写入演示数据。正式生产环境如果不想要演示数据，可以不执行。
 
-默认开发数据库文件：
+生产发布使用 `pnpm db:deploy`，只应用已提交的迁移文件；不要在生产环境执行 `db:migrate`、`db:push` 或 `db:seed`。
 
-```text
-services/api/dev.db
-```
-
-生产建议放到固定目录，例如：
-
-```text
-/data/xunjianbao/xunjianbao.db
-```
-
-并定期备份这个文件。
+从原有 SQLite 系统切换时，先备份旧库与上传文件，再执行一次 `pnpm db:migrate-sqlite` 导入历史业务记录。具体步骤见 [TencentDB-PostgreSQL 部署与迁移](docs/TencentDB-PostgreSQL部署与迁移.md)。
 
 ## 6. 本地开发运行
 
@@ -278,7 +268,7 @@ nano .env
 建议生产 `.env`：
 
 ```env
-DATABASE_URL=file:/data/xunjianbao/xunjianbao.db
+DATABASE_URL=postgresql://xunjianbao_app:URL编码后的强密码@腾讯云数据库内网地址:5432/xunjianbao?schema=public&sslmode=require
 API_PORT=3010
 VITE_API_BASE_URL=/api/v1
 ADMIN_USERNAME=admin
@@ -286,20 +276,14 @@ ADMIN_PASSWORD=换成强密码
 AUTH_SECRET=换成随机长字符串
 ```
 
-创建数据目录：
-
-```bash
-sudo mkdir -p /data/xunjianbao
-sudo chown -R $USER:$USER /data/xunjianbao
-```
-
 初始化数据库：
 
 ```bash
 pnpm db:generate
-pnpm db:push
-pnpm db:seed
+pnpm --filter @xunjianbao/api db:deploy
 ```
+
+全新环境可执行 `pnpm db:seed` 写入演示数据；从旧 SQLite 切换时使用 `pnpm --filter @xunjianbao/api db:migrate-sqlite`，不要同时执行 seed。
 
 构建前端：
 
@@ -436,17 +420,17 @@ API_HOST=0.0.0.0
 正式使用后至少备份三类内容：
 
 ```text
-/data/xunjianbao/xunjianbao.db       # SQLite 数据库
 /opt/xunjianbao/services/api/storage # 上传的报告、地图等文件
 /opt/xunjianbao/.env                 # 生产环境配置
 ```
 
-推荐每天备份数据库：
+数据库使用 TencentDB 自动备份与日志备份；建议每周额外保留一份逻辑备份：
 
 ```bash
-mkdir -p /data/backup/xunjianbao
-cp /data/xunjianbao/xunjianbao.db /data/backup/xunjianbao/xunjianbao-$(date +%F).db
+pg_dump "$DATABASE_URL" -Fc -f /data/backup/xunjianbao-$(date +%F).dump
 ```
+
+腾讯云实例配置、SQLite 数据迁移和本机验证步骤见 [TencentDB-PostgreSQL 部署与迁移](docs/TencentDB-PostgreSQL部署与迁移.md)。
 
 ## 14. 常用命令速查
 
@@ -460,7 +444,7 @@ pnpm install --frozen-lockfile
 
 ```bash
 pnpm db:generate
-pnpm db:push
+pnpm db:migrate
 pnpm db:seed
 ```
 
@@ -524,6 +508,6 @@ sudo systemctl status nginx
 - 巡检报告上传和查询
 - 地图资产上传和查询
 - 审计日志
-- SQLite 数据库存储
+- PostgreSQL 数据库存储（腾讯云 TencentDB for PostgreSQL）
 
 其中“报告编写页提交后同步到报告管理”的前端联动，目前使用浏览器本地归档；后续如果要变成多人共享和服务器持久化，需要继续补后端“报告编写提交接口”。

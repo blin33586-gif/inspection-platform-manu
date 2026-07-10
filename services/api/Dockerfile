@@ -18,9 +18,8 @@ RUN pnpm build:api
 WORKDIR /app/services/api
 
 ENV API_PORT=3010
-ENV DATABASE_URL=file:/data/xunjianbao.db
 ENV NODE_ENV=production
 
 EXPOSE 3010
 
-CMD ["sh", "-c", "mkdir -p /data storage/reports storage/map-assets && pnpm db:push && pnpm start"]
+CMD ["sh", "-c", "mkdir -p storage/reports storage/map-assets && pnpm db:deploy && pnpm start"]

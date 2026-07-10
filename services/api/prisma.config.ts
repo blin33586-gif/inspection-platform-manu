@@ -1,4 +1,5 @@
 import { defineConfig } from "prisma/config";
+import { resolveDatabaseUrl } from "./src/database/database-url.js";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -7,6 +8,6 @@ export default defineConfig({
     seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    url: process.env.DATABASE_URL ?? "file:./dev.db",
+    url: resolveDatabaseUrl(process.env),
   },
 });
