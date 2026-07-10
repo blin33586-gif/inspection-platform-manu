@@ -547,7 +547,7 @@ export function MediaLibraryPage() {
                 <span>{selectedTaskEvents.length} 个事件</span>
               </div>
               <div className="event-card-grid">
-                {selectedTaskEvents.map((item) => (
+                {selectedTaskEvents.length ? selectedTaskEvents.map((item) => (
                   <button
                     className={`issue-event-card ${selectedEvent?.id === item.id ? "active" : ""}`}
                     key={item.id}
@@ -570,7 +570,7 @@ export function MediaLibraryPage() {
                       </footer>
                     </div>
                   </button>
-                ))}
+                )) : <div className="event-empty-state">当前筛选条件下暂无疑似问题事件</div>}
               </div>
             </section>
             </div>
