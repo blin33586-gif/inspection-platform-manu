@@ -32,6 +32,7 @@
 - Modify: `services/api/src/modules/auth/auth.guard.ts` — 放行健康检查。
 - Modify: `services/api/package.json` — 增加 `test` 脚本。
 - Create: `apps/admin-web/src/api/api-client-error.ts` — 结构化 API 错误类型。
+- Create: `apps/admin-web/src/api/api-error-copy.ts` — API 错误状态到中文提示的纯函数。
 - Create: `apps/admin-web/src/components/ApiResourceError.tsx` — 统一错误页和重试按钮。
 - Modify: `apps/admin-web/src/api/client.ts` — 为所有请求抛出 `ApiClientError`。
 - Modify: `apps/admin-web/src/hooks/useApiResource.ts` — 暴露 `loading`、`error`、`hasLoaded`，不在失败时覆盖为样例数据。
@@ -212,6 +213,7 @@ git commit -m "feat: expose API failures to the frontend"
 
 **Files:**
 - Create: `apps/admin-web/src/components/ApiResourceError.tsx`
+- Create: `apps/admin-web/src/api/api-error-copy.ts`
 - Modify: `apps/admin-web/src/pages/DashboardPage.tsx`
 - Modify: `apps/admin-web/src/pages/CommunitiesPage.tsx`
 - Modify: `apps/admin-web/src/pages/RoadsPage.tsx`
@@ -230,7 +232,7 @@ git commit -m "feat: expose API failures to the frontend"
 ```ts
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getApiErrorCopy } from "./ApiResourceError.js";
+import { getApiErrorCopy } from "../api/api-error-copy.js";
 
 test("maps unauthorized errors to an explicit login instruction", () => {
   assert.equal(getApiErrorCopy({ status: 401 } as Error & { status: number }), "登录状态已失效，请重新登录后再试");
@@ -250,7 +252,11 @@ export function getApiErrorCopy(error: Error & { status?: number }) {
   if (error.status === 401) return "登录状态已失效，请重新登录后再试";
   return error.message || "数据加载失败，请检查服务连接后重试";
 }
+```
 
+`ApiResourceError.tsx` 只导入 `getApiErrorCopy` 并渲染：
+
+```tsx
 export function ApiResourceError({ error, onRetry }: { error: Error; onRetry: () => void }) {
   return <Result status="error" title="数据暂时无法加载" subTitle={getApiErrorCopy(error as Error & { status?: number })} extra={<Button type="primary" onClick={onRetry}>重新加载</Button>} />;
 }
@@ -279,7 +285,7 @@ Expected: exit code `0`.
 - [ ] **Step 6: 提交任务**
 
 ```bash
-git add apps/admin-web/src/components/ApiResourceError.tsx apps/admin-web/src/pages/DashboardPage.tsx apps/admin-web/src/pages/CommunitiesPage.tsx apps/admin-web/src/pages/RoadsPage.tsx apps/admin-web/src/pages/PointsPage.tsx apps/admin-web/src/pages/IssuesPage.tsx apps/admin-web/src/pages/ReportsPage.tsx apps/admin-web/src/pages/MapAssetsPage.tsx apps/admin-web/src/pages/AuditLogsPage.tsx
+git add apps/admin-web/src/api/api-error-copy.ts apps/admin-web/src/components/ApiResourceError.tsx apps/admin-web/src/pages/DashboardPage.tsx apps/admin-web/src/pages/CommunitiesPage.tsx apps/admin-web/src/pages/RoadsPage.tsx apps/admin-web/src/pages/PointsPage.tsx apps/admin-web/src/pages/IssuesPage.tsx apps/admin-web/src/pages/ReportsPage.tsx apps/admin-web/src/pages/MapAssetsPage.tsx apps/admin-web/src/pages/AuditLogsPage.tsx
 git commit -m "fix: show API failures instead of sample data"
 ```
 
