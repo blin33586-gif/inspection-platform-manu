@@ -158,7 +158,7 @@ button {
 .nav-dropdown {
   position: absolute;
   top: calc(100% - 2px);
-  left: 50%;
+  right: 0;
   display: grid;
   min-width: 148px;
   padding: 8px;
@@ -166,9 +166,10 @@ button {
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 18px 38px rgba(10, 31, 68, 0.14);
+  z-index: 80;
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, 8px);
+  transform: translateY(8px);
   transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
@@ -180,10 +181,11 @@ button {
 }
 
 .nav-menu:hover .nav-dropdown,
-.nav-menu:focus-within .nav-dropdown {
+.nav-menu:focus-within .nav-dropdown,
+.nav-menu.open .nav-dropdown {
   opacity: 1;
   pointer-events: auto;
-  transform: translate(-50%, 0);
+  transform: translateY(0);
 }
 
 .nav a:hover,
@@ -3731,19 +3733,34 @@ h4 {
   letter-spacing: 0;
 }
 
-.video-analysis-topbar span {
-  display: block;
-  max-width: 720px;
-  color: #65758a;
-  font-size: 15px;
-  line-height: 1.55;
-}
-
 .video-filter-strip {
   align-items: stretch;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.video-filter-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.video-filter-strip .ant-input-affix-wrapper {
+  flex: 0 0 300px;
+}
+
+.video-filter-strip .ant-select {
+  flex: 0 0 156px;
+}
+
+.video-filter-strip > button,
+.video-filter-strip .ant-btn,
+.video-filter-strip .ant-select-selection-item {
+  white-space: nowrap;
 }
 
 .video-filter-strip .ant-btn {
+  flex: 0 0 auto;
   min-height: 42px;
   border-radius: 4px;
   font-weight: 800;
@@ -3755,7 +3772,26 @@ h4 {
 }
 
 .video-stat-grid article {
+  min-width: 220px;
   min-height: 108px;
+}
+
+.video-stat-grid {
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.video-stat-grid::-webkit-scrollbar {
+  display: none;
+}
+
+.video-stat-grid em,
+.video-stat-grid p,
+.video-stat-grid strong {
+  word-break: keep-all;
+  overflow-wrap: normal;
 }
 
 .video-main-grid {
@@ -4308,6 +4344,25 @@ h4 {
   .global-nav-inner {
     gap: 12px;
     padding: 0 12px;
+  }
+
+  .nav-menu {
+    position: static;
+  }
+
+  .nav-dropdown {
+    position: fixed;
+    top: calc(var(--nav-height) + 10px);
+    right: 12px;
+    width: min(220px, calc(100vw - 24px));
+    min-width: 0;
+    transform: translateY(8px);
+  }
+
+  .nav-menu:hover .nav-dropdown,
+  .nav-menu:focus-within .nav-dropdown,
+  .nav-menu.open .nav-dropdown {
+    transform: translateY(0);
   }
 
   .project-pill {

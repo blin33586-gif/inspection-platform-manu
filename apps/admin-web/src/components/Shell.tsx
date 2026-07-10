@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearSession, getUser } from "../auth/session";
 
@@ -24,6 +25,7 @@ export function Shell() {
   const location = useLocation();
   const user = getUser();
   const isHome = location.pathname === "/";
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const isProjectActive = projectNavItems.some((item) => (
     location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
   ));
@@ -48,14 +50,20 @@ export function Shell() {
                 {item.label}
               </NavLink>
             ))}
-            <div className={`nav-menu ${isProjectActive ? "active" : ""}`}>
-              <button aria-haspopup="menu" className="nav-menu-trigger" type="button">
+            <div className={`nav-menu ${isProjectActive ? "active" : ""} ${isProjectMenuOpen ? "open" : ""}`}>
+              <button
+                aria-expanded={isProjectMenuOpen}
+                aria-haspopup="menu"
+                className="nav-menu-trigger"
+                type="button"
+                onClick={() => setIsProjectMenuOpen((value) => !value)}
+              >
                 项目
                 <span aria-hidden="true">⌄</span>
               </button>
               <div className="nav-dropdown" role="menu">
                 {projectNavItems.map((item) => (
-                  <NavLink key={item.to} role="menuitem" to={item.to}>
+                  <NavLink key={item.to} role="menuitem" to={item.to} onClick={() => setIsProjectMenuOpen(false)}>
                     {item.label}
                   </NavLink>
                 ))}

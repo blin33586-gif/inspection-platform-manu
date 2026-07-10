@@ -291,7 +291,6 @@ export function MediaLibraryPage() {
         <header className="media-topbar video-analysis-topbar">
           <div>
             <h1>视频巡检分析中心</h1>
-            <span>上传无人机巡检视频，后台抽帧识别施工、裸土、堆料等疑似问题，并合并生成事件清单。</span>
           </div>
           <div className="media-top-actions">
             <Bell size={18} />
