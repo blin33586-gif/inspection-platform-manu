@@ -5,6 +5,7 @@ import type { UploadFile } from "antd/es/upload/interface";
 import { Link } from "react-router-dom";
 import type { MapAssetSummary, MapHotAreaSummary, ObjectType, PageResult } from "@xunjianbao/shared";
 import { getApiUrl, postFormApi, postJsonApi, withQuery } from "../api/client";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { mapAssets } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
@@ -37,7 +38,9 @@ export function MapAssetsPage() {
   const [processStatus, setProcessStatus] = useState<string | undefined>();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const { data, loading, reload } = useApiResource(withQuery("/map-assets", { keyword, mapType, processStatus, page, pageSize }), fallbackMapAssets);
+  const { data, loading, error, reload } = useApiResource(withQuery("/map-assets", { keyword, mapType, processStatus, page, pageSize }), fallbackMapAssets);
+
+  if (error) return <ApiResourceError error={error} onRetry={reload} />;
 
   const searchKeyword = (value: string) => {
     setKeyword(value);

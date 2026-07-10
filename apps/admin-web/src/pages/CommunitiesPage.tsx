@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button, Form, Input, message, Modal, Select } from "antd";
 import type { ManagedObjectSummary, PageResult } from "@xunjianbao/shared";
 import { postJsonApi } from "../api/client";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { communities, mediaLibraryItems, points, roads } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectArchiveWorkspace } from "../components/ProjectArchiveWorkspace";
@@ -21,7 +22,8 @@ export function CommunitiesPage() {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState("全部");
-  const { data, reload } = useApiResource("/communities", fallbackCommunities);
+  const { data, error, reload } = useApiResource("/communities", fallbackCommunities);
+  if (error) return <ApiResourceError error={error} onRetry={reload} />;
   const visibleItems = statusFilter === "全部" ? data.items : data.items.filter((item) => item.status === statusFilter);
   const archiveItems = visibleItems.map((item) => ({
     id: item.id,

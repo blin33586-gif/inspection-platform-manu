@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import type { PageResult, ReportSummary, ReportType } from "@xunjianbao/shared";
 import { getApiUrl, postFormApi, withQuery } from "../api/client";
 import { reports } from "../data";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 import { readSubmittedReports } from "../utils/reportDraftStore";
@@ -71,7 +72,7 @@ export function ReportsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [localReports, setLocalReports] = useState<ReportSummary[]>(() => readSubmittedReports());
-  const { data, reload } = useApiResource(withQuery("/reports", { keyword, reportType: filterReportType, page, pageSize }), fallbackReports);
+  const { data, error, reload } = useApiResource(withQuery("/reports", { keyword, reportType: filterReportType, page, pageSize }), fallbackReports);
 
   useEffect(() => {
     const refreshSubmittedReports = () => setLocalReports(readSubmittedReports());
@@ -127,6 +128,8 @@ export function ReportsPage() {
 
     return matchesKeyword && matchesReportType && matchesStatus && matchesStartDate && matchesEndDate;
   });
+
+  if (error) return <ApiResourceError error={error} onRetry={reload} />;
 
   const exportReports = () => {
     const header = ["报告名称", "所属任务", "巡检区域", "巡检日期", "生成时间", "状态", "问题数"];

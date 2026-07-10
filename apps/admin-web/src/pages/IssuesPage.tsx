@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { IssueStatus, IssueSummary, ManagedObjectSummary, PageResult, PointSummary, Severity } from "@xunjianbao/shared";
 import { patchJsonApi, postJsonApi, withQuery } from "../api/client";
 import { communities, issues, points, roads } from "../data";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 
@@ -47,10 +48,15 @@ export function IssuesPage() {
   const [status, setStatus] = useState<IssueStatus | undefined>(initialStatus ?? undefined);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const { data, loading, reload } = useApiResource(withQuery("/issues", { keyword, status, page, pageSize }), fallbackIssues);
-  const { data: communityData } = useApiResource("/communities", fallbackCommunities);
-  const { data: roadData } = useApiResource("/roads", fallbackRoads);
-  const { data: pointData } = useApiResource("/points", fallbackPoints);
+  const issueResource = useApiResource(withQuery("/issues", { keyword, status, page, pageSize }), fallbackIssues);
+  const communityResource = useApiResource("/communities", fallbackCommunities);
+  const roadResource = useApiResource("/roads", fallbackRoads);
+  const pointResource = useApiResource("/points", fallbackPoints);
+  const { data, loading, reload } = issueResource;
+  const { data: communityData } = communityResource;
+  const { data: roadData } = roadResource;
+  const { data: pointData } = pointResource;
+  const resourceError = issueResource.error ?? communityResource.error ?? roadResource.error ?? pointResource.error;
 
   const objectOptions = [
     ...communityData.items.map((item) => ({ label: `小区 / ${item.name}`, value: item.id })),
@@ -61,6 +67,13 @@ export function IssuesPage() {
   const searchKeyword = (value: string) => {
     setKeyword(value);
     setPage(1);
+  };
+
+  const reloadAllResources = () => {
+    issueResource.reload();
+    communityResource.reload();
+    roadResource.reload();
+    pointResource.reload();
   };
 
   const changeStatus = (value: IssueStatus | undefined) => {
@@ -143,6 +156,8 @@ export function IssuesPage() {
       ),
     },
   ];
+
+  if (resourceError) return <ApiResourceError error={resourceError} onRetry={reloadAllResources} />;
 
   return (
     <>

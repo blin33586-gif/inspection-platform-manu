@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button, Form, Input, message, Modal, Select } from "antd";
 import type { ManagedObjectSummary, PageResult } from "@xunjianbao/shared";
 import { postJsonApi } from "../api/client";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { communities, mediaLibraryItems, points, roads } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectArchiveWorkspace } from "../components/ProjectArchiveWorkspace";
@@ -18,7 +19,8 @@ export function RoadsPage() {
   const [form] = Form.useForm<{ name?: string; status?: string }>();
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const { data, reload } = useApiResource("/roads", fallbackRoads);
+  const { data, error, reload } = useApiResource("/roads", fallbackRoads);
+  if (error) return <ApiResourceError error={error} onRetry={reload} />;
   const archiveItems = data.items.map((item) => ({
     id: item.id,
     name: item.name,

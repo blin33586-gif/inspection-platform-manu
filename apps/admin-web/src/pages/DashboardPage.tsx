@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import type { IssueSummary, MapHotAreaSummary } from "@xunjianbao/shared";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { useApiResource } from "../hooks/useApiResource";
 
 interface DashboardMapData {
@@ -35,7 +36,9 @@ function objectTypeLabel(area: MapHotAreaSummary) {
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const { data: mapData } = useApiResource<DashboardMapData>("/dashboard/map", fallbackMapData);
+  const { data: mapData, error, reload } = useApiResource<DashboardMapData>("/dashboard/map", fallbackMapData);
+
+  if (error) return <ApiResourceError error={error} onRetry={reload} />;
 
   return (
     <section className="home-landing">

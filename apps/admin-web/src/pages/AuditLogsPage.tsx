@@ -3,6 +3,7 @@ import { Input, Select, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { AuditLogSummary, PageResult } from "@xunjianbao/shared";
 import { withQuery } from "../api/client";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 
@@ -27,7 +28,9 @@ export function AuditLogsPage() {
   const [targetType, setTargetType] = useState<string | undefined>();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const { data, loading } = useApiResource(withQuery("/audit-logs", { keyword, action, targetType, page, pageSize }), fallbackAuditLogs);
+  const { data, loading, error, reload } = useApiResource(withQuery("/audit-logs", { keyword, action, targetType, page, pageSize }), fallbackAuditLogs);
+
+  if (error) return <ApiResourceError error={error} onRetry={reload} />;
 
   const searchKeyword = (value: string) => {
     setKeyword(value);
