@@ -356,7 +356,7 @@ export function MediaLibraryPage() {
           </article>
         </section>
 
-        <div className={`media-main-grid video-main-grid ${selectedEvent ? "detail-open" : ""}`}>
+        <div className="media-main-grid video-main-grid">
           <aside className="media-left-panel">
             <section className="media-panel-card">
               <div className="media-panel-head">
@@ -380,56 +380,58 @@ export function MediaLibraryPage() {
             </section>
           </aside>
 
-          <section className="media-gallery-panel video-task-panel">
-            <div className="media-gallery-toolbar">
-              <strong>视频任务</strong>
-              <span>已筛选 {filteredTasks.length} 个任务</span>
-              <button type="button" onClick={createAnalysisTask}>重新分析</button>
-              <button type="button" onClick={() => message.info("批量复核入口已预留")}>批量复核</button>
-              <div>
-                <span>排序：上传时间 ↓</span>
-                <Grid3X3 size={18} />
-                <ListChecks size={18} />
+          <div className="video-workspace-split">
+            <section className="media-gallery-panel video-task-panel">
+              <div className="media-gallery-toolbar">
+                <strong>视频任务</strong>
+                <span>已筛选 {filteredTasks.length} 个任务</span>
+                <button type="button" onClick={createAnalysisTask}>重新分析</button>
+                <button type="button" onClick={() => message.info("批量复核入口已预留")}>批量复核</button>
+                <div>
+                  <span>排序：上传时间 ↓</span>
+                  <Grid3X3 size={18} />
+                  <ListChecks size={18} />
+                </div>
               </div>
-            </div>
 
-            <div className="video-task-list">
-              {filteredTasks.map((item) => (
-                <button
-                  className={`video-task-card ${selectedTask.id === item.id ? "active" : ""}`}
-                  key={item.id}
-                  type="button"
-                  onClick={() => selectTask(item.id)}
-                >
-                  <div className="video-task-thumb">
-                    <img src={item.thumbnailUrl} alt={item.name} />
-                    <span className={`source-pill ${sourceMeta[item.source].tone}`}>{item.source}</span>
-                    <span className={`analysis-status ${taskStatusClass(item.status)}`}>{item.status}</span>
-                    <i><PlayCircle size={22} /></i>
-                  </div>
-                  <div className="video-task-body">
-                    <div>
-                      <strong>{item.name}</strong>
-                      <span>{item.videoName}</span>
+              <div className="video-task-list">
+                {filteredTasks.map((item) => (
+                  <button
+                    className={`video-task-card ${selectedTask.id === item.id ? "active" : ""}`}
+                    key={item.id}
+                    type="button"
+                    onClick={() => selectTask(item.id)}
+                  >
+                    <div className="video-task-thumb">
+                      <img src={item.thumbnailUrl} alt={item.name} />
+                      <span className={`source-pill ${sourceMeta[item.source].tone}`}>{item.source}</span>
+                      <span className={`analysis-status ${taskStatusClass(item.status)}`}>{item.status}</span>
+                      <i><PlayCircle size={22} /></i>
                     </div>
-                    <p><MapPin size={14} />{item.objectName}</p>
-                    <div className="video-task-meta">
-                      <span><Timer size={14} />{item.duration}</span>
-                      <span>每 {item.frameIntervalSec} 秒抽 1 帧</span>
-                      <span>{item.frameCount} 帧</span>
-                      <span>{item.eventCount} 个事件</span>
+                    <div className="video-task-body">
+                      <div>
+                        <strong>{item.name}</strong>
+                        <span>{item.videoName}</span>
+                      </div>
+                      <p><MapPin size={14} />{item.objectName}</p>
+                      <div className="video-task-meta">
+                        <span><Timer size={14} />{item.duration}</span>
+                        <span>每 {item.frameIntervalSec} 秒抽 1 帧</span>
+                        <span>{item.frameCount} 帧</span>
+                        <span>{item.eventCount} 个事件</span>
+                      </div>
+                      <div className="task-progress"><i style={{ width: `${item.progress}%` }} /></div>
                     </div>
-                    <div className="task-progress"><i style={{ width: `${item.progress}%` }} /></div>
-                  </div>
-                </button>
-              ))}
-            </div>
+                  </button>
+                ))}
+              </div>
+            </section>
 
-            <section className="event-section">
+            <section className="media-gallery-panel event-section video-event-panel">
               <div className="event-section-head">
                 <div>
                   <h3>疑似问题事件</h3>
-                  <p>连续 2-3 帧命中并超过置信度阈值后，合并为一个待复核事件。</p>
+                  <p>当前任务的 AI 疑似问题，点击查看详情并进行复核。</p>
                 </div>
                 <span>{selectedTaskEvents.length} 个事件</span>
               </div>
@@ -460,9 +462,10 @@ export function MediaLibraryPage() {
                 ))}
               </div>
             </section>
-          </section>
+          </div>
 
-          {selectedEvent ? <aside className="media-detail-panel video-event-detail">
+          {selectedEvent ? <div className="event-detail-layer" role="presentation" onClick={() => setSelectedEventId(null)}>
+            <aside className="media-detail-panel video-event-detail" role="dialog" aria-modal="true" aria-label="疑似事件详情" onClick={(event) => event.stopPropagation()}>
             <div className="media-panel-head detail">
               <h3>疑似事件详情</h3>
               <button aria-label="关闭事件详情" type="button" onClick={() => setSelectedEventId(null)}>×</button>
@@ -498,7 +501,8 @@ export function MediaLibraryPage() {
             <button className="media-more-action" type="button" onClick={() => message.info(`打开视频片段：${selectedEvent.clipName}`)}>
               查看原始视频片段 <ChevronDown size={14} />
             </button>
-          </aside> : null}
+            </aside>
+          </div> : null}
         </div>
       </main>
     </section>
