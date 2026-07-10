@@ -3966,15 +3966,16 @@ h4 {
 .video-workspace-split {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(480px, 1.28fr) minmax(300px, 0.72fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
   align-items: start;
   padding: 16px;
 }
 
 .video-task-list {
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 14px;
 }
 
 .video-task-card {
@@ -4118,10 +4119,9 @@ h4 {
 }
 
 .video-event-panel {
-  position: sticky;
-  top: 18px;
-  border-left: 1px solid #e6edf5;
-  padding-left: 16px;
+  position: static;
+  border-top: 1px solid #e6edf5;
+  padding-top: 18px;
 }
 
 .event-section-head {
@@ -4155,7 +4155,7 @@ h4 {
 
 .event-card-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
@@ -4571,12 +4571,14 @@ h4 {
     padding: 14px;
   }
 
+  .video-task-list {
+    grid-template-columns: 1fr;
+  }
+
   .video-event-panel {
     position: static;
     border-top: 1px solid #e6edf5;
-    border-left: 0;
     padding-top: 16px;
-    padding-left: 0;
   }
 
   .video-task-card {
