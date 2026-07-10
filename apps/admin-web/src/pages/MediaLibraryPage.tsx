@@ -357,28 +357,26 @@ export function MediaLibraryPage() {
         </section>
 
         <div className="media-main-grid video-main-grid">
-          <aside className="media-left-panel">
-            <section className="media-panel-card">
-              <div className="media-panel-head">
-                <h3>待复核类型</h3>
-                <button type="button" onClick={() => navigate("/issues")}>问题台账</button>
-              </div>
-              <div className="media-source-list review-type-list">
-                {[
-                  { name: "工程机械", total: 5, tone: "orange", icon: <Wrench size={18} /> },
-                  { name: "工程车辆", total: 4, tone: "blue", icon: <Video size={18} /> },
-                  { name: "裸土堆料", total: 3, tone: "green", icon: <AlertTriangle size={18} /> },
-                  { name: "临时建筑", total: 2, tone: "purple", icon: <Film size={18} /> },
-                ].map((item) => (
-                  <button key={item.name} type="button" onClick={() => message.info(`筛选 ${item.name} 事件`)}>
-                    <span className={`source-icon ${item.tone}`}>{item.icon}</span>
-                    <strong>{item.name}</strong>
-                    <em>{item.total}</em>
-                  </button>
-                ))}
-              </div>
-            </section>
-          </aside>
+          <section className="media-panel-card video-review-strip">
+            <div className="media-panel-head">
+              <h3>待复核类型</h3>
+              <button type="button" onClick={() => navigate("/issues")}>问题台账</button>
+            </div>
+            <div className="media-source-list review-type-list">
+              {[
+                { name: "工程机械", total: 5, tone: "orange", icon: <Wrench size={18} /> },
+                { name: "工程车辆", total: 4, tone: "blue", icon: <Video size={18} /> },
+                { name: "裸土堆料", total: 3, tone: "green", icon: <AlertTriangle size={18} /> },
+                { name: "临时建筑", total: 2, tone: "purple", icon: <Film size={18} /> },
+              ].map((item) => (
+                <button key={item.name} type="button" onClick={() => message.info(`筛选 ${item.name} 事件`)}>
+                  <span className={`source-icon ${item.tone}`}>{item.icon}</span>
+                  <strong>{item.name}</strong>
+                  <em>{item.total}</em>
+                </button>
+              ))}
+            </div>
+          </section>
 
           <div className="video-workspace-split">
             <section className="media-gallery-panel video-task-panel">
