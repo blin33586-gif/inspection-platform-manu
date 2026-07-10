@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import type { MapAssetSummary, MapHotAreaSummary, ObjectType, PageResult } from "@xunjianbao/shared";
 import { getApiUrl } from "../api/client";
 import { mapAssets } from "../data";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 
@@ -41,8 +42,16 @@ function canPreviewImage(mapAsset: MapAssetSummary) {
 export function MapAssetDetailPage() {
   const { id } = useParams();
   const fallback = useMemo(() => fallbackMapAsset(id), [id]);
-  const { data: mapAsset } = useApiResource<MapAssetSummary>(`/map-assets/${id}`, fallback);
-  const { data: hotAreas, loading } = useApiResource<PageResult<MapHotAreaSummary>>(`/map-assets/${id}/hot-areas`, emptyHotAreas);
+  const mapAssetResource = useApiResource<MapAssetSummary>(`/map-assets/${id}`, fallback);
+  const hotAreaResource = useApiResource<PageResult<MapHotAreaSummary>>(`/map-assets/${id}/hot-areas`, emptyHotAreas);
+  const { data: mapAsset } = mapAssetResource;
+  const { data: hotAreas, loading } = hotAreaResource;
+  const resourceError = mapAssetResource.error ?? hotAreaResource.error;
+
+  const reloadAllResources = () => {
+    mapAssetResource.reload();
+    hotAreaResource.reload();
+  };
 
   const columns: ColumnsType<MapHotAreaSummary> = [
     { title: "热区名称", dataIndex: "label" },
@@ -57,6 +66,8 @@ export function MapAssetDetailPage() {
     },
     { title: "坐标", render: (_, record) => formatCoordinate(record) },
   ];
+
+  if (resourceError) return <ApiResourceError error={resourceError} onRetry={reloadAllResources} />;
 
   return (
     <>

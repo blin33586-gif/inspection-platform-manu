@@ -3,6 +3,7 @@ import { Button } from "antd";
 import { useParams } from "react-router-dom";
 import type { PointSummary } from "@xunjianbao/shared";
 import { communities, mediaLibraryItems, points, roads } from "../data";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectArchiveWorkspace, type ProjectArchiveGroup, type ProjectArchiveItem } from "../components/ProjectArchiveWorkspace";
 import { useApiResource } from "../hooks/useApiResource";
@@ -59,7 +60,7 @@ function projectGroups(activeItems: ProjectArchiveItem[]): ProjectArchiveGroup[]
 export function PointDetailPage() {
   const { id } = useParams();
   const fallback = useMemo(() => fallbackPoint(id), [id]);
-  const { data: point } = useApiResource<PointSummary>(`/points/${id}`, fallback);
+  const { data: point, error, reload } = useApiResource<PointSummary>(`/points/${id}`, fallback);
   const archiveItems = useMemo<ProjectArchiveItem[]>(() => {
     const source = pointArchiveItems();
     const existingIndex = source.findIndex((item) => item.id === point.id);
@@ -78,6 +79,8 @@ export function PointDetailPage() {
     return source.map((item, index) => (index === existingIndex ? activeItem : item));
   }, [point]);
   const activeArchiveItem = archiveItems.find((item) => item.id === point.id) ?? archiveItems[0];
+
+  if (error) return <ApiResourceError error={error} onRetry={reload} />;
 
   return (
     <>

@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import type { ReportSummary } from "@xunjianbao/shared";
 import { getApiUrl } from "../api/client";
 import { reports } from "../data";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 
@@ -33,7 +34,9 @@ function formatFileSize(value: number | null | undefined) {
 export function ReportDetailPage() {
   const { id } = useParams();
   const fallback = useMemo(() => fallbackReport(id), [id]);
-  const { data: report } = useApiResource<ReportSummary>(`/reports/${id}`, fallback);
+  const { data: report, error, reload } = useApiResource<ReportSummary>(`/reports/${id}`, fallback);
+
+  if (error) return <ApiResourceError error={error} onRetry={reload} />;
 
   return (
     <>

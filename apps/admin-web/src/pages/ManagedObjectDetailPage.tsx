@@ -3,6 +3,7 @@ import { Button } from "antd";
 import { useParams } from "react-router-dom";
 import type { ManagedObjectSummary } from "@xunjianbao/shared";
 import { communities, mediaLibraryItems, points, roads } from "../data";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectArchiveWorkspace, type ProjectArchiveGroup, type ProjectArchiveItem } from "../components/ProjectArchiveWorkspace";
 import { useApiResource } from "../hooks/useApiResource";
@@ -70,7 +71,7 @@ export function ManagedObjectDetailPage({ objectType }: ManagedObjectDetailPageP
   const listPath = objectType === "community" ? "/communities" : "/roads";
   const label = objectType === "community" ? "小区" : "道路";
   const fallback = useMemo(() => fallbackObject(objectType, id), [id, objectType]);
-  const { data: object } = useApiResource<ManagedObjectSummary>(`/${basePath}/${id}`, fallback);
+  const { data: object, error, reload } = useApiResource<ManagedObjectSummary>(`/${basePath}/${id}`, fallback);
   const archiveItems = useMemo<ProjectArchiveItem[]>(() => {
     const source = objectType === "community" ? communityArchiveItems() : roadArchiveItems();
     const existingIndex = source.findIndex((item) => item.id === object.id);
@@ -88,6 +89,8 @@ export function ManagedObjectDetailPage({ objectType }: ManagedObjectDetailPageP
     return source.map((item, index) => (index === existingIndex ? activeItem : item));
   }, [basePath, object, objectType]);
   const activeArchiveItem = archiveItems.find((item) => item.id === object.id) ?? archiveItems[0];
+
+  if (error) return <ApiResourceError error={error} onRetry={reload} />;
 
   return (
     <>

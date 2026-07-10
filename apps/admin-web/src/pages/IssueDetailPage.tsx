@@ -6,6 +6,7 @@ import { useParams } from "react-router-dom";
 import type { IssueAttachmentSummary, IssueStatus, IssueSummary, PageResult } from "@xunjianbao/shared";
 import { getApiUrl, patchJsonApi, postFormApi } from "../api/client";
 import { issues } from "../data";
+import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 
@@ -47,13 +48,21 @@ export function IssueDetailPage() {
   const { id } = useParams();
   const [form] = Form.useForm<{ attachmentType?: string; remark?: string; file?: UploadFile[] }>();
   const fallback = useMemo(() => fallbackIssue(id), [id]);
-  const { data: issue, reload } = useApiResource<IssueSummary>(`/issues/${id}`, fallback);
-  const { data: attachments, loading: attachmentsLoading, reload: reloadAttachments } = useApiResource<PageResult<IssueAttachmentSummary>>(
+  const issueResource = useApiResource<IssueSummary>(`/issues/${id}`, fallback);
+  const attachmentResource = useApiResource<PageResult<IssueAttachmentSummary>>(
     `/issues/${id}/attachments`,
     fallbackAttachments,
   );
+  const { data: issue, reload } = issueResource;
+  const { data: attachments, loading: attachmentsLoading, reload: reloadAttachments } = attachmentResource;
+  const resourceError = issueResource.error ?? attachmentResource.error;
   const [updatingStatus, setUpdatingStatus] = useState<IssueStatus | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  const reloadAllResources = () => {
+    issueResource.reload();
+    attachmentResource.reload();
+  };
 
   const updateStatus = async (status: IssueStatus) => {
     if (!id) return;
@@ -108,6 +117,8 @@ export function IssueDetailPage() {
       ),
     },
   ];
+
+  if (resourceError) return <ApiResourceError error={resourceError} onRetry={reloadAllResources} />;
 
   return (
     <>
