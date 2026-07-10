@@ -462,6 +462,55 @@ h4 {
   color: #fff;
 }
 
+.map-drawing-finish-icon,
+.map-edit-vertex-icon,
+.map-label-anchor-icon {
+  background: transparent;
+  border: 0;
+}
+
+.map-drawing-finish-icon span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #0071e3;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 77, 165, 0.32);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.map-edit-vertex-icon span {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #0071e3;
+  box-shadow: 0 2px 8px rgba(0, 77, 165, 0.36);
+}
+
+.dashboard-map-label.editable {
+  min-width: 154px;
+  padding: 8px;
+  border-color: #0071e3;
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.dashboard-map-label.editable input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid rgba(0, 113, 227, 0.32);
+  outline: 0;
+  background: transparent;
+  color: #102033;
+  font: inherit;
+  font-weight: 800;
+}
+
 .dashboard-tile-map .leaflet-container {
   font-family: inherit;
   background: #dce8ef;

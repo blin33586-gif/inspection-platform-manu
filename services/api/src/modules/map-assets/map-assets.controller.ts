@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Post, Query, Res, UnsupportedMediaTypeException, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Res, UnsupportedMediaTypeException, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { access } from "node:fs/promises";
@@ -132,5 +132,14 @@ export class MapAssetsController {
     },
   ) {
     return ok(await this.hotAreaService.create(id, body));
+  }
+
+  @Patch(":id/hot-areas/:hotAreaId")
+  async updateHotArea(
+    @Param("id") id: string,
+    @Param("hotAreaId") hotAreaId: string,
+    @Body() body: { label?: string; polygon?: string },
+  ) {
+    return ok(await this.hotAreaService.update(id, hotAreaId, body));
   }
 }

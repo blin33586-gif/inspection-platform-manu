@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Form, Input, message, Modal, Select } from "antd";
 import { useNavigate } from "react-router-dom";
 import type { IssueSummary, ManagedObjectSummary, MapAssetSummary, MapHotAreaSummary, ObjectType, PageResult } from "@xunjianbao/shared";
-import { postJsonApi } from "../api/client";
+import { patchJsonApi, postJsonApi } from "../api/client";
 import { ApiResourceError } from "../components/ApiResourceError";
-import { DashboardTileMap, type MapDrawingDraft } from "../components/DashboardTileMap";
+import { DashboardTileMap, type MapAreaUpdate, type MapDrawingDraft } from "../components/DashboardTileMap";
 import { useApiResource } from "../hooks/useApiResource";
 import { communities, roads } from "../data";
 
@@ -84,6 +84,17 @@ export function DashboardPage() {
 
   const relatedObjects = drawingObjectType === "community" ? communitiesResource.data.items : roadsResource.data.items;
 
+  const updateArea = async (area: MapHotAreaSummary, update: MapAreaUpdate) => {
+    try {
+      await patchJsonApi<MapHotAreaSummary>(`/map-assets/${mapData.mapAssetId}/hot-areas/${area.id}`, update);
+      message.success("地图标绘已更新");
+      reload();
+    } catch (updateError) {
+      message.error(updateError instanceof Error ? updateError.message : "标绘更新失败");
+      throw updateError;
+    }
+  };
+
   return (
     <section className="home-landing">
       <div className="home-copy"><h1>曲阳街道一览</h1></div>
@@ -95,6 +106,7 @@ export function DashboardPage() {
           onOpenArea={(area) => navigate(objectPath(area, mapData.mapAssetId))}
           onOpenIssues={(status) => navigate(`/issues?status=${status}`)}
           onCreateDrawing={beginDrawingSave}
+          onUpdateArea={updateArea}
         />
       </div>
       <Modal cancelText="取消" confirmLoading={savingDrawing} okText="保存标绘" onCancel={() => setDrawing(null)} onOk={saveDrawing} open={Boolean(drawing)} title={drawing?.shape === "polygon" ? "命名小区区域" : "命名道路线"}>

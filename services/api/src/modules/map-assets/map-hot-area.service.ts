@@ -16,6 +16,11 @@ interface CreateHotAreaInput {
   polygon?: string;
 }
 
+interface UpdateHotAreaInput {
+  label?: string;
+  polygon?: string;
+}
+
 const allowedObjectTypes: ObjectType[] = ["community", "road", "point", "street"];
 
 @Injectable()
@@ -67,6 +72,40 @@ export class MapHotAreaService {
       targetType: "mapHotArea",
       targetId: hotArea.id,
       summary: `为地图「${mapAsset.name}」新增热区「${hotArea.label}」`,
+    });
+
+    return hotArea;
+  }
+
+  async update(mapAssetId: string, hotAreaId: string, input: UpdateHotAreaInput) {
+    const existing = await this.database.mapHotArea.findFirst({
+      where: { id: hotAreaId, mapAssetId },
+      include: { mapAsset: { select: { name: true } } },
+    });
+    if (!existing) throw new NotFoundException("Map hot area not found");
+
+    const data: { label?: string; polygon?: string } = {};
+    if (input.label !== undefined) {
+      if (!input.label.trim()) throw new BadRequestException("Hot area label is required");
+      data.label = input.label.trim();
+    }
+    if (input.polygon !== undefined) {
+      if (!input.polygon.trim()) throw new BadRequestException("Map geometry is required");
+      data.polygon = JSON.stringify(parseMapGeometry(input.polygon));
+    }
+    if (!Object.keys(data).length) throw new BadRequestException("No map hot area fields to update");
+
+    const hotArea = await this.database.mapHotArea.update({
+      where: { id: existing.id },
+      data,
+      select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true },
+    });
+
+    await this.auditService.record({
+      action: "map.hotArea.update",
+      targetType: "mapHotArea",
+      targetId: hotArea.id,
+      summary: `编辑地图「${existing.mapAsset.name}」标绘「${hotArea.label}」`,
     });
 
     return hotArea;
