@@ -38,7 +38,7 @@ button {
 .global-nav {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 1200;
   min-height: var(--nav-height);
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   background: rgba(251, 251, 253, 0.82);
@@ -4745,15 +4745,16 @@ h4 {
   }
 
   .nav-menu {
-    position: static;
+    position: relative;
   }
 
   .nav-dropdown {
-    position: fixed;
-    top: calc(var(--nav-height) + 10px);
-    right: 12px;
-    width: min(220px, calc(100vw - 24px));
-    min-width: 0;
+    position: absolute;
+    top: calc(100% - 2px);
+    right: auto;
+    left: 0;
+    width: auto;
+    min-width: 148px;
     transform: translateY(8px);
   }
 
@@ -4925,6 +4926,15 @@ h4 {
 
   .project-filter-row {
     justify-content: flex-start;
+  }
+
+  .project-filter-row .filter-bar {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
   }
 
   .project-archive-shell {
