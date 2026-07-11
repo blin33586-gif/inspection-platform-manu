@@ -1,23 +1,49 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Progress, Spin, Tag } from "antd";
-import { ArrowLeft, Clock3, FileArchive, FileVideo2, HardDrive, Images } from "lucide-react";
+import { ArrowLeft, CalendarDays, FileArchive, FileText, FileVideo2, Images, RadioTower } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getApi, getApiUrl } from "../api/client";
 import { ApiResourceError } from "../components/ApiResourceError";
 import { MediaAssetGallery } from "../components/MediaAssetGallery";
-import { toMediaGalleryItem, type MediaChildAssetRecord, type MediaGalleryItem } from "../components/media-asset-presenter";
-import type { MediaTaskRecord } from "./media-task-adapter";
-import { toMediaTaskDetail, type MediaTaskDetail } from "./media-task-detail-presenter";
+import { toMediaGalleryItem, type MediaGalleryItem } from "../components/media-asset-presenter";
+import { toInspectionTaskViewModel, type InspectionTaskRecord } from "./inspection-task-presenter";
 import "./media-library-detail.css";
 
+interface TaskDetailRecord extends Omit<InspectionTaskRecord, "photos"> {
+  report: ({ id: string; processStatus: string } & Record<string, unknown>) | null;
+}
+
+interface TaskPhotoRecord {
+  id: string;
+  distributionStatus: string;
+  archiveObjectId: string | null;
+  videoTimestampMs: number | null;
+  mediaAsset: {
+    id: string;
+    kind: "frame" | "image";
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    videoTimestampMs: number | null;
+    createdAt: string;
+  };
+}
+
+interface TaskPhotoPage {
+  items: TaskPhotoRecord[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
 interface DetailState {
-  task: MediaTaskDetail | null;
-  items: MediaGalleryItem[];
+  task: TaskDetailRecord | null;
+  photos: TaskPhotoRecord[];
   loading: boolean;
   error: Error | null;
 }
 
-const initialState: DetailState = { task: null, items: [], loading: true, error: null };
+const initialState: DetailState = { task: null, photos: [], loading: true, error: null };
 
 export function MediaTaskDetailPage() {
   const { taskId = "" } = useParams();
@@ -27,21 +53,16 @@ export function MediaTaskDetailPage() {
   const loadTask = useCallback((signal?: AbortSignal) => {
     setState((current) => ({ ...current, loading: true, error: null }));
     return Promise.all([
-      getApi<MediaTaskRecord>(`/media-assets/${encodeURIComponent(taskId)}`, signal),
-      getApi<MediaChildAssetRecord[]>(`/media-assets/${encodeURIComponent(taskId)}/children`, signal),
-    ]).then(([record, children]) => {
-      setState({
-        task: toMediaTaskDetail(record, getApiUrl),
-        items: children.map((item) => toMediaGalleryItem(item, getApiUrl(`/media-assets/${item.id}/content`))),
-        loading: false,
-        error: null,
-      });
+      getApi<TaskDetailRecord>(`/inspection-tasks/${encodeURIComponent(taskId)}`, signal),
+      getApi<TaskPhotoPage>(`/inspection-tasks/${encodeURIComponent(taskId)}/photos?pageSize=100`, signal),
+    ]).then(([task, photos]) => {
+      setState({ task, photos: photos.items, loading: false, error: null });
     }).catch((error: unknown) => {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setState((current) => ({
         ...current,
         loading: false,
-        error: error instanceof Error ? error : new Error("媒体任务加载失败"),
+        error: error instanceof Error ? error : new Error("任务加载失败"),
       }));
     });
   }, [taskId]);
@@ -53,58 +74,61 @@ export function MediaTaskDetailPage() {
   }, [loadTask]);
 
   useEffect(() => {
-    if (!state.task || !new Set(["待分析", "分析中"]).has(state.task.status)) return;
+    if (!state.task || !new Set(["queued", "running"]).has(state.task.processStatus)) return;
     const timer = window.setInterval(() => void loadTask(), 5_000);
     return () => window.clearInterval(timer);
   }, [loadTask, state.task]);
 
+  const items = useMemo<MediaGalleryItem[]>(() => state.photos.map((photo) => toMediaGalleryItem(
+    { ...photo.mediaAsset, videoTimestampMs: photo.videoTimestampMs ?? photo.mediaAsset.videoTimestampMs },
+    getApiUrl(`/media-assets/${photo.mediaAsset.id}/content`),
+  )), [state.photos]);
+
   if (state.error) return <ApiResourceError error={state.error} onRetry={() => void loadTask()} />;
-  if (state.loading && !state.task) return <div className="media-task-detail-loading"><Spin size="large" />正在读取任务素材</div>;
+  if (state.loading && !state.task) return <div className="media-task-detail-loading"><Spin size="large" />正在读取任务照片</div>;
   if (!state.task) return null;
 
   const task = state.task;
+  const view = toInspectionTaskViewModel({ ...task, photos: [] });
+  const isVideo = task.inputType === "video";
+  const videoUrl = isVideo && task.sourceMediaId ? getApiUrl(`/media-assets/${task.sourceMediaId}/content`) : null;
 
   return (
     <section className="media-library-page video-analysis-page media-task-detail-page">
       <main className="media-workspace">
         <header className="media-task-detail-header">
-          <Button icon={<ArrowLeft size={16} />} onClick={() => navigate("/media-library")}>返回媒体库</Button>
-          <div>
-            <span>媒体任务详情</span>
-            <h1>{task.originalFileName}</h1>
-          </div>
-          <Tag className={`media-task-detail-status ${task.status === "已完成" ? "done" : task.status === "失败" ? "failed" : "processing"}`}>
-            {task.status}
-          </Tag>
+          <Button icon={<ArrowLeft size={16} />} onClick={() => navigate("/media-library")}>返回任务中心</Button>
+          <div><span>巡检任务详情</span><h1>{task.name}</h1></div>
+          <Tag className={`media-task-detail-status ${view.statusTone}`}>{view.statusLabel}</Tag>
         </header>
 
         <section className="media-task-detail-summary" aria-label="任务信息">
-          <div><span className="summary-icon blue">{task.assetKind === "video" ? <FileVideo2 size={20} /> : <FileArchive size={20} />}</span><p>素材类型<strong>{task.kindLabel}</strong></p></div>
-          <div><span className="summary-icon cyan"><Clock3 size={20} /></span><p>处理方式<strong>{task.intervalLabel}</strong></p></div>
-          <div><span className="summary-icon green"><Images size={20} /></span><p>素材数量<strong>{task.assetCountLabel}</strong></p></div>
-          <div><span className="summary-icon purple"><HardDrive size={20} /></span><p>文件大小<strong>{task.fileSizeLabel}</strong></p></div>
-          <div className="media-task-detail-progress"><span>处理进度</span><Progress percent={task.progress} status={task.status === "失败" ? "exception" : undefined} /></div>
+          <div><span className="summary-icon blue">{isVideo ? <FileVideo2 size={20} /> : <FileArchive size={20} />}</span><p>输入类型<strong>{view.inputLabel}</strong></p></div>
+          <div><span className="summary-icon cyan"><RadioTower size={20} /></span><p>任务来源<strong>{view.sourceLabel}</strong></p></div>
+          <div><span className="summary-icon green"><Images size={20} /></span><p>照片池<strong>{task.photoCount} 张</strong></p></div>
+          <div><span className="summary-icon purple"><CalendarDays size={20} /></span><p>任务日期<strong>{view.taskDateLabel}</strong></p></div>
+          <div className="media-task-detail-progress"><span>处理进度</span><Progress percent={view.progress} status={view.statusLabel === "失败" ? "exception" : undefined} /></div>
         </section>
 
-        {task.errorMessage ? <div className="media-task-detail-error">{task.errorMessage}</div> : null}
+        {view.errorMessage ? <div className="media-task-detail-error">{view.errorMessage}</div> : null}
 
-        {task.videoUrl ? <section className="media-task-video-section" aria-label="原始视频">
-          <header>
-            <div><h2>原始巡检视频</h2><p>可播放、暂停或拖动时间轴查看原始素材</p></div>
-            <span>{task.createdAtLabel}</span>
-          </header>
-          <div className="media-task-video-stage">
-            <video controls playsInline preload="metadata" src={task.videoUrl}>
-              当前浏览器不支持视频播放。
-            </video>
-          </div>
+        <section className="real-task-detail-actions">
+          <div><strong>{task.pendingPhotoCount} 张待分发</strong><span>每张照片只能归入一个小区、街道或重点点位档案</span></div>
+          <Button icon={<FileText size={16} />} type="primary" onClick={() => task.report?.id ? navigate("/reports") : navigate(`/reports/write?taskId=${encodeURIComponent(task.id)}`)}>
+            {task.report?.id ? "查看综合报告" : "编写综合报告"}
+          </Button>
+        </section>
+
+        {videoUrl ? <section className="media-task-video-section" aria-label="原始视频">
+          <header><div><h2>原始巡检视频</h2><p>视频已按任务设置自动抽帧，原始文件保留用于复核</p></div><span>{view.originalFileName}</span></header>
+          <div className="media-task-video-stage"><video controls playsInline preload="metadata" src={videoUrl}>当前浏览器不支持视频播放。</video></div>
         </section> : null}
 
         <MediaAssetGallery
-          items={state.items}
+          items={items}
           loading={state.loading}
-          taskStatus={task.status}
-          onWriteReport={(item) => navigate(`/reports/write?mediaId=${encodeURIComponent(item.id)}`)}
+          taskStatus={view.statusLabel}
+          onWriteReport={(item) => navigate(`/reports/write?taskId=${encodeURIComponent(task.id)}&mediaId=${encodeURIComponent(item.id)}`)}
         />
       </main>
     </section>

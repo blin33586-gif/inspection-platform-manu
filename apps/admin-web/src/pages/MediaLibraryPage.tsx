@@ -1,502 +1,194 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Input, message, Modal, Select } from "antd";
+import { Button, DatePicker, Empty, Input, message, Modal, Pagination, Select, Spin } from "antd";
 import {
-  AlertTriangle,
   Bell,
-  Bot,
   CalendarDays,
-  CheckCircle2,
   ChevronDown,
+  FileArchive,
+  FileImage,
   FileText,
-  Film,
   Gauge,
-  Grid3X3,
+  Images,
   ListChecks,
-  MapPin,
-  Plus,
   ScanSearch,
-  Settings2,
   Timer,
-  Trash2,
   UploadCloud,
   Video,
-  Wrench,
-  XCircle,
 } from "lucide-react";
-import { mediaLibraryItems } from "../data";
-import { getApi, getApiUrl, postFormApi, postJsonApi } from "../api/client";
+import { getApi, getApiUrl, postFormApi, postJsonApi, withQuery } from "../api/client";
 import { MediaTaskPreview } from "../components/MediaTaskPreview";
-import { FRAME_INTERVAL_OPTIONS, getMediaTaskDetailPath, shouldOpenMediaTaskDetail } from "./media-library-navigation";
-import { toMediaTaskViewModel, type MediaTaskRecord, type MediaTaskViewModel } from "./media-task-adapter";
+import {
+  toInspectionTaskViewModel,
+  type InspectionTaskRecord,
+} from "./inspection-task-presenter";
 import "./media-library-detail.css";
 
-type VideoSource = "无人机视频" | "摄像头视频" | "AI眼镜同步" | "人工上传";
-type TaskStatus = "待分析" | "分析中" | "待复核" | "已完成" | "失败";
-type ReviewStatus = "待复核" | "已确认" | "误报" | "已处置";
-type Severity = "一般" | "较重" | "严重";
+type TaskSource = "manual" | "drone" | "camera" | "glasses";
+type TaskInput = "video" | "archive" | "images";
 
-interface VideoAnalysisTask {
-  id: string;
-  name: string;
-  videoName: string;
-  source: VideoSource;
-  objectName: string;
-  uploadedAt: string;
-  duration: string;
-  frameIntervalSec: number;
-  frameCount: number;
-  status: TaskStatus;
-  progress: number;
-  eventCount: number;
-  reportStatus: string;
-  thumbnailUrl: string;
-  modelName: string;
-  jobId?: string | null;
-  errorMessage?: string | null;
-  isPersisted?: boolean;
-  assetKind?: "video" | "image_bundle";
-  kindLabel?: "视频" | "图片包";
-  contentUrl?: string;
+interface TaskListResult {
+  items: InspectionTaskRecord[];
+  page: number;
+  pageSize: number;
+  total: number;
+  stats: {
+    taskCount: number;
+    processingTaskCount: number;
+    pendingPhotoCount: number;
+    generatedReportCount: number;
+  };
 }
 
-interface IssueEvent {
-  id: string;
-  taskId: string;
-  type: string;
-  timeRange: string;
-  duration: string;
-  confidence: number;
-  severity: Severity;
-  reviewStatus: ReviewStatus;
-  evidenceUrl: string;
-  clipName: string;
-  linkedObject: string;
-  suggestion: string;
-  detections: string[];
-}
-
-type ReviewCategoryTone = "orange" | "blue" | "green" | "purple";
-
-interface ReviewCategory {
-  id: string;
-  name: string;
-  keywords: string[];
-  tone: ReviewCategoryTone;
-}
-
-const reviewCategoryStorageKey = "xunjianbao.review-categories";
-
-const defaultReviewCategories: ReviewCategory[] = [
-  { id: "engineering-machinery", name: "工程机械", keywords: ["挖掘机", "推土机", "吊车", "工程机械"], tone: "orange" },
-  { id: "engineering-vehicles", name: "工程车辆", keywords: ["工程车辆", "施工车辆", "渣土车", "车辆"], tone: "blue" },
-  { id: "bare-soil", name: "裸土堆料", keywords: ["裸土", "堆料", "堆放"], tone: "green" },
-  { id: "temporary-buildings", name: "临时建筑", keywords: ["临时建筑", "彩钢板", "工棚"], tone: "purple" },
-];
-
-function loadReviewCategories() {
-  if (typeof window === "undefined") return defaultReviewCategories;
-  try {
-    const stored = window.localStorage.getItem(reviewCategoryStorageKey);
-    const parsed = stored ? JSON.parse(stored) : null;
-    if (Array.isArray(parsed) && parsed.every((item) => item?.id && item?.name && Array.isArray(item?.keywords))) {
-      return parsed as ReviewCategory[];
-    }
-  } catch {
-    // Keep the built-in categories if local configuration is unavailable.
-  }
-  return defaultReviewCategories;
-}
-
-function reviewCategoryIcon(tone: ReviewCategoryTone) {
-  if (tone === "orange") return <Wrench size={16} />;
-  if (tone === "green") return <AlertTriangle size={16} />;
-  if (tone === "purple") return <Film size={16} />;
-  return <Video size={16} />;
-}
-
-const thumb = (index: number) => mediaLibraryItems[index]?.thumbnailUrl ?? mediaLibraryItems[0]?.thumbnailUrl ?? "";
-
-const sourceMeta: Record<VideoSource, { icon: JSX.Element; tone: string; desc: string }> = {
-  无人机视频: { icon: <Video size={18} />, tone: "blue", desc: "MP4 / MOV 上传" },
-  摄像头视频: { icon: <Film size={18} />, tone: "green", desc: "监控录像离线导入" },
-  AI眼镜同步: { icon: <ScanSearch size={18} />, tone: "purple", desc: "RTMP / MIO 同步" },
-  人工上传: { icon: <UploadCloud size={18} />, tone: "orange", desc: "本地视频补录" },
+const emptyTaskList: TaskListResult = {
+  items: [],
+  page: 1,
+  pageSize: 20,
+  total: 0,
+  stats: { taskCount: 0, processingTaskCount: 0, pendingPhotoCount: 0, generatedReportCount: 0 },
 };
 
-const demoVideoTasks: VideoAnalysisTask[] = [
-  {
-    id: "vt-quyang-0720",
-    name: "曲阳路街道无人机施工巡检",
-    videoName: "DJI_20260709_QUYANG_0920.MP4",
-    source: "无人机视频",
-    objectName: "曲阳路街道 / 曲阳路",
-    uploadedAt: "2026-07-09 09:42",
-    duration: "18:32",
-    frameIntervalSec: 3,
-    frameCount: 371,
-    status: "待复核",
-    progress: 100,
-    eventCount: 4,
-    reportStatus: "待生成报告",
-    thumbnailUrl: thumb(2),
-    modelName: "YOLO-Construction-v1",
-  },
-  {
-    id: "vt-chifeng-0708",
-    name: "赤峰小区楼顶与周边施工复查",
-    videoName: "DJI_20260708_CHIFENG_1530.MOV",
-    source: "无人机视频",
-    objectName: "赤峰小区",
-    uploadedAt: "2026-07-08 15:44",
-    duration: "12:05",
-    frameIntervalSec: 3,
-    frameCount: 242,
-    status: "已完成",
-    progress: 100,
-    eventCount: 2,
-    reportStatus: "已生成报告",
-    thumbnailUrl: thumb(0),
-    modelName: "YOLO-Construction-v1",
-  },
-  {
-    id: "vt-river-0709",
-    name: "河道绿化带临时堆料巡检",
-    videoName: "DJI_20260709_RIVER_1018.MP4",
-    source: "无人机视频",
-    objectName: "河道绿化带",
-    uploadedAt: "2026-07-09 10:21",
-    duration: "09:48",
-    frameIntervalSec: 2,
-    frameCount: 294,
-    status: "分析中",
-    progress: 62,
-    eventCount: 1,
-    reportStatus: "等待复核",
-    thumbnailUrl: thumb(4),
-    modelName: "YOLO-Construction-v1",
-  },
-  {
-    id: "vt-camera-0709",
-    name: "密云路沿街监控施工车辆回放",
-    videoName: "CAM_20260709_MIYUN_0815.MP4",
-    source: "摄像头视频",
-    objectName: "密云路",
-    uploadedAt: "2026-07-09 08:38",
-    duration: "31:18",
-    frameIntervalSec: 5,
-    frameCount: 376,
-    status: "待分析",
-    progress: 8,
-    eventCount: 0,
-    reportStatus: "未生成",
-    thumbnailUrl: thumb(1),
-    modelName: "等待分配模型",
-  },
+const sourceOptions = [
+  { label: "人工上传", value: "manual" },
+  { label: "无人机", value: "drone" },
+  { label: "摄像头", value: "camera" },
+  { label: "智能眼镜", value: "glasses" },
 ];
 
-const issueEvents: IssueEvent[] = [
-  {
-    id: "evt-001",
-    taskId: "vt-quyang-0720",
-    type: "疑似工程车辆停放",
-    timeRange: "03:20 - 03:45",
-    duration: "25 秒",
-    confidence: 92,
-    severity: "较重",
-    reviewStatus: "待复核",
-    evidenceUrl: thumb(2),
-    clipName: "DJI_20260709_QUYANG_0320_0345.mp4",
-    linkedObject: "曲阳路",
-    suggestion: "建议人工确认是否为临时施工车辆占道，确认后推送道路街面档案与问题台账。",
-    detections: ["工程车辆", "施工围挡", "道路占用"],
-  },
-  {
-    id: "evt-002",
-    taskId: "vt-quyang-0720",
-    type: "裸土与堆料",
-    timeRange: "06:12 - 06:39",
-    duration: "27 秒",
-    confidence: 88,
-    severity: "一般",
-    reviewStatus: "待复核",
-    evidenceUrl: thumb(5),
-    clipName: "DJI_20260709_QUYANG_0612_0639.mp4",
-    linkedObject: "曲阳路",
-    suggestion: "建议复核裸土是否覆盖、堆料是否占用公共通道。",
-    detections: ["裸土", "建筑堆料"],
-  },
-  {
-    id: "evt-003",
-    taskId: "vt-quyang-0720",
-    type: "施工区域疑似扩张",
-    timeRange: "11:02 - 11:30",
-    duration: "28 秒",
-    confidence: 84,
-    severity: "严重",
-    reviewStatus: "已确认",
-    evidenceUrl: thumb(3),
-    clipName: "DJI_20260709_QUYANG_1102_1130.mp4",
-    linkedObject: "曲阳路",
-    suggestion: "已确认，建议生成问题记录并纳入本次巡检报告。",
-    detections: ["施工区域", "工程机械", "临时围挡"],
-  },
-  {
-    id: "evt-004",
-    taskId: "vt-chifeng-0708",
-    type: "楼顶疑似临时搭建",
-    timeRange: "02:18 - 02:36",
-    duration: "18 秒",
-    confidence: 79,
-    severity: "较重",
-    reviewStatus: "已处置",
-    evidenceUrl: thumb(0),
-    clipName: "DJI_20260708_CHIFENG_0218_0236.mp4",
-    linkedObject: "赤峰小区",
-    suggestion: "已完成处置复核，保留报告证据链。",
-    detections: ["临时建筑", "楼顶堆物"],
-  },
-  {
-    id: "evt-005",
-    taskId: "vt-river-0709",
-    type: "河道边疑似堆料",
-    timeRange: "04:05 - 04:17",
-    duration: "12 秒",
-    confidence: 73,
-    severity: "一般",
-    reviewStatus: "待复核",
-    evidenceUrl: thumb(4),
-    clipName: "DJI_20260709_RIVER_0405_0417.mp4",
-    linkedObject: "河道绿化带",
-    suggestion: "任务仍在分析中，建议待全量事件合并后统一复核。",
-    detections: ["堆料", "河道边界"],
-  },
+const statusOptions = [
+  { label: "全部状态", value: "" },
+  { label: "排队中", value: "queued" },
+  { label: "处理中", value: "running" },
+  { label: "待分发", value: "ready_for_distribution" },
+  { label: "已完成", value: "completed" },
+  { label: "失败", value: "failed" },
 ];
 
-function taskStatusClass(status: TaskStatus) {
-  if (status === "分析中") return "processing";
-  if (status === "待复核") return "review";
-  if (status === "已完成") return "done";
-  if (status === "失败") return "failed";
-  return "waiting";
-}
+const inputOptions = [
+  { label: "巡检视频", value: "video" },
+  { label: "ZIP 图片包", value: "archive" },
+  { label: "直接上传图片", value: "images" },
+];
 
-function reviewStatusClass(status: ReviewStatus) {
-  if (status === "已确认") return "confirmed";
-  if (status === "误报") return "false-positive";
-  if (status === "已处置") return "closed";
-  return "review";
-}
-
-function severityClass(severity: Severity) {
-  if (severity === "严重") return "high";
-  if (severity === "较重") return "medium";
-  return "normal";
-}
+const acceptByInput: Record<TaskInput, string> = {
+  video: ".mp4,.mov,video/mp4,video/quicktime",
+  archive: ".zip,application/zip",
+  images: ".jpg,.jpeg,.png,image/jpeg,image/png",
+};
 
 export function MediaLibraryPage() {
   const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [keyword, setKeyword] = useState("");
-  const [source, setSource] = useState<VideoSource | "全部来源">("全部来源");
-  const [taskStatus, setTaskStatus] = useState<TaskStatus | "全部状态">("全部状态");
-  const [selectedTaskId, setSelectedTaskId] = useState(demoVideoTasks[0].id);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [reviewCategories, setReviewCategories] = useState<ReviewCategory[]>(loadReviewCategories);
-  const [selectedReviewCategoryId, setSelectedReviewCategoryId] = useState("all");
-  const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
-  const [categoryDrafts, setCategoryDrafts] = useState<ReviewCategory[]>([]);
-  const [persistedTasks, setPersistedTasks] = useState<MediaTaskViewModel[]>([]);
-  const [uploadIntervalSeconds, setUploadIntervalSeconds] = useState(3);
-  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [sourceType, setSourceType] = useState("");
+  const [processStatus, setProcessStatus] = useState("");
+  const [uploadRange, setUploadRange] = useState<[string, string] | null>(null);
+  const [page, setPage] = useState(1);
+  const [taskList, setTaskList] = useState<TaskListResult>(emptyTaskList);
+  const [loading, setLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [taskName, setTaskName] = useState("");
+  const [taskDate, setTaskDate] = useState(today());
+  const [taskSource, setTaskSource] = useState<TaskSource>("manual");
+  const [taskInput, setTaskInput] = useState<TaskInput>("video");
+  const [intervalSeconds, setIntervalSeconds] = useState(3);
+  const [files, setFiles] = useState<File[]>([]);
 
-  const liveVideoTasks = useMemo<VideoAnalysisTask[]>(() => persistedTasks.map((item) => ({
-    id: item.id,
-    name: `素材任务 · ${item.originalFileName}`,
-    videoName: item.originalFileName,
-    source: "人工上传",
-    objectName: "待关联项目",
-    uploadedAt: "已上传",
-    duration: "--:--",
-    frameIntervalSec: item.frameIntervalSec,
-    frameCount: item.assetCount,
-    status: item.status,
-    progress: item.progress,
-    eventCount: 0,
-    reportStatus: item.status === "已完成" ? "素材处理已完成" : "等待处理",
-    thumbnailUrl: item.posterAssetId ? getApiUrl(`/media-assets/${item.posterAssetId}/content`) : thumb(1),
-    modelName: item.assetKind === "video" ? "FFmpeg 离线抽帧" : "ZIP 图片解压",
-    jobId: item.jobId,
-    errorMessage: item.errorMessage,
-    isPersisted: true,
-    assetKind: item.assetKind,
-    kindLabel: item.kindLabel,
-    contentUrl: item.assetKind === "video" ? getApiUrl(`/media-assets/${item.id}/content`) : undefined,
-  })), [persistedTasks]);
-  const allVideoTasks = useMemo(() => [...liveVideoTasks, ...demoVideoTasks], [liveVideoTasks]);
-
-  const refreshPersistedTasks = async () => {
-    const records = await getApi<MediaTaskRecord[]>("/media-assets/tasks");
-    setPersistedTasks(records.map(toMediaTaskViewModel));
-  };
+  const loadTasks = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const result = await getApi<TaskListResult>(withQuery("/inspection-tasks", {
+        keyword: keyword.trim() || undefined,
+        sourceType: sourceType || undefined,
+        processStatus: processStatus || undefined,
+        uploadStart: uploadRange?.[0],
+        uploadEnd: uploadRange?.[1],
+        page,
+        pageSize: 20,
+      }));
+      setTaskList(result);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [keyword, sourceType, processStatus, uploadRange, page]);
 
   useEffect(() => {
-    void refreshPersistedTasks().catch(() => undefined);
-    const pollTimer = window.setInterval(() => {
-      void refreshPersistedTasks().catch(() => undefined);
-    }, 5_000);
-    return () => window.clearInterval(pollTimer);
-  }, []);
+    const timer = window.setTimeout(() => void loadTasks().catch(showLoadError), 220);
+    return () => window.clearTimeout(timer);
+  }, [loadTasks]);
 
-  const filteredTasks = useMemo(() => allVideoTasks.filter((item) => {
-    const keywordMatched = !keyword || `${item.name}${item.videoName}${item.objectName}${item.source}`.includes(keyword);
-    const sourceMatched = source === "全部来源" || item.source === source;
-    const statusMatched = taskStatus === "全部状态" || item.status === taskStatus;
-    return keywordMatched && sourceMatched && statusMatched;
-  }), [allVideoTasks, keyword, source, taskStatus]);
+  useEffect(() => {
+    const timer = window.setInterval(() => void loadTasks(true).catch(() => undefined), 5_000);
+    return () => window.clearInterval(timer);
+  }, [loadTasks]);
 
-  const selectedTask = allVideoTasks.find((item) => item.id === selectedTaskId) ?? allVideoTasks[0];
+  const tasks = useMemo(() => taskList.items.map(toInspectionTaskViewModel), [taskList.items]);
 
-  const taskReviewEvents = issueEvents.filter((item) => item.taskId === selectedTask.id);
-  const selectedReviewCategory = reviewCategories.find((item) => item.id === selectedReviewCategoryId);
-  const selectedTaskEvents = taskReviewEvents.filter((item) => {
-    if (!selectedReviewCategory) return true;
-    const searchableText = `${item.type} ${item.detections.join(" ")}`;
-    return selectedReviewCategory.keywords.some((keyword) => searchableText.includes(keyword));
-  });
-  const selectedEvent = selectedEventId
-    ? issueEvents.find((item) => item.id === selectedEventId) ?? null
-    : null;
-
-  const pendingReviewCount = issueEvents.filter((item) => item.reviewStatus === "待复核").length;
-  const completedReportCount = allVideoTasks.filter((item) => item.reportStatus === "已生成报告").length;
-
-  const selectTask = (task: VideoAnalysisTask) => {
-    if (shouldOpenMediaTaskDetail(task.isPersisted)) {
-      navigate(getMediaTaskDetailPath(task.id));
-      return;
-    }
-    setSelectedTaskId(task.id);
-    setSelectedEventId(null);
+  const resetCreateForm = (input: TaskInput = "video") => {
+    setTaskName("");
+    setTaskDate(today());
+    setTaskSource("manual");
+    setTaskInput(input);
+    setIntervalSeconds(3);
+    setFiles([]);
+    if (uploadInputRef.current) uploadInputRef.current.value = "";
   };
 
-  const openCategoryManager = () => {
-    setCategoryDrafts(reviewCategories.map((item) => ({ ...item, keywords: [...item.keywords] })));
-    setIsCategoryManagerOpen(true);
+  const openCreate = () => {
+    resetCreateForm();
+    setCreateOpen(true);
   };
 
-  const updateCategoryDraft = (id: string, field: "name" | "keywords", value: string) => {
-    setCategoryDrafts((items) => items.map((item) => {
-      if (item.id !== id) return item;
-      return field === "name"
-        ? { ...item, name: value }
-        : { ...item, keywords: value.split(/[、,，]/).map((keyword) => keyword.trim()).filter(Boolean) };
-    }));
+  const chooseFiles = (nextFiles: FileList | null) => {
+    const selected = Array.from(nextFiles ?? []);
+    setFiles(selected);
+    if (!taskName && selected[0]) setTaskName(stripExtension(selected[0].name));
   };
 
-  const addCategoryDraft = () => {
-    const nextIndex = categoryDrafts.length + 1;
-    const tones: ReviewCategoryTone[] = ["blue", "green", "orange", "purple"];
-    setCategoryDrafts((items) => [
-      ...items,
-      { id: `custom-${Date.now()}`, name: `识别维度 ${nextIndex}`, keywords: [], tone: tones[items.length % tones.length] },
-    ]);
-  };
+  const createTask = async () => {
+    if (!taskName.trim()) return void message.warning("请输入任务名称");
+    if (!taskDate) return void message.warning("请选择任务日期");
+    if (!files.length) return void message.warning("请选择任务素材");
 
-  const saveReviewCategories = () => {
-    const normalized = categoryDrafts
-      .map((item) => ({ ...item, name: item.name.trim(), keywords: item.keywords.map((keyword) => keyword.trim()).filter(Boolean) }))
-      .filter((item) => item.name);
-    if (!normalized.length) {
-      message.error("请至少保留一个算法识别维度");
-      return;
-    }
-    if (new Set(normalized.map((item) => item.name)).size !== normalized.length) {
-      message.error("识别维度名称不能重复");
-      return;
-    }
-    setReviewCategories(normalized);
-    window.localStorage.setItem(reviewCategoryStorageKey, JSON.stringify(normalized));
-    if (selectedReviewCategoryId !== "all" && !normalized.some((item) => item.id === selectedReviewCategoryId)) {
-      setSelectedReviewCategoryId("all");
-    }
-    setIsCategoryManagerOpen(false);
-    message.success("算法识别维度已保存");
-  };
-
-  const createAnalysisTask = async () => {
-    if (!selectedTask.isPersisted) {
-      message.warning("演示任务没有原始素材，请先上传真实任务文件");
-      return;
-    }
-    if (selectedTask.status === "失败") {
-      await retryExtraction(selectedTask);
-      return;
-    }
-    if (selectedTask.assetKind === "image_bundle") {
-      message.info("图片包上传时已自动创建解压任务");
-      return;
-    }
-    try {
-      await postJsonApi("/media-jobs/frame-extraction", {
-        mediaId: selectedTask.id,
-        intervalSeconds: selectedTask.frameIntervalSec,
-      });
-      await refreshPersistedTasks();
-      message.success("处理任务已创建并进入后台队列");
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : "创建处理任务失败");
-    }
-  };
-
-  const uploadMedia = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleMediaUpload = async (file: File | undefined) => {
-    if (!file) return;
     const formData = new FormData();
-    formData.append("file", file);
-    formData.append("intervalSeconds", String(uploadIntervalSeconds));
-    setUploadingVideo(true);
+    formData.append("name", taskName.trim());
+    formData.append("taskDate", taskDate);
+    formData.append("sourceType", taskSource);
+    formData.append("inputType", taskInput);
+    if (taskInput === "video") formData.append("intervalSeconds", String(intervalSeconds));
+    files.forEach((file) => formData.append("files", file));
+
+    setCreating(true);
     try {
-      const result = await postFormApi<{ asset: { id: string } }>("/media-assets/upload", formData);
-      await refreshPersistedTasks();
-      message.success(file.name.toLowerCase().endsWith(".zip")
-        ? "图片包已上传，解压任务已进入后台队列"
-        : "视频已上传，抽帧任务已进入后台队列");
-      navigate(getMediaTaskDetailPath(result.asset.id));
+      const task = await postFormApi<InspectionTaskRecord>("/inspection-tasks", formData);
+      message.success(taskInput === "video" ? "任务已创建，视频正在后台抽帧" : taskInput === "archive" ? "任务已创建，图片包正在后台解压" : "图片任务已创建");
+      setCreateOpen(false);
+      await loadTasks(true);
+      navigate(`/media-library/${encodeURIComponent(task.id)}`);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "素材上传失败");
+      message.error(error instanceof Error ? error.message : "任务创建失败");
     } finally {
-      setUploadingVideo(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setCreating(false);
     }
   };
 
-  const retryExtraction = async (task: VideoAnalysisTask) => {
-    if (!task.jobId) return;
+  const retryTask = async (jobId: string | null) => {
+    if (!jobId) return;
     try {
-      await postJsonApi(`/media-jobs/${task.jobId}/retry`, {});
-      await refreshPersistedTasks();
-      message.success("失败任务已重新进入队列");
+      await postJsonApi(`/media-jobs/${jobId}/retry`, {});
+      await loadTasks(true);
+      message.success("任务已重新进入后台队列");
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "任务重试失败");
+      message.error(error instanceof Error ? error.message : "重新处理失败");
     }
-  };
-
-  const confirmEvent = () => {
-    if (!selectedEvent) return;
-    message.success(`已确认“${selectedEvent.type}”，将同步进入问题台账和对应对象档案`);
   };
 
   return (
-    <section className="media-library-page video-analysis-page">
+    <section className="media-library-page video-analysis-page real-task-center-page">
       <main className="media-workspace">
         <header className="media-topbar video-analysis-topbar">
-          <div>
-            <h1>视频巡检分析中心</h1>
-          </div>
+          <div><h1>巡检任务中心</h1></div>
           <div className="media-top-actions">
             <Bell size={18} />
             <span className="media-notice">12</span>
@@ -505,293 +197,162 @@ export function MediaLibraryPage() {
           </div>
         </header>
 
-        <section className="media-filter-strip video-filter-strip">
+        <section className="media-filter-strip video-filter-strip real-task-filter-strip">
           <Input
             allowClear
             prefix={<ScanSearch size={16} />}
-            placeholder="搜索素材名称、任务、小区、街道、问题类型"
+            placeholder="搜索任务名称或原始文件名"
             value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
+            onChange={(event) => { setKeyword(event.target.value); setPage(1); }}
           />
-          <button type="button"><CalendarDays size={16} />上传日期</button>
-          <Select
-            value={source}
-            onChange={setSource}
-            options={[
-              { label: "全部来源", value: "全部来源" },
-              { label: "无人机视频", value: "无人机视频" },
-              { label: "摄像头视频", value: "摄像头视频" },
-              { label: "AI眼镜同步", value: "AI眼镜同步" },
-              { label: "人工上传", value: "人工上传" },
-            ]}
+          <DatePicker.RangePicker
+            allowClear
+            aria-label="上传日期"
+            placeholder={["上传开始日期", "上传结束日期"]}
+            onChange={(_, dateStrings) => {
+              setUploadRange(dateStrings[0] && dateStrings[1] ? [dateStrings[0], dateStrings[1]] : null);
+              setPage(1);
+            }}
           />
           <Select
-            value={taskStatus}
-            onChange={setTaskStatus}
-            options={[
-              { label: "全部状态", value: "全部状态" },
-              { label: "待分析", value: "待分析" },
-              { label: "分析中", value: "分析中" },
-              { label: "待复核", value: "待复核" },
-              { label: "已完成", value: "已完成" },
-              { label: "失败", value: "失败" },
-            ]}
+            aria-label="任务来源"
+            value={sourceType}
+            onChange={(value) => { setSourceType(value); setPage(1); }}
+            options={[{ label: "全部来源", value: "" }, ...sourceOptions]}
           />
           <Select
-            aria-label="抽帧间隔"
-            value={uploadIntervalSeconds}
-            onChange={setUploadIntervalSeconds}
-            options={FRAME_INTERVAL_OPTIONS}
+            aria-label="处理状态"
+            value={processStatus}
+            onChange={(value) => { setProcessStatus(value); setPage(1); }}
+            options={statusOptions}
           />
-          <input
-            ref={fileInputRef}
-            accept="video/mp4,video/quicktime,application/zip,.mp4,.mov,.zip"
-            className="video-file-input"
-            type="file"
-            onChange={(event) => void handleMediaUpload(event.target.files?.[0])}
-          />
-          <Button loading={uploadingVideo} type="primary" icon={<UploadCloud size={16} />} onClick={uploadMedia}>上传素材</Button>
-          <Button type="primary" icon={<Bot size={16} />} onClick={() => void createAnalysisTask()}>重新处理</Button>
-          <Button icon={<FileText size={16} />} onClick={() => navigate("/reports/write")}>生成报告</Button>
+          <Button type="primary" icon={<UploadCloud size={16} />} onClick={openCreate}>新建任务</Button>
+          <Button icon={<FileText size={16} />} onClick={() => navigate("/reports")}>巡检报告</Button>
         </section>
 
-        <section className="media-stat-grid video-stat-grid">
-          <article>
-            <span className="stat-icon blue"><Video size={24} /></span>
-            <div><em>任务数</em><strong>{allVideoTasks.length}</strong><p>视频与图片包统一处理</p></div>
-          </article>
-          <article>
-            <span className="stat-icon orange"><Gauge size={24} /></span>
-            <div><em>正在处理</em><strong>{allVideoTasks.filter((item) => item.status === "分析中").length}</strong><p>后台媒体处理中</p></div>
-          </article>
-          <article>
-            <span className="stat-icon green"><AlertTriangle size={24} /></span>
-            <div><em>待复核事件</em><strong>{pendingReviewCount}</strong><p>AI 疑似问题待确认</p></div>
-          </article>
-          <article>
-            <span className="stat-icon purple"><FileText size={24} /></span>
-            <div><em>已生成报告</em><strong>{completedReportCount}</strong><p>确认后纳入巡检报告</p></div>
-          </article>
+        <section className="media-stat-grid video-stat-grid real-task-stat-grid">
+          <article><span className="stat-icon blue"><Video size={22} /></span><div><em>任务数</em><strong>{taskList.stats.taskCount}</strong><p>视频、图片包与图片统一管理</p></div></article>
+          <article><span className="stat-icon orange"><Gauge size={22} /></span><div><em>正在处理</em><strong>{taskList.stats.processingTaskCount}</strong><p>后台抽帧或解压处理中</p></div></article>
+          <article><span className="stat-icon green"><Images size={22} /></span><div><em>待分发照片</em><strong>{taskList.stats.pendingPhotoCount}</strong><p>等待归入唯一对象档案</p></div></article>
+          <article><span className="stat-icon purple"><FileText size={22} /></span><div><em>综合报告</em><strong>{taskList.stats.generatedReportCount}</strong><p>每个任务最多一份综合报告</p></div></article>
         </section>
 
-        <div className="media-main-grid video-main-grid">
-          <section className="media-gallery-panel video-workspace-panel">
-            <div className="video-workspace-header">
-              <div className="video-review-strip">
-                <strong>待复核类型</strong>
-                <div className="video-review-filters" role="group" aria-label="算法识别维度筛选">
-                  <button
-                    className={`video-review-filter ${selectedReviewCategoryId === "all" ? "active" : ""}`}
-                    type="button"
-                    onClick={() => setSelectedReviewCategoryId("all")}
-                  >
-                    全部 <em>{taskReviewEvents.length}</em>
-                  </button>
-                  {reviewCategories.map((item) => {
-                    const categoryCount = taskReviewEvents.filter((event) => {
-                      const searchableText = `${event.type} ${event.detections.join(" ")}`;
-                      return item.keywords.some((keyword) => searchableText.includes(keyword));
-                    }).length;
-                    return (
-                      <button
-                        className={`video-review-filter ${selectedReviewCategoryId === item.id ? "active" : ""}`}
-                        key={item.id}
-                        type="button"
-                        onClick={() => setSelectedReviewCategoryId(item.id)}
-                      >
-                        <span className={`source-icon ${item.tone}`}>{reviewCategoryIcon(item.tone)}</span>
-                        <b>{item.name}</b>
-                        <em>{categoryCount}</em>
-                      </button>
-                    );
-                  })}
-                </div>
-                <button className="video-review-manage" type="button" onClick={openCategoryManager}>
-                  <Settings2 size={16} /> 管理分类
-                </button>
-                <button className="video-review-ledger" type="button" onClick={() => navigate("/issues")}>问题台账</button>
-              </div>
+        <section className="media-gallery-panel video-workspace-panel real-task-list-panel">
+          <div className="media-gallery-toolbar video-task-toolbar">
+            <strong>任务</strong>
+            <span>共 {taskList.total} 个真实任务</span>
+            <div><span>按上传时间排序</span><ListChecks size={18} /></div>
+          </div>
 
-              <div className="media-gallery-toolbar video-task-toolbar">
-                <strong>任务</strong>
-                <span>已筛选 {filteredTasks.length} 个任务</span>
-                <button type="button" onClick={() => void createAnalysisTask()}>重新处理</button>
-                <button type="button" onClick={() => message.info("批量复核入口已预留")}>批量复核</button>
-                <div>
-                  <span>排序：上传时间 ↓</span>
-                  <Grid3X3 size={18} />
-                  <ListChecks size={18} />
-                </div>
-              </div>
-            </div>
-
-            <div className="video-workspace-split">
-              <section className="video-task-panel">
-              <div className="video-task-list">
-                {filteredTasks.map((item) => (
-                  <article
-                    className={`video-task-card ${selectedTask.id === item.id ? "active" : ""}`}
-                    key={item.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => selectTask(item)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") selectTask(item);
-                    }}
-                  >
-                    <div className="video-task-thumb">
-                      <MediaTaskPreview
-                        assetKind={item.assetKind ?? "video"}
-                        alt={item.name}
-                        posterUrl={item.thumbnailUrl}
-                        videoUrl={item.contentUrl}
-                      />
-                      <span className={`source-pill ${sourceMeta[item.source].tone}`}>{item.kindLabel ?? item.source}</span>
-                      <span className={`analysis-status ${taskStatusClass(item.status)}`}>{item.status}</span>
+          {loading ? <div className="real-task-loading"><Spin />正在读取任务</div> : null}
+          {!loading && !tasks.length ? <Empty description="当前条件下暂无任务" /> : null}
+          {!loading && tasks.length ? <div className="video-task-list real-task-list">
+            {tasks.map((task) => {
+              const isVideo = task.inputLabel === "视频";
+              const posterUrl = task.posterAssetId ? getApiUrl(`/media-assets/${task.posterAssetId}/content`) : "";
+              const videoUrl = isVideo && task.sourceMediaId ? getApiUrl(`/media-assets/${task.sourceMediaId}/content`) : undefined;
+              return (
+                <article
+                  className="video-task-card real-task-card"
+                  key={task.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/media-library/${encodeURIComponent(task.id)}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") navigate(`/media-library/${encodeURIComponent(task.id)}`);
+                  }}
+                >
+                  <div className="video-task-thumb">
+                    {posterUrl || videoUrl ? <MediaTaskPreview
+                      assetKind={isVideo ? "video" : "image_bundle"}
+                      alt={task.name}
+                      posterUrl={posterUrl}
+                      videoUrl={videoUrl}
+                    /> : <div className="real-task-placeholder">{task.inputLabel === "ZIP 图片包" ? <FileArchive size={38} /> : <FileImage size={38} />}<span>素材处理中</span></div>}
+                    <span className={`source-pill ${task.sourceTone}`}>{task.sourceLabel}</span>
+                    <span className={`analysis-status ${task.statusTone}`}>{task.statusLabel}</span>
+                  </div>
+                  <div className="video-task-body">
+                    <div><strong>{task.name}</strong><span>{task.originalFileName}</span></div>
+                    <p><CalendarDays size={14} />任务日期 {task.taskDateLabel} · 上传 {task.createdAtLabel}</p>
+                    <div className="video-task-meta">
+                      <span>{task.inputLabel}</span>
+                      <span>{task.photoCount} 张照片</span>
+                      <span>{task.pendingPhotoCount} 张待分发</span>
+                      <span>{task.reportId ? "已生成综合报告" : "综合报告未生成"}</span>
                     </div>
-                    <div className="video-task-body">
-                      <div>
-                        <strong>{item.name}</strong>
-                        <span>{item.videoName}</span>
-                      </div>
-                      <p><MapPin size={14} />{item.objectName}</p>
-                      <div className="video-task-meta">
-                        <span><Timer size={14} />{item.duration}</span>
-                        <span>{item.assetKind === "image_bundle" ? "图片包解压" : `每 ${item.frameIntervalSec} 秒抽 1 帧`}</span>
-                        <span>{item.frameCount} {item.assetKind === "image_bundle" ? "张" : "帧"}</span>
-                        <span>{item.eventCount} 个事件</span>
-                      </div>
-                      <div className="task-progress"><i style={{ width: `${item.progress}%` }} /></div>
-                      {item.status === "失败" ? <div className="video-task-error">
-                        <span>{item.errorMessage || "媒体处理失败"}</span>
-                        <button type="button" onClick={(event) => {
-                          event.stopPropagation();
-                          void retryExtraction(item);
-                        }}>重试</button>
-                      </div> : null}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-              <section className="event-section video-event-panel">
-              <div className="event-section-head">
-                <div>
-                  <h3>疑似问题事件</h3>
-                  <p>{selectedReviewCategory ? `当前筛选：${selectedReviewCategory.name}` : "当前任务的 AI 疑似问题"}</p>
-                </div>
-                <span>{selectedTaskEvents.length} 个事件</span>
-              </div>
-              <div className="event-card-grid">
-                {selectedTaskEvents.length ? selectedTaskEvents.map((item) => (
-                  <button
-                    className={`issue-event-card ${selectedEvent?.id === item.id ? "active" : ""}`}
-                    key={item.id}
-                    type="button"
-                    onClick={() => setSelectedEventId(item.id)}
-                  >
-                    <div className="event-evidence">
-                      <img src={item.evidenceUrl} alt={item.type} />
-                      <span className="event-time">{item.timeRange}</span>
-                      <span className={`severity-pill ${severityClass(item.severity)}`}>{item.severity}</span>
-                      <i className="detection-box box-a" />
-                      <i className="detection-box box-b" />
-                    </div>
-                    <div className="event-card-body">
-                      <strong>{item.type}</strong>
-                      <p>{item.linkedObject} / {item.clipName}</p>
-                      <footer>
-                        <span><Gauge size={14} />{item.confidence}%</span>
-                        <em className={`review-status ${reviewStatusClass(item.reviewStatus)}`}>{item.reviewStatus}</em>
-                      </footer>
-                    </div>
-                  </button>
-                )) : <div className="event-empty-state">当前筛选条件下暂无疑似问题事件</div>}
-              </div>
-            </section>
-            </div>
-          </section>
-
-          {selectedEvent ? <div className="event-detail-layer" role="presentation" onClick={() => setSelectedEventId(null)}>
-            <aside className="media-detail-panel video-event-detail" role="dialog" aria-modal="true" aria-label="疑似事件详情" onClick={(event) => event.stopPropagation()}>
-            <div className="media-panel-head detail">
-              <h3>疑似事件详情</h3>
-              <button aria-label="关闭事件详情" type="button" onClick={() => setSelectedEventId(null)}>×</button>
-            </div>
-            <div className="media-detail-evidence">
-              <img src={selectedEvent.evidenceUrl} alt={selectedEvent.type} />
-              <span className={`severity-pill ${severityClass(selectedEvent.severity)}`}>{selectedEvent.severity}</span>
-              <i className="detection-box detail-a" />
-              <i className="detection-box detail-b" />
-            </div>
-            <dl className="media-detail-list">
-              <div><dt>问题类型</dt><dd>{selectedEvent.type}</dd></div>
-              <div><dt>视频时间点</dt><dd>{selectedEvent.timeRange}</dd></div>
-              <div><dt>持续时间</dt><dd>{selectedEvent.duration}</dd></div>
-              <div><dt>AI置信度</dt><dd>{selectedEvent.confidence}%</dd></div>
-              <div><dt>复核状态</dt><dd><span className={`review-status ${reviewStatusClass(selectedEvent.reviewStatus)}`}>{selectedEvent.reviewStatus}</span></dd></div>
-              <div><dt>所属对象</dt><dd className="link-like">{selectedEvent.linkedObject}</dd></div>
-              <div><dt>关联片段</dt><dd>{selectedEvent.clipName}</dd></div>
-              <div><dt>分析模型</dt><dd>{selectedTask.modelName}</dd></div>
-            </dl>
-            <div className="event-detection-list">
-              <strong>识别结果</strong>
-              <div>
-                {selectedEvent.detections.map((item) => <span key={item}>{item}</span>)}
-              </div>
-              <p>{selectedEvent.suggestion}</p>
-            </div>
-            <Button type="primary" block icon={<CheckCircle2 size={16} />} onClick={confirmEvent}>确认为问题并进入台账</Button>
-            <div className="media-detail-actions">
-              <Button block icon={<XCircle size={16} />} onClick={() => message.warning("已标记为误报，不进入正式报告")}>标记误报</Button>
-              <Button block icon={<FileText size={16} />} onClick={() => navigate("/reports/write")}>加入报告</Button>
-            </div>
-            <button className="media-more-action" type="button" onClick={() => message.info(`打开视频片段：${selectedEvent.clipName}`)}>
-              查看原始视频片段 <ChevronDown size={14} />
-            </button>
-            </aside>
+                    <div className="task-progress"><i style={{ width: `${task.progress}%` }} /></div>
+                    {task.statusLabel === "失败" ? <div className="video-task-error">
+                      <span>{task.errorMessage || "任务处理失败"}</span>
+                      <button type="button" onClick={(event) => { event.stopPropagation(); void retryTask(task.jobId); }}>重新处理</button>
+                    </div> : null}
+                  </div>
+                </article>
+              );
+            })}
           </div> : null}
-        </div>
+
+          {taskList.total > taskList.pageSize ? <Pagination
+            current={taskList.page}
+            pageSize={taskList.pageSize}
+            showSizeChanger={false}
+            total={taskList.total}
+            onChange={setPage}
+          /> : null}
+        </section>
 
         <Modal
           cancelText="取消"
-          className="review-category-modal"
-          okText="保存维度"
-          onCancel={() => setIsCategoryManagerOpen(false)}
-          onOk={saveReviewCategories}
-          open={isCategoryManagerOpen}
-          title="算法识别维度"
+          okButtonProps={{ loading: creating }}
+          okText="创建任务"
+          open={createOpen}
+          title="新建巡检任务"
+          width={640}
+          onCancel={() => setCreateOpen(false)}
+          onOk={() => void createTask()}
         >
-          <p className="review-category-hint">名称用于筛选和报告归类；关键词用于匹配 AI 识别结果，可按实际模型能力维护。</p>
-          <div className="review-category-editor">
-            {categoryDrafts.map((item) => (
-              <article key={item.id}>
-                <Input
-                  aria-label={`${item.name}名称`}
-                  placeholder="识别维度名称"
-                  value={item.name}
-                  onChange={(event) => updateCategoryDraft(item.id, "name", event.target.value)}
-                />
-                <Input
-                  aria-label={`${item.name}关键词`}
-                  placeholder="关键词，使用顿号或逗号分隔"
-                  value={item.keywords.join("、")}
-                  onChange={(event) => updateCategoryDraft(item.id, "keywords", event.target.value)}
-                />
-                <Button
-                  aria-label={`删除${item.name}`}
-                  danger
-                  icon={<Trash2 size={16} />}
-                  type="text"
-                  onClick={() => setCategoryDrafts((items) => items.filter((draft) => draft.id !== item.id))}
-                />
-              </article>
-            ))}
+          <div className="real-task-create-form">
+            <label><span>任务名称</span><Input value={taskName} placeholder="例如：7月11日曲阳街道巡检" onChange={(event) => setTaskName(event.target.value)} /></label>
+            <div>
+              <label><span>任务日期</span><Input type="date" value={taskDate} onChange={(event) => setTaskDate(event.target.value)} /></label>
+              <label><span>任务来源</span><Select value={taskSource} options={sourceOptions} onChange={setTaskSource} /></label>
+            </div>
+            <label><span>素材类型</span><Select value={taskInput} options={inputOptions} onChange={(value) => {
+              setTaskInput(value);
+              setFiles([]);
+              if (uploadInputRef.current) uploadInputRef.current.value = "";
+            }} /></label>
+            {taskInput === "video" ? <label><span>抽帧间隔</span><Select value={intervalSeconds} options={[1, 2, 3, 4, 5].map((value) => ({ label: `${value} 秒/帧`, value }))} onChange={setIntervalSeconds} /></label> : null}
+            <input
+              ref={uploadInputRef}
+              accept={acceptByInput[taskInput]}
+              className="video-file-input"
+              multiple={taskInput === "images"}
+              type="file"
+              onChange={(event) => chooseFiles(event.target.files)}
+            />
+            <button className="real-task-file-picker" type="button" onClick={() => uploadInputRef.current?.click()}>
+              <UploadCloud size={24} />
+              <strong>{files.length ? `已选择 ${files.length} 个文件` : taskInput === "images" ? "选择一张或多张图片" : taskInput === "archive" ? "选择一个 ZIP 图片包" : "选择一个 MP4 或 MOV 视频"}</strong>
+              <span>{files.length ? files.map((file) => file.name).join("、") : "任务创建后自动进入对应处理流程"}</span>
+            </button>
           </div>
-          <Button block icon={<Plus size={16} />} type="dashed" onClick={addCategoryDraft}>新增识别维度</Button>
         </Modal>
       </main>
     </section>
   );
+}
+
+function today() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function stripExtension(fileName: string) {
+  return fileName.replace(/\.[^.]+$/, "");
+}
+
+function showLoadError(error: unknown) {
+  message.error(error instanceof Error ? error.message : "任务加载失败");
 }
