@@ -11,6 +11,10 @@ export interface MediaChildAssetRecord {
 export interface MediaGalleryItem extends MediaChildAssetRecord {
   caption: string;
   contentUrl: string;
+  taskPhotoId?: string;
+  distributionStatus?: string;
+  archiveObjectId?: string | null;
+  archiveObjectName?: string | null;
 }
 
 export function formatMediaCaption(asset: Pick<MediaChildAssetRecord, "kind" | "videoTimestampMs" | "originalFileName">) {

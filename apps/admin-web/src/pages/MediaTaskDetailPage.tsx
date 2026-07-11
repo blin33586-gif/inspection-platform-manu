@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Progress, Spin, Tag } from "antd";
+import { Button, message, Modal, Progress, Select, Spin, Tag } from "antd";
 import { ArrowLeft, CalendarDays, FileArchive, FileText, FileVideo2, Images, RadioTower } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getApi, getApiUrl } from "../api/client";
+import { getApi, getApiUrl, patchJsonApi } from "../api/client";
 import { ApiResourceError } from "../components/ApiResourceError";
 import { MediaAssetGallery } from "../components/MediaAssetGallery";
 import { toMediaGalleryItem, type MediaGalleryItem } from "../components/media-asset-presenter";
@@ -17,6 +17,7 @@ interface TaskPhotoRecord {
   id: string;
   distributionStatus: string;
   archiveObjectId: string | null;
+  archiveObject: { id: string; name: string; objectType: string } | null;
   videoTimestampMs: number | null;
   mediaAsset: {
     id: string;
@@ -45,10 +46,20 @@ interface DetailState {
 
 const initialState: DetailState = { task: null, photos: [], loading: true, error: null };
 
+interface ArchiveOption {
+  id: string;
+  name: string;
+  objectType: string;
+}
+
 export function MediaTaskDetailPage() {
   const { taskId = "" } = useParams();
   const navigate = useNavigate();
   const [state, setState] = useState<DetailState>(initialState);
+  const [distributionItem, setDistributionItem] = useState<MediaGalleryItem | null>(null);
+  const [archiveOptions, setArchiveOptions] = useState<ArchiveOption[]>([]);
+  const [archiveObjectId, setArchiveObjectId] = useState<string>();
+  const [savingDistribution, setSavingDistribution] = useState(false);
 
   const loadTask = useCallback((signal?: AbortSignal) => {
     setState((current) => ({ ...current, loading: true, error: null }));
@@ -79,10 +90,55 @@ export function MediaTaskDetailPage() {
     return () => window.clearInterval(timer);
   }, [loadTask, state.task]);
 
-  const items = useMemo<MediaGalleryItem[]>(() => state.photos.map((photo) => toMediaGalleryItem(
-    { ...photo.mediaAsset, videoTimestampMs: photo.videoTimestampMs ?? photo.mediaAsset.videoTimestampMs },
-    getApiUrl(`/media-assets/${photo.mediaAsset.id}/content`),
-  )), [state.photos]);
+  const items = useMemo<MediaGalleryItem[]>(() => state.photos.map((photo) => ({
+    ...toMediaGalleryItem(
+      { ...photo.mediaAsset, videoTimestampMs: photo.videoTimestampMs ?? photo.mediaAsset.videoTimestampMs },
+      getApiUrl(`/media-assets/${photo.mediaAsset.id}/content`),
+    ),
+    taskPhotoId: photo.id,
+    distributionStatus: photo.distributionStatus,
+    archiveObjectId: photo.archiveObjectId,
+    archiveObjectName: photo.archiveObject?.name ?? null,
+  })), [state.photos]);
+
+  const openDistribution = async (item: MediaGalleryItem) => {
+    setDistributionItem(item);
+    setArchiveObjectId(item.archiveObjectId ?? undefined);
+    if (archiveOptions.length) return;
+    try {
+      const [communities, roads, points] = await Promise.all([
+        getApi<{ items: ArchiveOption[] }>("/communities"),
+        getApi<{ items: ArchiveOption[] }>("/roads"),
+        getApi<{ items: ArchiveOption[] }>("/points"),
+      ]);
+      setArchiveOptions([
+        ...communities.items.map((item) => ({ ...item, objectType: "community" })),
+        ...roads.items.map((item) => ({ ...item, objectType: "road" })),
+        ...points.items.map((item) => ({ ...item, objectType: "point" })),
+      ]);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "档案列表加载失败");
+    }
+  };
+
+  const saveDistribution = async (action: "archive" | "ignore") => {
+    if (!distributionItem?.taskPhotoId) return;
+    if (action === "archive" && !archiveObjectId) return void message.warning("请选择对象档案");
+    setSavingDistribution(true);
+    try {
+      await patchJsonApi(`/inspection-tasks/${encodeURIComponent(taskId)}/photos/${encodeURIComponent(distributionItem.taskPhotoId)}/distribution`, {
+        action,
+        ...(action === "archive" ? { archiveObjectId } : {}),
+      });
+      setDistributionItem(null);
+      await loadTask();
+      message.success(action === "archive" ? "照片已同步归入对象档案" : "照片已标记为忽略");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "照片分发失败");
+    } finally {
+      setSavingDistribution(false);
+    }
+  };
 
   if (state.error) return <ApiResourceError error={state.error} onRetry={() => void loadTask()} />;
   if (state.loading && !state.task) return <div className="media-task-detail-loading"><Spin size="large" />正在读取任务照片</div>;
@@ -129,8 +185,41 @@ export function MediaTaskDetailPage() {
           loading={state.loading}
           taskStatus={view.statusLabel}
           onWriteReport={(item) => navigate(`/reports/write?taskId=${encodeURIComponent(task.id)}&mediaId=${encodeURIComponent(item.id)}`)}
+          onDistribute={(item) => void openDistribution(item)}
         />
+
+        <Modal
+          footer={[
+            <Button danger key="ignore" loading={savingDistribution} onClick={() => void saveDistribution("ignore")}>标记忽略</Button>,
+            <Button key="close" onClick={() => setDistributionItem(null)}>取消</Button>,
+            <Button key="archive" loading={savingDistribution} type="primary" onClick={() => void saveDistribution("archive")}>确认归档</Button>,
+          ]}
+          open={Boolean(distributionItem)}
+          title="分发照片到对象档案"
+          onCancel={() => setDistributionItem(null)}
+        >
+          <p className="distribution-modal-hint">一张照片只能关联一个档案；重新选择会替换原关联，不会复制文件。</p>
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="选择小区、街道或重点点位"
+            value={archiveObjectId}
+            options={archiveOptions.map((item) => ({
+              value: item.id,
+              label: `${objectTypeLabel(item.objectType)} / ${item.name}`,
+            }))}
+            onChange={setArchiveObjectId}
+          />
+        </Modal>
       </main>
     </section>
   );
+}
+
+function objectTypeLabel(type: string) {
+  if (type === "community") return "小区";
+  if (type === "road") return "街道";
+  if (type === "point") return "重点点位";
+  return "对象";
 }

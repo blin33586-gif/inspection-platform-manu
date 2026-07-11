@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button, Empty, Modal, Spin } from "antd";
-import { FilePenLine, Maximize2 } from "lucide-react";
+import { FilePenLine, FolderInput, Maximize2 } from "lucide-react";
 import type { MediaGalleryItem } from "./media-asset-presenter";
 
 interface MediaAssetGalleryProps {
@@ -8,9 +8,10 @@ interface MediaAssetGalleryProps {
   loading: boolean;
   taskStatus: string;
   onWriteReport: (item: MediaGalleryItem) => void;
+  onDistribute?: (item: MediaGalleryItem) => void;
 }
 
-export function MediaAssetGallery({ items, loading, taskStatus, onWriteReport }: MediaAssetGalleryProps) {
+export function MediaAssetGallery({ items, loading, taskStatus, onWriteReport, onDistribute }: MediaAssetGalleryProps) {
   const [previewItem, setPreviewItem] = useState<MediaGalleryItem | null>(null);
 
   return (
@@ -39,8 +40,14 @@ export function MediaAssetGallery({ items, loading, taskStatus, onWriteReport }:
               <span><Maximize2 size={15} />查看大图</span>
             </button>
             <footer>
-              <strong title={item.originalFileName}>{item.caption}</strong>
-              <Button size="small" icon={<FilePenLine size={14} />} onClick={() => onWriteReport(item)}>写报告</Button>
+              <div className="media-asset-caption">
+                <strong title={item.originalFileName}>{item.caption}</strong>
+                {item.archiveObjectName ? <span>{item.archiveObjectName}</span> : item.distributionStatus === "ignored" ? <span>已忽略</span> : <span>待分发</span>}
+              </div>
+              <div className="media-asset-card-actions">
+                {onDistribute ? <Button size="small" icon={<FolderInput size={14} />} onClick={() => onDistribute(item)}>分发归档</Button> : null}
+                <Button size="small" icon={<FilePenLine size={14} />} onClick={() => onWriteReport(item)}>写报告</Button>
+              </div>
             </footer>
           </article>
         ))}
