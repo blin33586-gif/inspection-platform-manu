@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { basename, relative, resolve, sep } from "node:path";
 import type { PrismaClient } from "@prisma/client";
+import { extractArchiveImages, type ExtractedArchiveImage } from "./archive-image-extractor.js";
 import { extractVideoFrames } from "./ffmpeg-frame-extractor.js";
 import { runTiffTileJob } from "./gdal-tile-generator.js";
 
@@ -17,11 +18,28 @@ interface FrameExtractionJobInput {
   intervalSeconds: number;
 }
 
+interface ArchiveExtractionJobInput {
+  mediaId: string;
+  sourcePath: string;
+}
+
+interface JobRunnerHandlers {
+  extractArchiveImages?: (
+    inputPath: string,
+    outputDirectory: string,
+  ) => Promise<ExtractedArchiveImage[]>;
+}
+
 export class JobRunner {
+  private readonly extractArchiveImagesHandler: NonNullable<JobRunnerHandlers["extractArchiveImages"]>;
+
   constructor(
     private readonly database: PrismaClient,
     private readonly storageRoot = resolve(process.cwd(), "../api/storage"),
-  ) {}
+    handlers: JobRunnerHandlers = {},
+  ) {
+    this.extractArchiveImagesHandler = handlers.extractArchiveImages ?? extractArchiveImages;
+  }
 
   async processNext() {
     const job = await this.claimOne();
@@ -30,13 +48,14 @@ export class JobRunner {
     try {
       if (job.jobType === "tiff_tile") await this.processTiffJob(job.id, job.inputJson);
       else if (job.jobType === "frame_extract") await this.processFrameJob(job.id, job.inputJson);
+      else if (job.jobType === "archive_extract") await this.processArchiveJob(job.id, job.inputJson);
       else throw new Error(`不支持的媒体任务类型：${job.jobType}`);
     } catch (error) {
       await this.database.mediaProcessingJob.update({
         where: { id: job.id },
         data: {
           status: "failed",
-          errorMessage: error instanceof Error ? error.message.slice(0, 1000) : "瓦片处理失败",
+          errorMessage: error instanceof Error ? error.message.slice(0, 1000) : "媒体处理失败",
         },
       });
     }
@@ -46,7 +65,7 @@ export class JobRunner {
 
   private async claimOne() {
     const candidate = await this.database.mediaProcessingJob.findFirst({
-      where: { jobType: { in: ["tiff_tile", "frame_extract"] }, status: "queued" },
+      where: { jobType: { in: ["tiff_tile", "frame_extract", "archive_extract"] }, status: "queued" },
       orderBy: { createdAt: "asc" },
     });
     if (!candidate) return null;
@@ -149,6 +168,49 @@ export class JobRunner {
     ]);
   }
 
+  private async processArchiveJob(jobId: string, rawInput: string) {
+    const input = this.parseArchiveInput(rawInput);
+    const sourcePath = this.toStoragePath(input.sourcePath);
+    const outputDirectory = resolve(this.storageRoot, "media", "images", input.mediaId);
+    const images = await this.extractArchiveImagesHandler(sourcePath, outputDirectory);
+    const publicDirectory = `storage/media/images/${input.mediaId}`;
+
+    await this.database.$transaction([
+      this.database.mediaAsset.createMany({
+        data: images.map((image) => ({
+          id: `image-${input.mediaId}-${image.sortIndex + 1}`,
+          kind: "image",
+          originalFileName: image.fileName,
+          storagePath: `${publicDirectory}/${basename(image.storagePath)}`,
+          mimeType: image.mimeType,
+          fileSize: image.fileSize,
+          parentMediaId: input.mediaId,
+        })),
+        skipDuplicates: true,
+      }),
+      this.database.mediaProcessingJob.update({
+        where: { id: jobId },
+        data: {
+          status: "completed",
+          progress: 100,
+          completedAt: new Date(),
+          errorMessage: null,
+          outputJson: JSON.stringify({ imageCount: images.length, imageDirectory: publicDirectory }),
+        },
+      }),
+      this.database.auditLog.create({
+        data: {
+          id: `audit-${randomUUID()}`,
+          actor: "system",
+          action: "media.archive.ready",
+          targetType: "mediaAsset",
+          targetId: input.mediaId,
+          summary: `图片包解压完成，共生成 ${images.length} 张巡检照片`,
+        },
+      }),
+    ]);
+  }
+
   private parseTiffInput(rawInput: string): TiffJobInput {
     const input = JSON.parse(rawInput) as Partial<TiffJobInput>;
     if (!input.mapAssetId || !input.sourcePath || !Number.isInteger(input.minZoom) || !Number.isInteger(input.maxZoom)) {
@@ -165,10 +227,16 @@ export class JobRunner {
     return input as FrameExtractionJobInput;
   }
 
+  private parseArchiveInput(rawInput: string): ArchiveExtractionJobInput {
+    const input = JSON.parse(rawInput) as Partial<ArchiveExtractionJobInput>;
+    if (!input.mediaId || !input.sourcePath) throw new Error("图片包解压任务参数无效");
+    return input as ArchiveExtractionJobInput;
+  }
+
   private toStoragePath(storedPath: string) {
     const normalized = storedPath.replace(/^storage\//, "");
     const absolutePath = resolve(this.storageRoot, normalized);
-    if (relative(this.storageRoot, absolutePath).startsWith(`..${sep}`)) throw new Error("地图源文件路径无效");
+    if (relative(this.storageRoot, absolutePath).startsWith(`..${sep}`)) throw new Error("媒体源文件路径无效");
     return absolutePath;
   }
 }
