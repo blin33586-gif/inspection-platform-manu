@@ -4,8 +4,10 @@
   "private": true,
   "description": "巡检宝无人机巡检管理平台",
   "scripts": {
+    "dev": "corepack pnpm db:deploy && DATABASE_URL=${DATABASE_URL:-postgresql://xunjianbao:xunjianbao-local-dev@127.0.0.1:5432/xunjianbao?schema=public} corepack pnpm --parallel --filter @xunjianbao/api --filter @xunjianbao/admin-web --filter @xunjianbao/media-worker run dev",
     "dev:admin": "corepack pnpm --filter @xunjianbao/admin-web dev",
-    "dev:api": "corepack pnpm --filter @xunjianbao/api dev",
+    "dev:api": "corepack pnpm db:deploy && corepack pnpm --filter @xunjianbao/api dev",
+    "dev:worker": "DATABASE_URL=${DATABASE_URL:-postgresql://xunjianbao:xunjianbao-local-dev@127.0.0.1:5432/xunjianbao?schema=public} corepack pnpm --filter @xunjianbao/media-worker dev",
     "start:api": "NODE_ENV=production corepack pnpm --filter @xunjianbao/api start",
     "build": "corepack pnpm -r build",
     "build:admin": "corepack pnpm --filter @xunjianbao/admin-web build",
