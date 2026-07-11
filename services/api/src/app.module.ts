@@ -11,6 +11,7 @@ import { AuthModule } from "./modules/auth/auth.module.js";
 import { AuditModule } from "./modules/audit/audit.module.js";
 import { ManagedObjectsModule } from "./modules/managed-objects/managed-objects.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
+import { MediaModule } from "./modules/media/media.module.js";
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { HealthModule } from "./modules/health/health.module.js";
     ReportsModule,
     IssuesModule,
     MapAssetsModule,
+    MediaModule,
   ],
 })
 export class AppModule {}

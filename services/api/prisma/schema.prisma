@@ -135,6 +135,7 @@ model MediaProcessingJob {
   jobType      String
   status       String   @default("queued")
   dedupeKey    String   @unique
+  mediaId      String?
   inputJson    String
   outputJson   String?
   progress     Int      @default(0)
@@ -145,7 +146,30 @@ model MediaProcessingJob {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  media MediaAsset? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+
   @@index([jobType, status])
+  @@index([mediaId])
+  @@index([createdAt])
+}
+
+model MediaAsset {
+  id               String   @id
+  kind             String
+  originalFileName String
+  storagePath      String
+  mimeType         String
+  fileSize         Int
+  parentMediaId    String?
+  videoTimestampMs Int?
+  createdAt        DateTime @default(now())
+
+  parentMedia MediaAsset?  @relation("MediaAssetFrames", fields: [parentMediaId], references: [id], onDelete: Cascade)
+  frames      MediaAsset[]  @relation("MediaAssetFrames")
+  jobs        MediaProcessingJob[]
+
+  @@unique([parentMediaId, videoTimestampMs])
+  @@index([kind])
   @@index([createdAt])
 }
 

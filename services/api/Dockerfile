@@ -26,4 +26,4 @@ ENV NODE_ENV=production
 
 EXPOSE 3010
 
-CMD ["sh", "-c", "mkdir -p storage/reports storage/map-assets && pnpm db:deploy && pnpm start"]
+CMD ["sh", "-c", "mkdir -p storage/reports storage/map-assets storage/media/tmp storage/media/videos storage/media/frames && pnpm db:deploy && pnpm start"]
