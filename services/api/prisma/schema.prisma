@@ -101,6 +101,7 @@ model InspectionReport {
 
   relatedObject ManagedObject? @relation(fields: [relatedObjectId], references: [id])
   task          InspectionTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  photos        ReportPhoto[]
 
   @@index([relatedObjectId])
   @@index([reportType])
@@ -215,10 +216,26 @@ model TaskPhoto {
   task          InspectionTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
   mediaAsset    MediaAsset      @relation("TaskPhotoMedia", fields: [mediaAssetId], references: [id], onDelete: Cascade)
   archiveObject ManagedObject?  @relation(fields: [archiveObjectId], references: [id], onDelete: SetNull)
+  reportPhotos  ReportPhoto[]
 
   @@index([taskId, distributionStatus])
   @@index([archiveObjectId])
   @@index([capturedAt])
+}
+
+model ReportPhoto {
+  id          String   @id
+  reportId    String
+  taskPhotoId String
+  sortIndex   Int
+  createdAt   DateTime @default(now())
+
+  report    InspectionReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  taskPhoto TaskPhoto        @relation(fields: [taskPhotoId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, taskPhotoId])
+  @@index([reportId, sortIndex])
+  @@index([taskPhotoId])
 }
 
 model MapHotArea {
