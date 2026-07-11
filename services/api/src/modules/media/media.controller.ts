@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Inject, Param, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import type { Response } from "express";
 import { ok } from "../../shared/api-response.js";
+import { MediaContentService } from "./media-content.service.js";
 import { MediaService } from "./media.service.js";
 
 interface UploadedFileLike {
@@ -13,7 +15,10 @@ interface UploadedFileLike {
 
 @Controller()
 export class MediaController {
-  constructor(@Inject(MediaService) private readonly mediaService: MediaService) {}
+  constructor(
+    @Inject(MediaService) private readonly mediaService: MediaService,
+    @Inject(MediaContentService) private readonly mediaContentService: MediaContentService,
+  ) {}
 
   @Post("media-assets/upload")
   @UseInterceptors(FileInterceptor("file", {
@@ -40,6 +45,18 @@ export class MediaController {
   @Get("media-assets/:id/children")
   async children(@Param("id") id: string) {
     return ok(await this.mediaService.listChildren(id));
+  }
+
+  @Get("media-assets/:id/content")
+  async content(
+    @Param("id") id: string,
+    @Headers("range") range: string | undefined,
+    @Res() response: Response,
+  ) {
+    const content = await this.mediaContentService.resolveContent(id, range);
+    response.status(content.statusCode);
+    Object.entries(content.headers).forEach(([name, value]) => response.setHeader(name, value));
+    content.stream.pipe(response);
   }
 
   @Get("media-assets/:id")
