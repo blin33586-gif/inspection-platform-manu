@@ -19,10 +19,12 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { ReportSummary, ReportType } from "@xunjianbao/shared";
+import { getApi, getApiUrl } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { writeSubmittedReport } from "../utils/reportDraftStore";
+import { toReportPhoto, type ReportMediaAssetRecord } from "./report-media-adapter";
 
 type ToolKey = "pointer" | "move" | "rect" | "arrow" | "text";
 type AnnotationShape = Exclude<ToolKey, "pointer" | "move">;
@@ -241,6 +243,8 @@ function getPointFromEvent(event: PointerEvent<HTMLDivElement>) {
 
 export function ReportWritePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sourceMediaId = searchParams.get("mediaId");
   const objectUrlsRef = useRef<string[]>([]);
   const nextPhotoIdRef = useRef(initialPhotoItems.length + 1);
   const photoCanvasRef = useRef<HTMLDivElement | null>(null);
@@ -262,6 +266,28 @@ export function ReportWritePage() {
       objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
+
+  useEffect(() => {
+    if (!sourceMediaId) return;
+
+    const controller = new AbortController();
+    void getApi<ReportMediaAssetRecord>(`/media-assets/${sourceMediaId}`, controller.signal)
+      .then((asset) => {
+        const nextId = nextPhotoIdRef.current;
+        const photo = toReportPhoto(asset, nextId, getApiUrl(`/media-assets/${asset.id}/content`));
+        nextPhotoIdRef.current += 1;
+        setPhotos((current) => [photo, ...current.filter((item) => item.url !== photo.url)]);
+        setPhotoCoordinates((current) => ({ ...current, [nextId]: defaultCoordinateText }));
+        setActivePhotoId(nextId);
+        message.success("媒体库照片已载入报告编写区");
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        message.error("素材读取失败，可继续手工上传图片");
+      });
+
+    return () => controller.abort();
+  }, [sourceMediaId]);
 
   const activePhoto = photos.find((item) => item.id === activePhotoId);
   const activePhotoAnnotations = activePhoto ? annotations.filter((item) => item.photoId === activePhoto.id) : [];

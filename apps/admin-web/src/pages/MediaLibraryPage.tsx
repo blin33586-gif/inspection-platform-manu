@@ -27,6 +27,8 @@ import {
 import { mediaLibraryItems } from "../data";
 import { getApi, getApiUrl, postFormApi, postJsonApi } from "../api/client";
 import { MediaTaskPreview } from "../components/MediaTaskPreview";
+import { MediaAssetGallery } from "../components/MediaAssetGallery";
+import { toMediaGalleryItem, type MediaChildAssetRecord, type MediaGalleryItem } from "../components/media-asset-presenter";
 import { toMediaTaskViewModel, type MediaTaskRecord, type MediaTaskViewModel } from "./media-task-adapter";
 import "./media-library-detail.css";
 
@@ -308,6 +310,8 @@ export function MediaLibraryPage() {
   const [persistedTasks, setPersistedTasks] = useState<MediaTaskViewModel[]>([]);
   const [uploadIntervalSeconds, setUploadIntervalSeconds] = useState(3);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [selectedTaskChildren, setSelectedTaskChildren] = useState<MediaGalleryItem[]>([]);
+  const [childrenLoading, setChildrenLoading] = useState(false);
 
   const liveVideoTasks = useMemo<VideoAnalysisTask[]>(() => persistedTasks.map((item) => ({
     id: item.id,
@@ -355,6 +359,31 @@ export function MediaLibraryPage() {
   }), [allVideoTasks, keyword, source, taskStatus]);
 
   const selectedTask = allVideoTasks.find((item) => item.id === selectedTaskId) ?? allVideoTasks[0];
+
+  useEffect(() => {
+    if (!selectedTask.isPersisted) {
+      setSelectedTaskChildren([]);
+      setChildrenLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setChildrenLoading(true);
+    void getApi<MediaChildAssetRecord[]>(`/media-assets/${selectedTask.id}/children`, controller.signal)
+      .then((items) => {
+        setSelectedTaskChildren(items.map((item) => (
+          toMediaGalleryItem(item, getApiUrl(`/media-assets/${item.id}/content`))
+        )));
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setSelectedTaskChildren([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setChildrenLoading(false);
+      });
+    return () => controller.abort();
+  }, [selectedTask.id, selectedTask.isPersisted, selectedTask.status]);
   const taskReviewEvents = issueEvents.filter((item) => item.taskId === selectedTask.id);
   const selectedReviewCategory = reviewCategories.find((item) => item.id === selectedReviewCategoryId);
   const selectedTaskEvents = taskReviewEvents.filter((item) => {
@@ -667,6 +696,14 @@ export function MediaLibraryPage() {
                   </article>
                 ))}
               </div>
+              {selectedTask.isPersisted ? (
+                <MediaAssetGallery
+                  items={selectedTaskChildren}
+                  loading={childrenLoading}
+                  taskStatus={selectedTask.status}
+                  onWriteReport={(item) => navigate(`/reports/write?mediaId=${encodeURIComponent(item.id)}`)}
+                />
+              ) : null}
             </section>
 
               <section className="event-section video-event-panel">
