@@ -212,3 +212,232 @@
   flex: 0 0 auto;
   padding: 4px 10px;
 }
+
+.media-task-detail-loading {
+  display: flex;
+  min-height: calc(100vh - 76px);
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #66788d;
+  background: #f4f8fd;
+}
+
+.media-task-detail-page {
+  min-height: calc(100vh - 76px);
+  background: #f4f8fd;
+}
+
+.media-task-detail-page .media-workspace {
+  width: min(1440px, 100%);
+  margin: 0 auto;
+}
+
+.media-task-detail-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.media-task-detail-header > div {
+  min-width: 0;
+}
+
+.media-task-detail-header span {
+  color: #6f8197;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.media-task-detail-header h1 {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: #102033;
+  font-size: 28px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-task-detail-status {
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-weight: 800;
+}
+
+.media-task-detail-status.done {
+  color: #087a45;
+  background: #dff7e9;
+}
+
+.media-task-detail-status.processing {
+  color: #0864d8;
+  background: #e4f0ff;
+}
+
+.media-task-detail-status.failed {
+  color: #c62828;
+  background: #ffebea;
+}
+
+.media-task-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr)) minmax(220px, 1.35fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.media-task-detail-summary > div {
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid #dfe7f1;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.media-task-detail-summary p {
+  min-width: 0;
+  margin: 0;
+  color: #7a8a9f;
+  font-size: 12px;
+}
+
+.media-task-detail-summary p strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: #102033;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.summary-icon.blue { color: #126be6; background: #e4efff; }
+.summary-icon.cyan { color: #0d8fa9; background: #e0f6fa; }
+.summary-icon.green { color: #13854c; background: #e2f6eb; }
+.summary-icon.purple { color: #7044d7; background: #eee8ff; }
+
+.media-task-detail-summary .media-task-detail-progress {
+  display: block;
+}
+
+.media-task-detail-progress > span {
+  color: #6f8197;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.media-task-detail-progress .ant-progress {
+  margin-top: 8px;
+}
+
+.media-task-detail-error {
+  margin-bottom: 18px;
+  border: 1px solid #ffc9c5;
+  border-radius: 6px;
+  padding: 11px 14px;
+  color: #b42318;
+  background: #fff3f2;
+}
+
+.media-task-video-section {
+  margin-bottom: 22px;
+}
+
+.media-task-video-section > header,
+.media-task-detail-page .media-asset-gallery > header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+
+.media-task-video-section h2,
+.media-task-video-section p {
+  margin: 0;
+}
+
+.media-task-video-section h2 {
+  color: #102033;
+  font-size: 20px;
+}
+
+.media-task-video-section p,
+.media-task-video-section > header > span {
+  margin-top: 3px;
+  color: #718299;
+  font-size: 12px;
+}
+
+.media-task-video-stage {
+  overflow: hidden;
+  border-radius: 8px;
+  aspect-ratio: 16 / 7;
+  background: #07111f;
+}
+
+.media-task-video-stage video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.media-task-detail-page .media-asset-gallery {
+  border-top: 1px solid #dfe7f1;
+  padding-top: 20px;
+}
+
+@media (max-width: 1100px) {
+  .media-task-detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .media-task-detail-summary .media-task-detail-progress {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .media-task-detail-header {
+    grid-template-columns: 1fr auto;
+  }
+
+  .media-task-detail-header > button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .media-task-detail-header h1 {
+    font-size: 22px;
+  }
+
+  .media-task-detail-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .media-task-detail-summary .media-task-detail-progress {
+    grid-column: auto;
+  }
+
+  .media-task-video-stage {
+    aspect-ratio: 16 / 10;
+  }
+}

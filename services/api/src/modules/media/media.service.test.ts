@@ -218,16 +218,27 @@ test("lists task children in preview order", async () => {
 });
 
 test("returns one persisted media asset", async () => {
+  const findUniqueCalls: Array<Record<string, unknown>> = [];
   const database = {
     mediaAsset: {
-      findUnique: async () => ({ id: "frame-1", kind: "frame", originalFileName: "frame.jpg" }),
+      findUnique: async (input: Record<string, unknown>) => {
+        findUniqueCalls.push(input);
+        return { id: "media-video-1", kind: "video", originalFileName: "flight.mp4", jobs: [], frames: [] };
+      },
     },
   };
   const service = new MediaService(database as never);
 
-  const asset = await service.getAsset("frame-1");
+  const asset = await service.getAsset("media-video-1");
 
-  assert.equal(asset.id, "frame-1");
+  assert.equal(asset.id, "media-video-1");
+  assert.deepEqual(findUniqueCalls[0], {
+    where: { id: "media-video-1" },
+    include: {
+      jobs: { orderBy: { createdAt: "desc" }, take: 1 },
+      frames: { orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }], take: 1 },
+    },
+  });
 });
 
 test("requeues a failed archive extraction job", async () => {

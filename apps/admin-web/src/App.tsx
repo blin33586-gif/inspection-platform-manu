@@ -8,6 +8,7 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { IssuesPage } from "./pages/IssuesPage";
 import { MapAssetsPage } from "./pages/MapAssetsPage";
 import { MediaLibraryPage } from "./pages/MediaLibraryPage";
+import { MediaTaskDetailPage } from "./pages/MediaTaskDetailPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { ManagedObjectDetailPage } from "./pages/ManagedObjectDetailPage";
@@ -41,6 +42,7 @@ export function App() {
           <Route path="/issues" element={<IssuesPage />} />
           <Route path="/issues/:id" element={<IssueDetailPage />} />
           <Route path="/media-library" element={<MediaLibraryPage />} />
+          <Route path="/media-library/:taskId" element={<MediaTaskDetailPage />} />
           <Route path="/map-assets" element={<MapAssetsPage />} />
           <Route path="/map-assets/:id" element={<MapAssetDetailPage />} />
           <Route path="/audit-logs" element={<AuditLogsPage />} />

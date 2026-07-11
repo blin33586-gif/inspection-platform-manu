@@ -142,7 +142,13 @@ export class MediaService {
   }
 
   async getAsset(id: string) {
-    const asset = await this.database.mediaAsset.findUnique({ where: { id } });
+    const asset = await this.database.mediaAsset.findUnique({
+      where: { id },
+      include: {
+        jobs: { orderBy: { createdAt: "desc" }, take: 1 },
+        frames: { orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }], take: 1 },
+      },
+    });
     if (!asset) throw new NotFoundException("媒体素材不存在");
     return asset;
   }
