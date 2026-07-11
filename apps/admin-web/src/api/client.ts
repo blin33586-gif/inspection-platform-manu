@@ -62,6 +62,19 @@ export async function patchJsonApi<T>(path: string, payload: unknown): Promise<T
   return body.data;
 }
 
+export async function deleteJsonApi<T>(path: string): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw await parseApiError(response);
+
+  const body = (await response.json()) as ApiResponse<T>;
+  if (body.code !== 0) throw new Error(body.message);
+
+  return body.data;
+}
+
 export async function postJsonApi<T>(path: string, payload: unknown): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: "POST",

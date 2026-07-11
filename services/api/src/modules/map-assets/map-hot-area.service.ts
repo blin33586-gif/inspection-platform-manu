@@ -116,6 +116,29 @@ export class MapHotAreaService {
     return hotArea;
   }
 
+  async remove(mapAssetId: string, hotAreaId: string) {
+    const existing = await this.database.mapHotArea.findFirst({
+      where: { id: hotAreaId, mapAssetId },
+      include: { mapAsset: { select: { name: true } } },
+    });
+    if (!existing) throw new NotFoundException("Map hot area not found");
+
+    await this.database.$transaction(async (transaction) => {
+      await transaction.mapHotArea.delete({ where: { id: existing.id } });
+      await transaction.mapAsset.update({
+        where: { id: mapAssetId },
+        data: { hotAreaCount: { decrement: 1 } },
+      });
+    });
+
+    await this.auditService.record({
+      action: "map.hotArea.delete",
+      targetType: "mapHotArea",
+      targetId: existing.id,
+      summary: `从地图「${existing.mapAsset.name}」删除标绘「${existing.label}」`,
+    });
+  }
+
   private parseOptionalNumber(value: string | undefined) {
     if (value === undefined || value === "") return null;
     const parsed = Number(value);

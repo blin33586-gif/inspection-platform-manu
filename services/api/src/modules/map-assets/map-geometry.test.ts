@@ -21,6 +21,18 @@ test("requires three points when a community area is saved", () => {
   );
 });
 
+test("accepts one coordinate when a key point is saved", () => {
+  const geometry = parseMapGeometry(JSON.stringify({
+    shape: "point",
+    coordinates: [[31.287, 121.486]],
+  }));
+
+  assert.deepEqual(geometry, {
+    shape: "point",
+    coordinates: [[31.287, 121.486]],
+  });
+});
+
 test("rejects coordinate values outside the geographic range", () => {
   assert.throws(
     () => parseMapGeometry(JSON.stringify({ shape: "line", coordinates: [[95, 121.486], [31.286, 121.49]] })),

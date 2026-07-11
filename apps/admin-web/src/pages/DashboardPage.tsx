@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Form, Input, message, Modal, Select } from "antd";
 import { useNavigate } from "react-router-dom";
-import type { IssueSummary, ManagedObjectSummary, MapAssetSummary, MapHotAreaSummary, ObjectType, PageResult } from "@xunjianbao/shared";
-import { patchJsonApi, postJsonApi } from "../api/client";
+import type { IssueSummary, ManagedObjectSummary, MapAssetSummary, MapHotAreaSummary, ObjectType, PageResult, PointSummary } from "@xunjianbao/shared";
+import { deleteJsonApi, patchJsonApi, postJsonApi } from "../api/client";
 import { ApiResourceError } from "../components/ApiResourceError";
 import { DashboardTileMap, type MapAreaUpdate, type MapDrawingDraft } from "../components/DashboardTileMap";
 import { useApiResource } from "../hooks/useApiResource";
-import { communities, roads } from "../data";
+import { communities, points, roads } from "../data";
 
 interface DashboardMapData {
   mapAssetId: string;
@@ -28,6 +28,7 @@ const fallbackMapData: DashboardMapData = {
 
 const fallbackCommunities: PageResult<ManagedObjectSummary> = { items: communities, page: 1, pageSize: 20, total: communities.length };
 const fallbackRoads: PageResult<ManagedObjectSummary> = { items: roads, page: 1, pageSize: 20, total: roads.length };
+const fallbackPoints: PageResult<PointSummary> = { items: points, page: 1, pageSize: 20, total: points.length };
 
 function objectPath(area: MapHotAreaSummary, mapAssetId: string) {
   if (!area.objectId) return `/map-assets/${mapAssetId}`;
@@ -46,6 +47,7 @@ export function DashboardPage() {
   const { data: mapData, error, reload } = useApiResource<DashboardMapData>("/dashboard/map", fallbackMapData);
   const communitiesResource = useApiResource<PageResult<ManagedObjectSummary>>("/communities", fallbackCommunities);
   const roadsResource = useApiResource<PageResult<ManagedObjectSummary>>("/roads", fallbackRoads);
+  const pointsResource = useApiResource<PageResult<PointSummary>>("/points", fallbackPoints);
   const issueCountByObject = mapData.issues.reduce<Record<string, number>>((counts, issue) => {
     counts[issue.objectName] = (counts[issue.objectName] ?? 0) + 1;
     return counts;
@@ -54,7 +56,7 @@ export function DashboardPage() {
   if (error) return <ApiResourceError error={error} onRetry={reload} />;
 
   const beginDrawingSave = (nextDrawing: MapDrawingDraft) => {
-    const objectType = nextDrawing.shape === "polygon" ? "community" : "road";
+    const objectType = nextDrawing.shape === "polygon" ? "community" : nextDrawing.shape === "point" ? "point" : "road";
     drawingForm.resetFields();
     drawingForm.setFieldsValue({ objectType });
     setDrawingObjectType(objectType);
@@ -83,7 +85,14 @@ export function DashboardPage() {
     }
   };
 
-  const relatedObjects = drawingObjectType === "community" ? communitiesResource.data.items : roadsResource.data.items;
+  const relatedObjects = drawingObjectType === "community"
+    ? communitiesResource.data.items
+    : drawingObjectType === "road"
+      ? roadsResource.data.items
+      : pointsResource.data.items;
+  const drawingLabel = drawing?.shape === "polygon" ? "小区名称" : drawing?.shape === "point" ? "重点点位名称" : "道路名称";
+  const drawingPlaceholder = drawing?.shape === "polygon" ? "例如：玉田新村" : drawing?.shape === "point" ? "例如：曲阳路重点广告牌" : "例如：曲阳路";
+  const drawingTitle = drawing?.shape === "polygon" ? "命名小区区域" : drawing?.shape === "point" ? "命名重点点位" : "命名道路线";
 
   const updateArea = async (area: MapHotAreaSummary, update: MapAreaUpdate) => {
     try {
@@ -93,6 +102,17 @@ export function DashboardPage() {
     } catch (updateError) {
       message.error(updateError instanceof Error ? updateError.message : "标绘更新失败");
       throw updateError;
+    }
+  };
+
+  const deleteArea = async (area: MapHotAreaSummary) => {
+    try {
+      await deleteJsonApi<{ id: string }>(`/map-assets/${mapData.mapAssetId}/hot-areas/${area.id}`);
+      message.success(`已删除地图标绘「${area.label}」`);
+      reload();
+    } catch (deleteError) {
+      message.error(deleteError instanceof Error ? deleteError.message : "地图标绘删除失败");
+      throw deleteError;
     }
   };
 
@@ -107,13 +127,14 @@ export function DashboardPage() {
           onOpenArea={(area) => navigate(objectPath(area, mapData.mapAssetId))}
           onOpenIssues={(status) => navigate(`/issues?status=${status}`)}
           onCreateDrawing={beginDrawingSave}
+          onDeleteArea={deleteArea}
           onUpdateArea={updateArea}
         />
       </div>
-      <Modal cancelText="取消" confirmLoading={savingDrawing} okText="保存标绘" onCancel={() => setDrawing(null)} onOk={saveDrawing} open={Boolean(drawing)} title={drawing?.shape === "polygon" ? "命名小区区域" : "命名道路线"}>
+      <Modal cancelText="取消" confirmLoading={savingDrawing} okText="保存标绘" onCancel={() => setDrawing(null)} onOk={saveDrawing} open={Boolean(drawing)} title={drawingTitle}>
         <Form form={drawingForm} layout="vertical">
-          <Form.Item label="地图名称" name="label" rules={[{ required: true, message: "请输入小区或道路名称" }]}>
-            <Input placeholder={drawing?.shape === "polygon" ? "例如：玉田新村" : "例如：曲阳路"} />
+          <Form.Item label={drawingLabel} name="label" rules={[{ required: true, message: "请输入标绘名称" }]}>
+            <Input placeholder={drawingPlaceholder} />
           </Form.Item>
           <Form.Item label="对象类型" name="objectType" rules={[{ required: true, message: "请选择对象类型" }]}>
             <Select
@@ -121,11 +142,11 @@ export function DashboardPage() {
                 setDrawingObjectType(value);
                 drawingForm.setFieldValue("objectId", undefined);
               }}
-              options={[{ label: "小区档案", value: "community" }, { label: "道路档案", value: "road" }]}
+              options={[{ label: "小区档案", value: "community" }, { label: "道路档案", value: "road" }, { label: "重点点位档案", value: "point" }]}
             />
           </Form.Item>
           <Form.Item label="关联档案" name="objectId" extra="选择后，首页点击名称可直接跳转至相应档案。">
-            <Select allowClear options={relatedObjects.map((item) => ({ label: item.name, value: item.id }))} placeholder="选择已有小区或道路档案" />
+            <Select allowClear options={relatedObjects.map((item) => ({ label: item.name, value: item.id }))} placeholder="选择已有小区、道路或重点点位档案" />
           </Form.Item>
         </Form>
       </Modal>

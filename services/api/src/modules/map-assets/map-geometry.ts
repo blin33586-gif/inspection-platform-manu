@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 
-export type MapGeometryShape = "line" | "polygon";
+export type MapGeometryShape = "line" | "polygon" | "point";
 
 export interface MapGeometry {
   shape: MapGeometryShape;
@@ -17,15 +17,16 @@ export function parseMapGeometry(value: string): MapGeometry {
 
   if (!parsed || typeof parsed !== "object") throw new BadRequestException("标绘几何数据无效");
   const geometry = parsed as { shape?: unknown; coordinates?: unknown };
-  if (geometry.shape !== "line" && geometry.shape !== "polygon") {
+  if (geometry.shape !== "line" && geometry.shape !== "polygon" && geometry.shape !== "point") {
     throw new BadRequestException("标绘类型无效");
   }
   if (!Array.isArray(geometry.coordinates)) throw new BadRequestException("标绘坐标无效");
 
   const coordinates = geometry.coordinates.map((coordinate) => toCoordinate(coordinate));
-  const minimumPoints = geometry.shape === "polygon" ? 3 : 2;
+  const minimumPoints = geometry.shape === "polygon" ? 3 : geometry.shape === "line" ? 2 : 1;
   if (coordinates.length < minimumPoints) {
-    throw new BadRequestException(`标绘${geometry.shape === "polygon" ? "区域" : "线"}至少需要 ${minimumPoints} 个点`);
+    const label = geometry.shape === "polygon" ? "区域" : geometry.shape === "line" ? "线" : "点位";
+    throw new BadRequestException(`标绘${label}至少需要 ${minimumPoints} 个点`);
   }
 
   return { shape: geometry.shape, coordinates };
