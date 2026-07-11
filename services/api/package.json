@@ -21,6 +21,7 @@
     "@nestjs/platform-express": "^10.4.15",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@xunjianbao/map-core": "workspace:*",
     "@xunjianbao/media-contracts": "workspace:*",
     "@xunjianbao/shared": "workspace:*",
     "better-sqlite3": "^12.11.1",

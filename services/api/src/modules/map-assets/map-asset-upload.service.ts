@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, rename, rm } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { createTiffTileJob } from "@xunjianbao/map-core";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import { describeTilePackage, normalizeTilePackagePath } from "./tile-package-metadata.js";
@@ -77,6 +78,26 @@ export class MapAssetUploadService {
         hotAreaCount: true,
       },
     });
+
+    if (sourceType === "tiff") {
+      const job = createTiffTileJob(asset.id, storagePath);
+      await this.database.mediaProcessingJob.upsert({
+        where: { dedupeKey: job.dedupeKey },
+        create: {
+          id: `job-tiff-${asset.id}`,
+          jobType: job.jobType,
+          status: "queued",
+          dedupeKey: job.dedupeKey,
+          inputJson: JSON.stringify({
+            mapAssetId: job.mapAssetId,
+            sourcePath: job.sourcePath,
+            minZoom: job.minZoom,
+            maxZoom: job.maxZoom,
+          }),
+        },
+        update: {},
+      });
+    }
 
     await this.auditService.record({
       action: "map.upload",
