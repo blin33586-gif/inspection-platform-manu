@@ -5,6 +5,7 @@ import { AuditService } from "../audit/audit.service.js";
 
 export interface SubmitTaskReportInput {
   taskId?: string;
+  taskPhotoIds?: string[];
   title?: string;
   reportDate?: string;
   relatedObjectName?: string;
@@ -21,8 +22,16 @@ export class ReportCreateService {
 
   async submit(input: SubmitTaskReportInput) {
     if (!input.taskId) throw new BadRequestException("请选择报告所属任务");
-    const task = await this.database.inspectionTask.findUnique({ where: { id: input.taskId } });
-    if (!task) throw new NotFoundException("巡检任务不存在");
+    if (input.taskPhotoIds !== undefined && !Array.isArray(input.taskPhotoIds)) {
+      throw new BadRequestException("报告照片格式无效");
+    }
+    const taskPhotoIds = input.taskPhotoIds ?? [];
+    if (taskPhotoIds.some((id) => typeof id !== "string" || !id.trim())) {
+      throw new BadRequestException("报告照片格式无效");
+    }
+    if (new Set(taskPhotoIds).size !== taskPhotoIds.length) {
+      throw new BadRequestException("报告照片不能重复");
+    }
 
     const title = input.title?.trim();
     if (!title) throw new BadRequestException("请输入报告名称");
@@ -38,22 +47,57 @@ export class ReportCreateService {
       processStatus: "completed",
     };
 
-    const report = await this.database.inspectionReport.upsert({
-      where: { taskId: input.taskId },
-      create: {
-        id: `rp-${randomUUID()}`,
-        taskId: input.taskId,
-        ...common,
-      },
-      update: common,
+    const result = await this.database.$transaction(async (transaction) => {
+      const task = await transaction.inspectionTask.findUnique({ where: { id: input.taskId } });
+      if (!task) throw new NotFoundException("巡检任务不存在");
+
+      if (taskPhotoIds.length > 0) {
+        const matchedPhotos = await transaction.taskPhoto.findMany({
+          where: {
+            taskId: input.taskId,
+            id: { in: taskPhotoIds },
+          },
+          select: { id: true },
+        });
+        if (matchedPhotos.length !== taskPhotoIds.length) {
+          throw new BadRequestException("所选照片不属于当前任务");
+        }
+      }
+
+      const report = await transaction.inspectionReport.upsert({
+        where: { taskId: input.taskId },
+        create: {
+          id: `rp-${randomUUID()}`,
+          taskId: input.taskId,
+          ...common,
+        },
+        update: common,
+      });
+
+      await transaction.reportPhoto.deleteMany({ where: { reportId: report.id } });
+      if (taskPhotoIds.length > 0) {
+        await transaction.reportPhoto.createMany({
+          data: taskPhotoIds.map((taskPhotoId, sortIndex) => ({
+            id: `rpp-${randomUUID()}`,
+            reportId: report.id,
+            taskPhotoId,
+            sortIndex,
+          })),
+        });
+      }
+
+      return {
+        report: { ...report, taskPhotoIds },
+        taskName: task.name,
+      };
     });
     await this.auditService.record({
       action: "report.task.submit",
       targetType: "report",
-      targetId: report.id,
-      summary: `提交任务「${task.name}」综合报告「${title}」`,
+      targetId: result.report.id,
+      summary: `提交任务「${result.taskName}」综合报告「${title}」`,
     });
-    return report;
+    return result.report;
   }
 }
 

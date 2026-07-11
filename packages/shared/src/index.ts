@@ -72,11 +72,14 @@ export interface IssueAttachmentSummary {
 
 export interface ReportSummary {
   id: string;
+  taskId?: string | null;
+  taskPhotoIds?: string[];
   title: string;
   reportDate: string;
   reportType: ReportType;
   relatedObjectName: string;
   issueCount: number;
+  contentSummary?: string | null;
   fileName?: string | null;
   originalFileName?: string | null;
   mimeType?: string | null;

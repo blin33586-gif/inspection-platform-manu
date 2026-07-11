@@ -190,16 +190,22 @@ export class InspectionReadRepository {
   }
 
   async report(id: string): Promise<ReportSummary | null> {
-    const report = await this.database.inspectionReport.findUnique({ where: { id } });
+    const report = await this.database.inspectionReport.findUnique({
+      where: { id },
+      include: { photos: { orderBy: { sortIndex: "asc" } } },
+    });
     if (!report) return null;
 
     return {
       id: report.id,
+      taskId: report.taskId,
+      taskPhotoIds: report.photos.map((photo) => photo.taskPhotoId),
       title: report.title,
       reportDate: formatDate(report.reportDate),
       reportType: report.reportType as ReportSummary["reportType"],
       relatedObjectName: report.relatedObjectName,
       issueCount: report.issueCount,
+      contentSummary: report.contentSummary,
       fileName: report.fileName,
       originalFileName: report.originalFileName,
       mimeType: report.mimeType,
