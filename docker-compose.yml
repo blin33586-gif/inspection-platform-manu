@@ -25,5 +25,17 @@ services:
     ports:
       - "8080:80"
 
+  media-worker:
+    build:
+      context: .
+      dockerfile: services/media-worker/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      STORAGE_ROOT: /app/services/api/storage
+    depends_on:
+      - api
+    volumes:
+      - api-storage:/app/services/api/storage
+
 volumes:
   api-storage:
