@@ -7,6 +7,7 @@ import { InspectionReadRepository } from "../../database/inspection-read.reposit
 import { ok, paged } from "../../shared/api-response.js";
 import { sendStoredFile } from "../../shared/file-download.js";
 import { ReportUploadService } from "./report-upload.service.js";
+import { ReportCreateService, type SubmitTaskReportInput } from "./report-create.service.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -22,6 +23,7 @@ export class ReportsController {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository,
     @Inject(ReportUploadService) private readonly uploadService: ReportUploadService,
+    @Inject(ReportCreateService) private readonly createService: ReportCreateService,
   ) {}
 
   @Get()
@@ -49,6 +51,11 @@ export class ReportsController {
     },
   ) {
     return ok(await this.uploadService.createFromUpload(file, body));
+  }
+
+  @Post()
+  async submit(@Body() body: SubmitTaskReportInput) {
+    return ok(await this.createService.submit(body));
   }
 
   @Get(":id/file")

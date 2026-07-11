@@ -1,0 +1,65 @@
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import { DatabaseService } from "../../database/database.service.js";
+import { AuditService } from "../audit/audit.service.js";
+
+export interface SubmitTaskReportInput {
+  taskId?: string;
+  title?: string;
+  reportDate?: string;
+  relatedObjectName?: string;
+  issueCount?: number;
+  contentSummary?: string;
+}
+
+@Injectable()
+export class ReportCreateService {
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(AuditService) private readonly auditService: AuditService,
+  ) {}
+
+  async submit(input: SubmitTaskReportInput) {
+    if (!input.taskId) throw new BadRequestException("请选择报告所属任务");
+    const task = await this.database.inspectionTask.findUnique({ where: { id: input.taskId } });
+    if (!task) throw new NotFoundException("巡检任务不存在");
+
+    const title = input.title?.trim();
+    if (!title) throw new BadRequestException("请输入报告名称");
+    const reportDate = parseReportDate(input.reportDate);
+    const issueCount = Number.isInteger(input.issueCount) && input.issueCount! >= 0 ? input.issueCount! : 0;
+    const common = {
+      title,
+      reportDate,
+      reportType: "comprehensive",
+      relatedObjectName: input.relatedObjectName?.trim() || "曲阳路街道",
+      issueCount,
+      contentSummary: input.contentSummary?.trim() || null,
+      processStatus: "completed",
+    };
+
+    const report = await this.database.inspectionReport.upsert({
+      where: { taskId: input.taskId },
+      create: {
+        id: `rp-${randomUUID()}`,
+        taskId: input.taskId,
+        ...common,
+      },
+      update: common,
+    });
+    await this.auditService.record({
+      action: "report.task.submit",
+      targetType: "report",
+      targetId: report.id,
+      summary: `提交任务「${task.name}」综合报告「${title}」`,
+    });
+    return report;
+  }
+}
+
+function parseReportDate(value: string | undefined) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new BadRequestException("报告日期格式无效");
+  const date = new Date(`${value}T00:00:00+08:00`);
+  if (Number.isNaN(date.getTime())) throw new BadRequestException("报告日期格式无效");
+  return date;
+}

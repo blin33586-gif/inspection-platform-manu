@@ -20,10 +20,9 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import type { ReportSummary, ReportType } from "@xunjianbao/shared";
-import { getApi, getApiUrl } from "../api/client";
+import { getApi, getApiUrl, postJsonApi } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
-import { writeSubmittedReport } from "../utils/reportDraftStore";
+import type { InspectionTaskRecord } from "./inspection-task-presenter";
 import { toReportPhoto, type ReportMediaAssetRecord } from "./report-media-adapter";
 
 type ToolKey = "pointer" | "move" | "rect" | "arrow" | "text";
@@ -222,16 +221,6 @@ function getTodayDateString() {
   return localTime.toISOString().slice(0, 10);
 }
 
-function inferReportType(taskName: string, areaName: string): ReportType {
-  const sourceText = `${taskName}${areaName}`;
-
-  if (sourceText.includes("小区") || sourceText.includes("新村")) return "community";
-  if (sourceText.includes("广告牌") || sourceText.includes("点位") || sourceText.includes("设施")) return "point";
-  if (sourceText.includes("路") || sourceText.includes("街面") || sourceText.includes("道路")) return "road";
-
-  return "comprehensive";
-}
-
 function getPointFromEvent(event: PointerEvent<HTMLDivElement>) {
   const rect = event.currentTarget.getBoundingClientRect();
 
@@ -245,12 +234,15 @@ export function ReportWritePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sourceMediaId = searchParams.get("mediaId");
+  const taskIdFromQuery = searchParams.get("taskId");
   const objectUrlsRef = useRef<string[]>([]);
   const nextPhotoIdRef = useRef(initialPhotoItems.length + 1);
   const photoCanvasRef = useRef<HTMLDivElement | null>(null);
   const [reportTitle, setReportTitle] = useState("曲阳路街道无人机巡检报告");
   const [reportDate, setReportDate] = useState(getTodayDateString());
-  const [reportTask, setReportTask] = useState("曲阳路街道-7月巡检");
+  const [selectedTaskId, setSelectedTaskId] = useState(taskIdFromQuery ?? "");
+  const [taskOptions, setTaskOptions] = useState<InspectionTaskRecord[]>([]);
+  const [submitting, setSubmitting] = useState(false);
   const [reportArea, setReportArea] = useState("曲阳路街道重点区域");
   const [activeTool, setActiveTool] = useState<ToolKey>("rect");
   const [photos, setPhotos] = useState<PhotoItem[]>(initialPhotoItems);
@@ -288,6 +280,25 @@ export function ReportWritePage() {
 
     return () => controller.abort();
   }, [sourceMediaId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void getApi<{ items: InspectionTaskRecord[] }>("/inspection-tasks?pageSize=100", controller.signal)
+      .then((result) => {
+        setTaskOptions(result.items);
+        const selected = result.items.find((item) => item.id === taskIdFromQuery);
+        if (selected) {
+          setSelectedTaskId(selected.id);
+          setReportTitle(`${selected.name}综合报告`);
+          setReportDate(selected.taskDate.slice(0, 10));
+        }
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        message.error("任务列表读取失败");
+      });
+    return () => controller.abort();
+  }, [taskIdFromQuery]);
 
   const activePhoto = photos.find((item) => item.id === activePhotoId);
   const activePhotoAnnotations = activePhoto ? annotations.filter((item) => item.photoId === activePhoto.id) : [];
@@ -421,7 +432,7 @@ export function ReportWritePage() {
     message.success("草稿已保存");
   };
 
-  const submitReport = () => {
+  const submitReport = async () => {
     const normalizedTitle = reportTitle.trim();
     const normalizedDate = reportDate.trim();
     const normalizedArea = reportArea.trim();
@@ -440,25 +451,28 @@ export function ReportWritePage() {
       message.warning("请填写巡检区域");
       return;
     }
+    if (!selectedTaskId) {
+      message.warning("请选择报告所属任务");
+      return;
+    }
 
-    const firstPhoto = photos[0];
-    const submittedReport: ReportSummary = {
-      id: `local-${Date.now()}`,
-      title: normalizedTitle,
-      reportDate: normalizedDate,
-      reportType: inferReportType(reportTask, normalizedArea),
-      relatedObjectName: normalizedArea,
-      issueCount: annotations.length,
-      fileName: null,
-      originalFileName: firstPhoto?.fileName ?? null,
-      mimeType: firstPhoto ? "image/*" : null,
-      fileSize: firstPhoto?.fileSize ?? null,
-      processStatus: "completed",
-    };
-
-    writeSubmittedReport(submittedReport);
-    message.success("报告已提交，并同步到报告管理");
-    navigate("/reports");
+    setSubmitting(true);
+    try {
+      await postJsonApi("/reports", {
+        taskId: selectedTaskId,
+        title: normalizedTitle,
+        reportDate: normalizedDate,
+        relatedObjectName: normalizedArea,
+        issueCount: annotations.length,
+        contentSummary: Object.values(photoDescriptions).filter(Boolean).join("\n"),
+      });
+      message.success("综合报告已提交，并同步到报告管理");
+      navigate("/reports");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "报告提交失败");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const updateActiveDescription = (value: string) => {
@@ -689,7 +703,7 @@ export function ReportWritePage() {
               <Button type="primary" icon={<ImagePlus size={16} />}>多选上传图片</Button>
             </Upload>
             <Button icon={<Save size={16} />} onClick={saveDraft}>保存草稿</Button>
-            <Button type="primary" icon={<Send size={16} />} onClick={submitReport}>提交报告</Button>
+            <Button loading={submitting} type="primary" icon={<Send size={16} />} onClick={() => void submitReport()}>提交报告</Button>
           </Space>
         )}
       />
@@ -713,13 +727,19 @@ export function ReportWritePage() {
           <label className="write-field">
             <span>所属任务 <em>*</em></span>
             <Select
-              value={reportTask}
-              onChange={setReportTask}
-              options={[
-                { label: "曲阳路街道-7月巡检", value: "曲阳路街道-7月巡检" },
-                { label: "玉田新村小区复查", value: "玉田新村小区复查" },
-                { label: "沿街广告牌专项", value: "沿街广告牌专项" },
-              ]}
+              showSearch
+              optionFilterProp="label"
+              placeholder="选择一个巡检任务"
+              value={selectedTaskId || undefined}
+              onChange={(value) => {
+                setSelectedTaskId(value);
+                const task = taskOptions.find((item) => item.id === value);
+                if (task) {
+                  setReportTitle(`${task.name}综合报告`);
+                  setReportDate(task.taskDate.slice(0, 10));
+                }
+              }}
+              options={taskOptions.map((item) => ({ label: `${item.taskDate.slice(0, 10)} · ${item.name}`, value: item.id }))}
             />
           </label>
           <label className="write-field">
