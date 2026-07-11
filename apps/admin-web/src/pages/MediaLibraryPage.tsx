@@ -27,8 +27,7 @@ import {
 import { mediaLibraryItems } from "../data";
 import { getApi, getApiUrl, postFormApi, postJsonApi } from "../api/client";
 import { MediaTaskPreview } from "../components/MediaTaskPreview";
-import { MediaAssetGallery } from "../components/MediaAssetGallery";
-import { toMediaGalleryItem, type MediaChildAssetRecord, type MediaGalleryItem } from "../components/media-asset-presenter";
+import { FRAME_INTERVAL_OPTIONS, getMediaTaskDetailPath, shouldOpenMediaTaskDetail } from "./media-library-navigation";
 import { toMediaTaskViewModel, type MediaTaskRecord, type MediaTaskViewModel } from "./media-task-adapter";
 import "./media-library-detail.css";
 
@@ -310,8 +309,6 @@ export function MediaLibraryPage() {
   const [persistedTasks, setPersistedTasks] = useState<MediaTaskViewModel[]>([]);
   const [uploadIntervalSeconds, setUploadIntervalSeconds] = useState(3);
   const [uploadingVideo, setUploadingVideo] = useState(false);
-  const [selectedTaskChildren, setSelectedTaskChildren] = useState<MediaGalleryItem[]>([]);
-  const [childrenLoading, setChildrenLoading] = useState(false);
 
   const liveVideoTasks = useMemo<VideoAnalysisTask[]>(() => persistedTasks.map((item) => ({
     id: item.id,
@@ -360,30 +357,6 @@ export function MediaLibraryPage() {
 
   const selectedTask = allVideoTasks.find((item) => item.id === selectedTaskId) ?? allVideoTasks[0];
 
-  useEffect(() => {
-    if (!selectedTask.isPersisted) {
-      setSelectedTaskChildren([]);
-      setChildrenLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setChildrenLoading(true);
-    void getApi<MediaChildAssetRecord[]>(`/media-assets/${selectedTask.id}/children`, controller.signal)
-      .then((items) => {
-        setSelectedTaskChildren(items.map((item) => (
-          toMediaGalleryItem(item, getApiUrl(`/media-assets/${item.id}/content`))
-        )));
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setSelectedTaskChildren([]);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setChildrenLoading(false);
-      });
-    return () => controller.abort();
-  }, [selectedTask.id, selectedTask.isPersisted, selectedTask.status]);
   const taskReviewEvents = issueEvents.filter((item) => item.taskId === selectedTask.id);
   const selectedReviewCategory = reviewCategories.find((item) => item.id === selectedReviewCategoryId);
   const selectedTaskEvents = taskReviewEvents.filter((item) => {
@@ -398,8 +371,12 @@ export function MediaLibraryPage() {
   const pendingReviewCount = issueEvents.filter((item) => item.reviewStatus === "待复核").length;
   const completedReportCount = allVideoTasks.filter((item) => item.reportStatus === "已生成报告").length;
 
-  const selectTask = (id: string) => {
-    setSelectedTaskId(id);
+  const selectTask = (task: VideoAnalysisTask) => {
+    if (shouldOpenMediaTaskDetail(task.isPersisted)) {
+      navigate(getMediaTaskDetailPath(task.id));
+      return;
+    }
+    setSelectedTaskId(task.id);
     setSelectedEventId(null);
   };
 
@@ -485,10 +462,10 @@ export function MediaLibraryPage() {
     try {
       const result = await postFormApi<{ asset: { id: string } }>("/media-assets/upload", formData);
       await refreshPersistedTasks();
-      setSelectedTaskId(result.asset.id);
       message.success(file.name.toLowerCase().endsWith(".zip")
         ? "图片包已上传，解压任务已进入后台队列"
         : "视频已上传，抽帧任务已进入后台队列");
+      navigate(getMediaTaskDetailPath(result.asset.id));
     } catch (error) {
       message.error(error instanceof Error ? error.message : "素材上传失败");
     } finally {
@@ -564,7 +541,7 @@ export function MediaLibraryPage() {
             aria-label="抽帧间隔"
             value={uploadIntervalSeconds}
             onChange={setUploadIntervalSeconds}
-            options={[2, 3, 4, 5].map((seconds) => ({ label: `${seconds} 秒/帧`, value: seconds }))}
+            options={FRAME_INTERVAL_OPTIONS}
           />
           <input
             ref={fileInputRef}
@@ -657,9 +634,9 @@ export function MediaLibraryPage() {
                     key={item.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => selectTask(item.id)}
+                    onClick={() => selectTask(item)}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") selectTask(item.id);
+                      if (event.key === "Enter" || event.key === " ") selectTask(item);
                     }}
                   >
                     <div className="video-task-thumb">
@@ -696,14 +673,6 @@ export function MediaLibraryPage() {
                   </article>
                 ))}
               </div>
-              {selectedTask.isPersisted ? (
-                <MediaAssetGallery
-                  items={selectedTaskChildren}
-                  loading={childrenLoading}
-                  taskStatus={selectedTask.status}
-                  onWriteReport={(item) => navigate(`/reports/write?mediaId=${encodeURIComponent(item.id)}`)}
-                />
-              ) : null}
             </section>
 
               <section className="event-section video-event-panel">
