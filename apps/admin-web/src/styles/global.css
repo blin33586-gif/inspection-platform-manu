@@ -1562,6 +1562,139 @@ h4 {
   gap: 8px;
 }
 
+.report-task-photo-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.task-photo-selector-modal .ant-modal-content {
+  padding: 22px;
+}
+
+.task-photo-selector-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.task-photo-selector-tools > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-photo-selector-tools span {
+  margin-right: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.task-photo-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  min-height: 390px;
+}
+
+.task-photo-selector-grid > button {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 0 0 10px;
+  color: #1d1d1f;
+  background: #ffffff;
+  text-align: left;
+}
+
+.task-photo-selector-grid > button:hover,
+.task-photo-selector-grid > button.selected {
+  border-color: var(--blue-700);
+  box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.1);
+}
+
+.task-photo-selector-grid img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #eef3f9;
+}
+
+.task-photo-selector-grid .ant-checkbox-wrapper,
+.task-photo-selector-grid .ant-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+}
+
+.task-photo-selector-grid .task-photo-status {
+  position: absolute;
+  top: 7px;
+  right: 5px;
+  z-index: 2;
+  margin: 0;
+  border: 0;
+  color: #25516f;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.task-photo-selector-grid .task-photo-status.pending {
+  color: #9b5d00;
+}
+
+.task-photo-selector-grid .task-photo-status.archived {
+  color: #137a4b;
+}
+
+.task-photo-selector-grid .task-photo-status.ignored {
+  color: #6e6e73;
+}
+
+.task-photo-selector-grid > button > span:not(.ant-checkbox):not(.ant-tag),
+.task-photo-selector-grid > button > small {
+  overflow: hidden;
+  margin: 0 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-photo-selector-grid > button > span:not(.ant-checkbox):not(.ant-tag) {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.task-photo-selector-grid > button > small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.task-photo-selector-state {
+  display: grid;
+  min-height: 390px;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.task-photo-selector-state.error {
+  color: var(--red-500);
+}
+
+.task-photo-selector-modal .ant-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+
 .write-field span,
 .report-description-head > span {
   color: #1d1d1f;
@@ -4896,6 +5029,23 @@ h4 {
   .report-header-actions .ant-btn,
   .report-write-top-actions .ant-btn {
     flex: 1;
+  }
+
+  .report-task-photo-field {
+    grid-template-columns: 1fr;
+  }
+
+  .task-photo-selector-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .task-photo-selector-tools > div {
+    flex-wrap: wrap;
+  }
+
+  .task-photo-selector-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .inspection-photo {

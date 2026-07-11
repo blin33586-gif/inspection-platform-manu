@@ -4,6 +4,7 @@ import { Button, DatePicker, Input, message, QRCode, Select, Space, Upload } fro
 import {
   ArrowUpRight,
   ImagePlus,
+  Images,
   Maximize2,
   Move,
   MousePointer2,
@@ -22,8 +23,9 @@ import {
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getApi, getApiUrl, postJsonApi } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
+import { TaskPhotoSelector, type SelectableTaskPhoto } from "../components/TaskPhotoSelector";
 import type { InspectionTaskRecord } from "./inspection-task-presenter";
-import { toReportPhoto, type ReportMediaAssetRecord } from "./report-media-adapter";
+import { toReportPhoto } from "./report-media-adapter";
 
 type ToolKey = "pointer" | "move" | "rect" | "arrow" | "text";
 type AnnotationShape = Exclude<ToolKey, "pointer" | "move">;
@@ -31,6 +33,7 @@ type AnnotationTone = "danger" | "warning" | "info";
 
 interface PhotoItem {
   id: number;
+  taskPhotoId?: string;
   label: string;
   state: "已标注" | "待标注";
   variant: string;
@@ -233,7 +236,7 @@ function getPointFromEvent(event: PointerEvent<HTMLDivElement>) {
 export function ReportWritePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const sourceMediaId = searchParams.get("mediaId");
+  const preferredMediaId = searchParams.get("mediaId");
   const taskIdFromQuery = searchParams.get("taskId");
   const objectUrlsRef = useRef<string[]>([]);
   const nextPhotoIdRef = useRef(initialPhotoItems.length + 1);
@@ -242,6 +245,8 @@ export function ReportWritePage() {
   const [reportDate, setReportDate] = useState(getTodayDateString());
   const [selectedTaskId, setSelectedTaskId] = useState(taskIdFromQuery ?? "");
   const [taskOptions, setTaskOptions] = useState<InspectionTaskRecord[]>([]);
+  const [photoSelectorOpen, setPhotoSelectorOpen] = useState(false);
+  const [selectionInitializedTaskId, setSelectionInitializedTaskId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [reportArea, setReportArea] = useState("曲阳路街道重点区域");
   const [activeTool, setActiveTool] = useState<ToolKey>("rect");
@@ -253,33 +258,31 @@ export function ReportWritePage() {
   const [photoDescriptions, setPhotoDescriptions] = useState<Record<number, string>>({});
   const [photoCoordinates, setPhotoCoordinates] = useState<Record<number, string>>({});
 
+  const selectedTask = useMemo(
+    () => taskOptions.find((item) => item.id === selectedTaskId) ?? null,
+    [selectedTaskId, taskOptions],
+  );
+  const selectedTaskPhotoIds = useMemo(
+    () => photos.flatMap((photo) => photo.taskPhotoId ? [photo.taskPhotoId] : []),
+    [photos],
+  );
+
+  const clearReportWorkspace = () => {
+    objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    objectUrlsRef.current = [];
+    nextPhotoIdRef.current = 1;
+    setPhotos([]);
+    setActivePhotoId(null);
+    setAnnotations([]);
+    setPhotoDescriptions({});
+    setPhotoCoordinates({});
+  };
+
   useEffect(() => {
     return () => {
       objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
-
-  useEffect(() => {
-    if (!sourceMediaId) return;
-
-    const controller = new AbortController();
-    void getApi<ReportMediaAssetRecord>(`/media-assets/${sourceMediaId}`, controller.signal)
-      .then((asset) => {
-        const nextId = nextPhotoIdRef.current;
-        const photo = toReportPhoto(asset, nextId, getApiUrl(`/media-assets/${asset.id}/content`));
-        nextPhotoIdRef.current += 1;
-        setPhotos((current) => [photo, ...current.filter((item) => item.url !== photo.url)]);
-        setPhotoCoordinates((current) => ({ ...current, [nextId]: defaultCoordinateText }));
-        setActivePhotoId(nextId);
-        message.success("媒体库照片已载入报告编写区");
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        message.error("素材读取失败，可继续手工上传图片");
-      });
-
-    return () => controller.abort();
-  }, [sourceMediaId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -288,9 +291,12 @@ export function ReportWritePage() {
         setTaskOptions(result.items);
         const selected = result.items.find((item) => item.id === taskIdFromQuery);
         if (selected) {
+          clearReportWorkspace();
           setSelectedTaskId(selected.id);
+          setSelectionInitializedTaskId(null);
           setReportTitle(`${selected.name}综合报告`);
           setReportDate(selected.taskDate.slice(0, 10));
+          setPhotoSelectorOpen(true);
         }
       })
       .catch((error) => {
@@ -428,6 +434,64 @@ export function ReportWritePage() {
     message.success("当前照片标注已清空");
   };
 
+  const handleTaskChange = (value: string) => {
+    if (value !== selectedTaskId) {
+      clearReportWorkspace();
+      setSelectionInitializedTaskId(null);
+    }
+    setSelectedTaskId(value);
+    const task = taskOptions.find((item) => item.id === value);
+    if (task) {
+      setReportTitle(`${task.name}综合报告`);
+      setReportDate(task.taskDate.slice(0, 10));
+    }
+    setPhotoSelectorOpen(true);
+  };
+
+  const applyTaskPhotoSelection = (selectedPhotos: SelectableTaskPhoto[]) => {
+    const existingByTaskPhotoId = new Map(
+      photos.filter((photo) => photo.taskPhotoId).map((photo) => [photo.taskPhotoId, photo]),
+    );
+    const manualPhotos = photos.filter((photo) => !photo.taskPhotoId);
+    const taskPhotos = selectedPhotos.map((taskPhoto) => {
+      const existing = existingByTaskPhotoId.get(taskPhoto.id);
+      if (existing) return existing;
+      const nextId = nextPhotoIdRef.current;
+      nextPhotoIdRef.current += 1;
+      return {
+        ...toReportPhoto(
+          taskPhoto.mediaAsset,
+          nextId,
+          getApiUrl(`/media-assets/${taskPhoto.mediaAsset.id}/content`),
+        ),
+        taskPhotoId: taskPhoto.id,
+      };
+    });
+    const nextPhotos = [...taskPhotos, ...manualPhotos];
+    const retainedPhotoIds = new Set(nextPhotos.map((photo) => photo.id));
+
+    setPhotos(nextPhotos);
+    setAnnotations((current) => current.filter((item) => retainedPhotoIds.has(item.photoId)));
+    setPhotoDescriptions((current) => Object.fromEntries(
+      Object.entries(current).filter(([photoId]) => retainedPhotoIds.has(Number(photoId))),
+    ));
+    setPhotoCoordinates((current) => {
+      const retained = Object.fromEntries(
+        Object.entries(current).filter(([photoId]) => retainedPhotoIds.has(Number(photoId))),
+      );
+      taskPhotos.forEach((photo) => {
+        if (!retained[photo.id]) retained[photo.id] = defaultCoordinateText;
+      });
+      return retained;
+    });
+    setActivePhotoId((current) => (
+      current !== null && retainedPhotoIds.has(current) ? current : nextPhotos[0]?.id ?? null
+    ));
+    setSelectionInitializedTaskId(selectedTaskId);
+    setPhotoSelectorOpen(false);
+    message.success(`已载入 ${taskPhotos.length} 张任务照片`);
+  };
+
   const saveDraft = () => {
     message.success("草稿已保存");
   };
@@ -460,6 +524,7 @@ export function ReportWritePage() {
     try {
       await postJsonApi("/reports", {
         taskId: selectedTaskId,
+        taskPhotoIds: selectedTaskPhotoIds,
         title: normalizedTitle,
         reportDate: normalizedDate,
         relatedObjectName: normalizedArea,
@@ -726,21 +791,23 @@ export function ReportWritePage() {
           </label>
           <label className="write-field">
             <span>所属任务 <em>*</em></span>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              placeholder="选择一个巡检任务"
-              value={selectedTaskId || undefined}
-              onChange={(value) => {
-                setSelectedTaskId(value);
-                const task = taskOptions.find((item) => item.id === value);
-                if (task) {
-                  setReportTitle(`${task.name}综合报告`);
-                  setReportDate(task.taskDate.slice(0, 10));
-                }
-              }}
-              options={taskOptions.map((item) => ({ label: `${item.taskDate.slice(0, 10)} · ${item.name}`, value: item.id }))}
-            />
+            <div className="report-task-photo-field">
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder="选择一个巡检任务"
+                value={selectedTaskId || undefined}
+                onChange={handleTaskChange}
+                options={taskOptions.map((item) => ({ label: `${item.taskDate.slice(0, 10)} · ${item.name}`, value: item.id }))}
+              />
+              <Button
+                disabled={!selectedTaskId}
+                icon={<Images size={16} />}
+                onClick={() => setPhotoSelectorOpen(true)}
+              >
+                选择照片 {selectedTaskPhotoIds.length ? `(${selectedTaskPhotoIds.length})` : ""}
+              </Button>
+            </div>
           </label>
           <label className="write-field">
             <span>巡检区域 <em>*</em></span>
@@ -964,6 +1031,16 @@ export function ReportWritePage() {
           </aside>
         </div>
       </section>
+
+      <TaskPhotoSelector
+        initialSelectedIds={selectedTaskPhotoIds}
+        open={photoSelectorOpen}
+        preferredMediaId={preferredMediaId}
+        selectionInitialized={selectionInitializedTaskId === selectedTaskId}
+        task={selectedTask}
+        onCancel={() => setPhotoSelectorOpen(false)}
+        onConfirm={applyTaskPhotoSelection}
+      />
     </>
   );
 }
