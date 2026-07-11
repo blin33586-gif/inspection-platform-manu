@@ -12,6 +12,7 @@ import { AuditModule } from "./modules/audit/audit.module.js";
 import { ManagedObjectsModule } from "./modules/managed-objects/managed-objects.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
 import { MediaModule } from "./modules/media/media.module.js";
+import { InspectionTasksModule } from "./modules/inspection-tasks/inspection-tasks.module.js";
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { MediaModule } from "./modules/media/media.module.js";
     IssuesModule,
     MapAssetsModule,
     MediaModule,
+    InspectionTasksModule,
   ],
 })
 export class AppModule {}
