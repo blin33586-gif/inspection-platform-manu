@@ -221,7 +221,7 @@ export class JobRunner {
 
   private parseFrameInput(rawInput: string): FrameExtractionJobInput {
     const input = JSON.parse(rawInput) as Partial<FrameExtractionJobInput>;
-    if (!input.mediaId || !input.sourcePath || !Number.isInteger(input.intervalSeconds) || input.intervalSeconds! < 2 || input.intervalSeconds! > 5) {
+    if (!input.mediaId || !input.sourcePath || !Number.isInteger(input.intervalSeconds) || input.intervalSeconds! < 1 || input.intervalSeconds! > 5) {
       throw new Error("视频抽帧任务参数无效");
     }
     return input as FrameExtractionJobInput;

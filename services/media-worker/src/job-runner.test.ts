@@ -2,6 +2,34 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { JobRunner } from "./job-runner.js";
 
+test("accepts one-to-five-second frame extraction inputs", () => {
+  const runner = new JobRunner({} as never);
+  const parseFrameInput = (runner as unknown as {
+    parseFrameInput(rawInput: string): { intervalSeconds: number };
+  }).parseFrameInput.bind(runner);
+
+  assert.equal(parseFrameInput(JSON.stringify({
+    mediaId: "media-video-1",
+    sourcePath: "storage/media/videos/media-video-1.mp4",
+    intervalSeconds: 1,
+  })).intervalSeconds, 1);
+  assert.equal(parseFrameInput(JSON.stringify({
+    mediaId: "media-video-1",
+    sourcePath: "storage/media/videos/media-video-1.mp4",
+    intervalSeconds: 5,
+  })).intervalSeconds, 5);
+  assert.throws(() => parseFrameInput(JSON.stringify({
+    mediaId: "media-video-1",
+    sourcePath: "storage/media/videos/media-video-1.mp4",
+    intervalSeconds: 0,
+  })), /视频抽帧任务参数无效/);
+  assert.throws(() => parseFrameInput(JSON.stringify({
+    mediaId: "media-video-1",
+    sourcePath: "storage/media/videos/media-video-1.mp4",
+    intervalSeconds: 6,
+  })), /视频抽帧任务参数无效/);
+});
+
 test("processes an archive extraction job into child media assets", async () => {
   const completedUpdates: Array<Record<string, unknown>> = [];
   const createdAssets: Array<Record<string, unknown>> = [];

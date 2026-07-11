@@ -213,8 +213,8 @@ export class MediaService {
   }
 
   private validateInterval(intervalSeconds: number) {
-    if (!Number.isInteger(intervalSeconds) || intervalSeconds < 2 || intervalSeconds > 5) {
-      throw new BadRequestException("抽帧间隔必须为 2 至 5 秒");
+    if (!Number.isInteger(intervalSeconds) || intervalSeconds < 1 || intervalSeconds > 5) {
+      throw new BadRequestException("抽帧间隔必须为 1 至 5 秒");
     }
   }
 }

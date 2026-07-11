@@ -46,9 +46,19 @@ test("creates an idempotent frame extraction job", async () => {
   });
 });
 
-test("rejects a frame interval outside two to five seconds", async () => {
-  const { service } = createService();
-  await assert.rejects(() => service.createFrameExtractionJob("media-video-1", 1), /2 至 5 秒/);
+test("accepts one-to-five-second frame intervals and rejects values outside the range", async () => {
+  const { service, upsertCalls } = createService();
+
+  await service.createFrameExtractionJob("media-video-1", 1);
+  await service.createFrameExtractionJob("media-video-1", 5);
+
+  assert.equal(upsertCalls.length, 2);
+  assert.deepEqual(upsertCalls.map((call) => call.where), [
+    { dedupeKey: "frame_extract:media-video-1:1" },
+    { dedupeKey: "frame_extract:media-video-1:5" },
+  ]);
+  await assert.rejects(() => service.createFrameExtractionJob("media-video-1", 0), /1 至 5 秒/);
+  await assert.rejects(() => service.createFrameExtractionJob("media-video-1", 6), /1 至 5 秒/);
 });
 
 test("stores an uploaded MOV video and automatically queues extraction", async () => {

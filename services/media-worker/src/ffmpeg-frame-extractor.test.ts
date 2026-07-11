@@ -8,3 +8,10 @@ test("extracts one JPEG frame every three seconds", () => {
     args: ["-i", "input.mp4", "-vf", "fps=1/3", "-q:v", "2", "frames/frame-%010d.jpg"],
   });
 });
+
+test("builds a one-second frame extraction command", () => {
+  assert.deepEqual(buildFrameExtractCommand("input.mp4", "frames/frame-%010d.jpg", 1), {
+    command: "ffmpeg",
+    args: ["-i", "input.mp4", "-vf", "fps=1/1", "-q:v", "2", "frames/frame-%010d.jpg"],
+  });
+});
