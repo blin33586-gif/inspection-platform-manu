@@ -3,7 +3,7 @@ import { Button, Form, Input, message, Modal, Select } from "antd";
 import type { PageResult, PointSummary } from "@xunjianbao/shared";
 import { postJsonApi } from "../api/client";
 import { ApiResourceError } from "../components/ApiResourceError";
-import { communities, mediaLibraryItems, points, roads } from "../data";
+import { communities, points, roads } from "../data";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectArchiveWorkspace } from "../components/ProjectArchiveWorkspace";
 import { useApiResource } from "../hooks/useApiResource";
@@ -87,7 +87,7 @@ export function PointsPage() {
   return (
     <>
       <PageHeader title="重点点位" actions={<Button type="primary" onClick={() => setOpen(true)}>新增点位</Button>} />
-      <ProjectArchiveWorkspace activeItem={archiveItems[0]} items={archiveItems} mediaItems={mediaLibraryItems} projectGroups={projectGroups} variant="point" />
+      <ProjectArchiveWorkspace activeItem={archiveItems[0]} items={archiveItems} projectGroups={projectGroups} variant="point" />
 
       <Modal
         title="新增重点点位"

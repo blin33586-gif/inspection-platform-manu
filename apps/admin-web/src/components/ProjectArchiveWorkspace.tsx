@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import { Button, Input, message, Modal } from "antd";
+import { useCallback, useEffect, useState } from "react";
+import { Button, Input, message, Modal, Spin } from "antd";
 import { Download, Pencil, Printer, Search, Trash2, UploadCloud } from "lucide-react";
 import { Link } from "react-router-dom";
+import { getApi, getApiUrl, patchJsonApi } from "../api/client";
+import {
+  toProjectArchiveMediaItem,
+  type ArchiveTaskPhotoRecord,
+  type ProjectArchiveMediaItem,
+} from "./project-archive-media-adapter";
 
 export type ProjectArchiveVariant = "community" | "road" | "point";
 
@@ -23,19 +29,6 @@ export interface ProjectArchiveGroup {
   items: ProjectArchiveItem[];
 }
 
-export interface ProjectArchiveMediaItem {
-  id: string;
-  title: string;
-  linkedObjectId?: string;
-  linkedObjectName: string;
-  issueTitle: string;
-  status: string;
-  capturedAt: string;
-  sourceName: string;
-  thumbnailUrl: string;
-  fileName: string;
-}
-
 interface BasicInfoDraft {
   area: string;
   typeLabel: string;
@@ -48,7 +41,6 @@ interface BasicInfoDraft {
 interface ProjectArchiveWorkspaceProps {
   activeItem?: ProjectArchiveItem;
   items: ProjectArchiveItem[];
-  mediaItems?: ProjectArchiveMediaItem[];
   projectGroups?: ProjectArchiveGroup[];
   variant: ProjectArchiveVariant;
 }
@@ -136,10 +128,38 @@ function buildBasicInfo(meta: (typeof archiveMeta)[ProjectArchiveVariant], item?
   };
 }
 
-export function ProjectArchiveWorkspace({ activeItem, items, mediaItems = [], projectGroups, variant }: ProjectArchiveWorkspaceProps) {
+interface ArchiveTaskPhotoPage {
+  items: ArchiveTaskPhotoRecord[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+async function loadArchiveMediaItems(path: string, signal?: AbortSignal) {
+  const records: ArchiveTaskPhotoRecord[] = [];
+  let page = 1;
+  while (true) {
+    const separator = path.includes("?") ? "&" : "?";
+    const result = await getApi<ArchiveTaskPhotoPage>(`${path}${separator}page=${page}&pageSize=100`, signal);
+    records.push(...result.items);
+    if (records.length >= result.total || result.items.length === 0) break;
+    page += 1;
+  }
+  return records.map((photo) => toProjectArchiveMediaItem(
+    photo,
+    getApiUrl(`/media-assets/${photo.mediaAsset.id}/content`),
+  ));
+}
+
+export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, variant }: ProjectArchiveWorkspaceProps) {
   const meta = archiveMeta[variant];
   const [isEditingBasicInfo, setIsEditingBasicInfo] = useState(false);
   const [mediaModalOpen, setMediaModalOpen] = useState(false);
+  const [linkedMediaItems, setLinkedMediaItems] = useState<ProjectArchiveMediaItem[]>([]);
+  const [availableMediaItems, setAvailableMediaItems] = useState<ProjectArchiveMediaItem[]>([]);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [pendingMediaLoading, setPendingMediaLoading] = useState(false);
+  const [pushingPhotoId, setPushingPhotoId] = useState<string | null>(null);
   const [basicInfo, setBasicInfo] = useState<BasicInfoDraft>(() => buildBasicInfo(meta, activeItem));
   const [basicInfoDraft, setBasicInfoDraft] = useState<BasicInfoDraft>(() => buildBasicInfo(meta, activeItem));
   const pendingCount = activeItem ? Math.max(1, Math.round(activeItem.issueCount * 0.38)) : 0;
@@ -150,16 +170,14 @@ export function ProjectArchiveWorkspace({ activeItem, items, mediaItems = [], pr
     path: `/${variant === "community" ? "communities" : variant === "road" ? "roads" : "points"}`,
     items,
   }];
-  const defaultLinkedMediaIds = useMemo(() => {
-    if (!activeItem) return [];
-
-    return mediaItems
-      .filter((item) => item.linkedObjectId === activeItem.id || item.linkedObjectName === activeItem.name)
-      .map((item) => item.id);
-  }, [activeItem?.id, activeItem?.name, mediaItems]);
-  const [linkedMediaIds, setLinkedMediaIds] = useState<string[]>(defaultLinkedMediaIds);
-  const linkedMediaItems = mediaItems.filter((item) => linkedMediaIds.includes(item.id));
-  const availableMediaItems = mediaItems.filter((item) => !linkedMediaIds.includes(item.id));
+  const refreshLinkedMedia = useCallback(async (signal?: AbortSignal) => {
+    if (!activeItem) return;
+    const photos = await loadArchiveMediaItems(
+      `/managed-objects/${encodeURIComponent(activeItem.id)}/photos`,
+      signal,
+    );
+    setLinkedMediaItems(photos);
+  }, [activeItem?.id]);
 
   useEffect(() => {
     const nextBasicInfo = buildBasicInfo(meta, activeItem);
@@ -169,8 +187,52 @@ export function ProjectArchiveWorkspace({ activeItem, items, mediaItems = [], pr
   }, [activeItem?.id, activeItem?.relatedName, activeItem?.typeLabel, meta]);
 
   useEffect(() => {
-    setLinkedMediaIds(defaultLinkedMediaIds);
-  }, [defaultLinkedMediaIds]);
+    if (!activeItem) {
+      setLinkedMediaItems([]);
+      return;
+    }
+    const controller = new AbortController();
+    setMediaLoading(true);
+    void refreshLinkedMedia(controller.signal)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        message.error(error instanceof Error ? error.message : "档案照片读取失败");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setMediaLoading(false);
+      });
+    return () => controller.abort();
+  }, [activeItem, refreshLinkedMedia]);
+
+  const openMediaModal = async () => {
+    setMediaModalOpen(true);
+    setPendingMediaLoading(true);
+    try {
+      setAvailableMediaItems(await loadArchiveMediaItems("/task-photos?status=pending"));
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "待分发照片读取失败");
+    } finally {
+      setPendingMediaLoading(false);
+    }
+  };
+
+  const pushMediaToArchive = async (media: ProjectArchiveMediaItem) => {
+    if (!activeItem) return;
+    setPushingPhotoId(media.taskPhotoId);
+    try {
+      await patchJsonApi(
+        `/inspection-tasks/${encodeURIComponent(media.taskId)}/photos/${encodeURIComponent(media.taskPhotoId)}/distribution`,
+        { action: "archive", archiveObjectId: activeItem.id },
+      );
+      setAvailableMediaItems((current) => current.filter((item) => item.taskPhotoId !== media.taskPhotoId));
+      await refreshLinkedMedia();
+      message.success(`${media.fileName} 已归档到 ${activeItem.name}`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "照片推送失败");
+    } finally {
+      setPushingPhotoId(null);
+    }
+  };
 
   if (!activeItem) {
     return (
@@ -386,9 +448,14 @@ export function ProjectArchiveWorkspace({ activeItem, items, mediaItems = [], pr
 	              <button type="button">待整改 {pendingCount}</button>
 	              <button type="button">已整改 {fixedCount}</button>
 	            </div>
-	            <Button icon={<UploadCloud size={15} />} onClick={() => setMediaModalOpen(true)}>从媒体库推送</Button>
+	            <Button icon={<UploadCloud size={15} />} onClick={() => void openMediaModal()}>从媒体库推送</Button>
 	          </div>
-	          {linkedMediaItems.length ? (
+	          {mediaLoading ? (
+	            <div className="archive-photo-empty">
+	              <Spin />
+	              <strong>正在读取档案照片</strong>
+	            </div>
+	          ) : linkedMediaItems.length ? (
 	            <div className="archive-photo-grid">
 	              {linkedMediaItems.map((photo) => (
 	                <article className="archive-photo-card" key={photo.id}>
@@ -409,7 +476,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, mediaItems = [], pr
 	              <span>点击“从媒体库推送”，把已经上传的巡检照片关联到当前档案。</span>
 	            </div>
 	          )}
-	          <Button className="archive-more-button" onClick={() => setMediaModalOpen(true)}>管理媒体库照片</Button>
+	          <Button className="archive-more-button" onClick={() => void openMediaModal()}>管理媒体库照片</Button>
 
 	          <Modal
 	            title={`从媒体库推送到 ${activeItem.name}`}
@@ -418,22 +485,25 @@ export function ProjectArchiveWorkspace({ activeItem, items, mediaItems = [], pr
 	            footer={null}
 	            width={760}
 	          >
-	            {availableMediaItems.length ? (
+	            {pendingMediaLoading ? (
+	              <div className="archive-photo-empty compact">
+	                <Spin />
+	                <strong>正在读取待分发照片</strong>
+	              </div>
+	            ) : availableMediaItems.length ? (
 	              <div className="media-push-list">
 	                {availableMediaItems.map((media) => (
-	                  <article key={media.id}>
+	                  <article data-task-photo-id={media.taskPhotoId} key={media.id}>
 	                    <img src={media.thumbnailUrl} alt={media.title} />
 	                    <div>
 	                      <strong>{media.issueTitle}</strong>
-	                      <span>{media.linkedObjectName} / {media.capturedAt} / {media.sourceName}</span>
+	                      <span>{media.capturedAt} / {media.sourceName}</span>
 	                      <em>{media.fileName}</em>
 	                    </div>
 	                    <Button
+	                      loading={pushingPhotoId === media.taskPhotoId}
 	                      type="primary"
-	                      onClick={() => {
-	                        setLinkedMediaIds((current) => [...current, media.id]);
-	                        message.success(`${media.title} 已推送到当前档案`);
-	                      }}
+	                      onClick={() => void pushMediaToArchive(media)}
 	                    >
 	                      推送
 	                    </Button>
@@ -443,7 +513,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, mediaItems = [], pr
 	            ) : (
 	              <div className="archive-photo-empty compact">
 	                <strong>暂无可推送照片</strong>
-	                <span>当前媒体库照片已经全部关联到该档案。</span>
+	                <span>当前没有尚未归档的任务照片。</span>
 	              </div>
 	            )}
 	          </Modal>

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Button } from "antd";
 import { useParams } from "react-router-dom";
 import type { ManagedObjectSummary } from "@xunjianbao/shared";
-import { communities, mediaLibraryItems, points, roads } from "../data";
+import { communities, points, roads } from "../data";
 import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectArchiveWorkspace, type ProjectArchiveGroup, type ProjectArchiveItem } from "../components/ProjectArchiveWorkspace";
@@ -98,7 +98,6 @@ export function ManagedObjectDetailPage({ objectType }: ManagedObjectDetailPageP
       <ProjectArchiveWorkspace
         activeItem={activeArchiveItem}
         items={archiveItems}
-        mediaItems={mediaLibraryItems}
         projectGroups={projectGroups(archiveItems, objectType)}
         variant={objectType}
       />
