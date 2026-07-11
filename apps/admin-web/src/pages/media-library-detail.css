@@ -1,3 +1,32 @@
 .video-analysis-page .media-main-grid.video-main-grid {
   grid-template-columns: minmax(0, 1fr);
 }
+
+.video-analysis-page .video-file-input {
+  display: none;
+}
+
+.video-analysis-page .video-task-error {
+  align-items: center;
+  color: #c62828;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.video-analysis-page .video-task-error span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-analysis-page .video-task-error button {
+  background: #fff;
+  border: 1px solid #ff7875;
+  color: #cf1322;
+  cursor: pointer;
+  flex: 0 0 auto;
+  padding: 4px 10px;
+}

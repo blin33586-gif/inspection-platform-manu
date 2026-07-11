@@ -93,3 +93,28 @@ test("stores an uploaded MOV video and automatically queues extraction", async (
     await rm(tempDirectory, { recursive: true, force: true });
   }
 });
+
+test("requeues a failed frame extraction job", async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  const database = {
+    mediaProcessingJob: {
+      findUnique: async () => ({ id: "job-frame-1", jobType: "frame_extract", status: "failed" }),
+      update: async (input: Record<string, unknown>) => {
+        updates.push(input);
+        return { id: "job-frame-1", status: "queued", progress: 0 };
+      },
+    },
+  };
+  const service = new MediaService(database as never);
+
+  const job = await service.retryJob("job-frame-1");
+
+  assert.equal(job.status, "queued");
+  assert.deepEqual(updates[0].data, {
+    status: "queued",
+    progress: 0,
+    errorMessage: null,
+    startedAt: null,
+    completedAt: null,
+  });
+});

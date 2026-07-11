@@ -86,6 +86,18 @@ export class MediaService {
     return job;
   }
 
+  async retryJob(id: string) {
+    const job = await this.database.mediaProcessingJob.findUnique({ where: { id } });
+    if (!job) throw new NotFoundException("媒体处理任务不存在");
+    if (job.jobType !== "frame_extract") throw new BadRequestException("该任务不支持视频抽帧重试");
+    if (job.status !== "failed") throw new BadRequestException("只有失败的任务可以重试");
+
+    return this.database.mediaProcessingJob.update({
+      where: { id },
+      data: { status: "queued", progress: 0, errorMessage: null, startedAt: null, completedAt: null },
+    });
+  }
+
   private queueFrameExtraction(media: { id: string; storagePath: string }, intervalSeconds: number) {
     this.validateInterval(intervalSeconds);
     const dedupeKey = `frame_extract:${media.id}:${intervalSeconds}`;

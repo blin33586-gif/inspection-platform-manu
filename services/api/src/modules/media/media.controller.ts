@@ -41,4 +41,9 @@ export class MediaController {
   async job(@Param("id") id: string) {
     return ok(await this.mediaService.jobDetail(id));
   }
+
+  @Post("media-jobs/:id/retry")
+  async retry(@Param("id") id: string) {
+    return ok(await this.mediaService.retryJob(id));
+  }
 }

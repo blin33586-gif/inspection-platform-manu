@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input, message, Modal, Select } from "antd";
 import {
@@ -26,6 +26,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { mediaLibraryItems } from "../data";
+import { getApi, postFormApi, postJsonApi } from "../api/client";
+import { toPersistedVideoTask, type PersistedVideoTask, type VideoMediaRecord } from "./media-task-adapter";
 import "./media-library-detail.css";
 
 type VideoSource = "无人机视频" | "摄像头视频" | "AI眼镜同步" | "人工上传";
@@ -49,6 +51,9 @@ interface VideoAnalysisTask {
   reportStatus: string;
   thumbnailUrl: string;
   modelName: string;
+  jobId?: string | null;
+  errorMessage?: string | null;
+  isPersisted?: boolean;
 }
 
 interface IssueEvent {
@@ -115,7 +120,7 @@ const sourceMeta: Record<VideoSource, { icon: JSX.Element; tone: string; desc: s
   人工上传: { icon: <UploadCloud size={18} />, tone: "orange", desc: "本地视频补录" },
 };
 
-const videoTasks: VideoAnalysisTask[] = [
+const demoVideoTasks: VideoAnalysisTask[] = [
   {
     id: "vt-quyang-0720",
     name: "曲阳路街道无人机施工巡检",
@@ -287,24 +292,63 @@ function severityClass(severity: Severity) {
 
 export function MediaLibraryPage() {
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [keyword, setKeyword] = useState("");
   const [source, setSource] = useState<VideoSource | "全部来源">("全部来源");
   const [taskStatus, setTaskStatus] = useState<TaskStatus | "全部状态">("全部状态");
-  const [selectedTaskId, setSelectedTaskId] = useState(videoTasks[0].id);
+  const [selectedTaskId, setSelectedTaskId] = useState(demoVideoTasks[0].id);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [reviewCategories, setReviewCategories] = useState<ReviewCategory[]>(loadReviewCategories);
   const [selectedReviewCategoryId, setSelectedReviewCategoryId] = useState("all");
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [categoryDrafts, setCategoryDrafts] = useState<ReviewCategory[]>([]);
+  const [persistedTasks, setPersistedTasks] = useState<PersistedVideoTask[]>([]);
+  const [uploadIntervalSeconds, setUploadIntervalSeconds] = useState(3);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
 
-  const filteredTasks = useMemo(() => videoTasks.filter((item) => {
+  const liveVideoTasks = useMemo<VideoAnalysisTask[]>(() => persistedTasks.map((item) => ({
+    id: item.id,
+    name: `离线抽帧 · ${item.videoName}`,
+    videoName: item.videoName,
+    source: "人工上传",
+    objectName: "待关联项目",
+    uploadedAt: "已上传",
+    duration: "--:--",
+    frameIntervalSec: item.frameIntervalSec,
+    frameCount: item.frameCount,
+    status: item.status,
+    progress: item.progress,
+    eventCount: 0,
+    reportStatus: item.status === "已完成" ? "抽帧已完成" : "等待抽帧",
+    thumbnailUrl: thumb(1),
+    modelName: "FFmpeg 离线抽帧",
+    jobId: item.jobId,
+    errorMessage: item.errorMessage,
+    isPersisted: true,
+  })), [persistedTasks]);
+  const allVideoTasks = useMemo(() => [...liveVideoTasks, ...demoVideoTasks], [liveVideoTasks]);
+
+  const refreshPersistedTasks = async () => {
+    const records = await getApi<VideoMediaRecord[]>("/media-assets/videos");
+    setPersistedTasks(records.map(toPersistedVideoTask));
+  };
+
+  useEffect(() => {
+    void refreshPersistedTasks().catch(() => undefined);
+    const pollTimer = window.setInterval(() => {
+      void refreshPersistedTasks().catch(() => undefined);
+    }, 5_000);
+    return () => window.clearInterval(pollTimer);
+  }, []);
+
+  const filteredTasks = useMemo(() => allVideoTasks.filter((item) => {
     const keywordMatched = !keyword || `${item.name}${item.videoName}${item.objectName}${item.source}`.includes(keyword);
     const sourceMatched = source === "全部来源" || item.source === source;
     const statusMatched = taskStatus === "全部状态" || item.status === taskStatus;
     return keywordMatched && sourceMatched && statusMatched;
-  }), [keyword, source, taskStatus]);
+  }), [allVideoTasks, keyword, source, taskStatus]);
 
-  const selectedTask = videoTasks.find((item) => item.id === selectedTaskId) ?? videoTasks[0];
+  const selectedTask = allVideoTasks.find((item) => item.id === selectedTaskId) ?? allVideoTasks[0];
   const taskReviewEvents = issueEvents.filter((item) => item.taskId === selectedTask.id);
   const selectedReviewCategory = reviewCategories.find((item) => item.id === selectedReviewCategoryId);
   const selectedTaskEvents = taskReviewEvents.filter((item) => {
@@ -317,7 +361,7 @@ export function MediaLibraryPage() {
     : null;
 
   const pendingReviewCount = issueEvents.filter((item) => item.reviewStatus === "待复核").length;
-  const completedReportCount = videoTasks.filter((item) => item.reportStatus === "已生成报告").length;
+  const completedReportCount = allVideoTasks.filter((item) => item.reportStatus === "已生成报告").length;
 
   const selectTask = (id: string) => {
     setSelectedTaskId(id);
@@ -368,12 +412,55 @@ export function MediaLibraryPage() {
     message.success("算法识别维度已保存");
   };
 
-  const createAnalysisTask = () => {
-    message.success("已创建视频分析任务：默认每 3 秒抽 1 帧，后台离线识别后合并疑似事件");
+  const createAnalysisTask = async () => {
+    if (!selectedTask.isPersisted) {
+      message.warning("演示任务没有原始视频，请先上传真实 MP4 或 MOV 视频");
+      return;
+    }
+    try {
+      await postJsonApi("/media-jobs/frame-extraction", {
+        mediaId: selectedTask.id,
+        intervalSeconds: selectedTask.frameIntervalSec,
+      });
+      await refreshPersistedTasks();
+      message.success("抽帧任务已创建并进入后台队列");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "创建抽帧任务失败");
+    }
   };
 
   const uploadVideo = () => {
-    message.info("视频上传入口已预留：支持 MP4 / MOV，上传后自动创建后台分析任务");
+    fileInputRef.current?.click();
+  };
+
+  const handleVideoUpload = async (file: File | undefined) => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("intervalSeconds", String(uploadIntervalSeconds));
+    setUploadingVideo(true);
+    try {
+      const result = await postFormApi<{ asset: { id: string } }>("/media-assets/upload", formData);
+      await refreshPersistedTasks();
+      setSelectedTaskId(result.asset.id);
+      message.success("视频已上传，抽帧任务已进入后台队列");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "视频上传失败");
+    } finally {
+      setUploadingVideo(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const retryExtraction = async (task: VideoAnalysisTask) => {
+    if (!task.jobId) return;
+    try {
+      await postJsonApi(`/media-jobs/${task.jobId}/retry`, {});
+      await refreshPersistedTasks();
+      message.success("失败任务已重新进入队列");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "任务重试失败");
+    }
   };
 
   const confirmEvent = () => {
@@ -428,19 +515,32 @@ export function MediaLibraryPage() {
               { label: "失败", value: "失败" },
             ]}
           />
-          <Button type="primary" icon={<UploadCloud size={16} />} onClick={uploadVideo}>上传视频</Button>
-          <Button type="primary" icon={<Bot size={16} />} onClick={createAnalysisTask}>创建分析任务</Button>
+          <Select
+            aria-label="抽帧间隔"
+            value={uploadIntervalSeconds}
+            onChange={setUploadIntervalSeconds}
+            options={[2, 3, 4, 5].map((seconds) => ({ label: `${seconds} 秒/帧`, value: seconds }))}
+          />
+          <input
+            ref={fileInputRef}
+            accept="video/mp4,video/quicktime,.mp4,.mov"
+            className="video-file-input"
+            type="file"
+            onChange={(event) => void handleVideoUpload(event.target.files?.[0])}
+          />
+          <Button loading={uploadingVideo} type="primary" icon={<UploadCloud size={16} />} onClick={uploadVideo}>上传视频</Button>
+          <Button type="primary" icon={<Bot size={16} />} onClick={() => void createAnalysisTask()}>创建抽帧任务</Button>
           <Button icon={<FileText size={16} />} onClick={() => navigate("/reports/write")}>生成报告</Button>
         </section>
 
         <section className="media-stat-grid video-stat-grid">
           <article>
             <span className="stat-icon blue"><Video size={24} /></span>
-            <div><em>视频任务数</em><strong>{videoTasks.length}</strong><p>MP4 / MOV 离线分析</p></div>
+            <div><em>视频任务数</em><strong>{allVideoTasks.length}</strong><p>MP4 / MOV 离线分析</p></div>
           </article>
           <article>
             <span className="stat-icon orange"><Gauge size={24} /></span>
-            <div><em>正在分析</em><strong>{videoTasks.filter((item) => item.status === "分析中").length}</strong><p>后台抽帧识别中</p></div>
+            <div><em>正在抽帧</em><strong>{allVideoTasks.filter((item) => item.status === "分析中").length}</strong><p>后台抽帧处理中</p></div>
           </article>
           <article>
             <span className="stat-icon green"><AlertTriangle size={24} /></span>
@@ -493,7 +593,7 @@ export function MediaLibraryPage() {
               <div className="media-gallery-toolbar video-task-toolbar">
                 <strong>视频任务</strong>
                 <span>已筛选 {filteredTasks.length} 个任务</span>
-                <button type="button" onClick={createAnalysisTask}>重新分析</button>
+                <button type="button" onClick={() => void createAnalysisTask()}>重新抽帧</button>
                 <button type="button" onClick={() => message.info("批量复核入口已预留")}>批量复核</button>
                 <div>
                   <span>排序：上传时间 ↓</span>
@@ -507,11 +607,15 @@ export function MediaLibraryPage() {
               <section className="video-task-panel">
               <div className="video-task-list">
                 {filteredTasks.map((item) => (
-                  <button
+                  <article
                     className={`video-task-card ${selectedTask.id === item.id ? "active" : ""}`}
                     key={item.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => selectTask(item.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") selectTask(item.id);
+                    }}
                   >
                     <div className="video-task-thumb">
                       <img src={item.thumbnailUrl} alt={item.name} />
@@ -532,8 +636,15 @@ export function MediaLibraryPage() {
                         <span>{item.eventCount} 个事件</span>
                       </div>
                       <div className="task-progress"><i style={{ width: `${item.progress}%` }} /></div>
+                      {item.status === "失败" ? <div className="video-task-error">
+                        <span>{item.errorMessage || "抽帧处理失败"}</span>
+                        <button type="button" onClick={(event) => {
+                          event.stopPropagation();
+                          void retryExtraction(item);
+                        }}>重试</button>
+                      </div> : null}
                     </div>
-                  </button>
+                  </article>
                 ))}
               </div>
             </section>
