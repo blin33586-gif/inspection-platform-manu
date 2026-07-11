@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { basename, relative, resolve, sep } from "node:path";
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { extractArchiveImages, type ExtractedArchiveImage } from "./archive-image-extractor.js";
-import { extractVideoFrames } from "./ffmpeg-frame-extractor.js";
+import { extractVideoFrames, type ExtractedFrame } from "./ffmpeg-frame-extractor.js";
 import { runTiffTileJob } from "./gdal-tile-generator.js";
 
 interface TiffJobInput {
@@ -13,17 +13,24 @@ interface TiffJobInput {
 }
 
 interface FrameExtractionJobInput {
+  inspectionTaskId?: string;
   mediaId: string;
   sourcePath: string;
   intervalSeconds: number;
 }
 
 interface ArchiveExtractionJobInput {
+  inspectionTaskId?: string;
   mediaId: string;
   sourcePath: string;
 }
 
 interface JobRunnerHandlers {
+  extractVideoFrames?: (
+    inputPath: string,
+    outputDirectory: string,
+    intervalSeconds: number,
+  ) => Promise<ExtractedFrame[]>;
   extractArchiveImages?: (
     inputPath: string,
     outputDirectory: string,
@@ -31,6 +38,7 @@ interface JobRunnerHandlers {
 }
 
 export class JobRunner {
+  private readonly extractVideoFramesHandler: NonNullable<JobRunnerHandlers["extractVideoFrames"]>;
   private readonly extractArchiveImagesHandler: NonNullable<JobRunnerHandlers["extractArchiveImages"]>;
 
   constructor(
@@ -38,6 +46,7 @@ export class JobRunner {
     private readonly storageRoot = resolve(process.cwd(), "../api/storage"),
     handlers: JobRunnerHandlers = {},
   ) {
+    this.extractVideoFramesHandler = handlers.extractVideoFrames ?? extractVideoFrames;
     this.extractArchiveImagesHandler = handlers.extractArchiveImages ?? extractArchiveImages;
   }
 
@@ -58,6 +67,13 @@ export class JobRunner {
           errorMessage: error instanceof Error ? error.message.slice(0, 1000) : "媒体处理失败",
         },
       });
+      const inspectionTaskId = this.readInspectionTaskId(job.inputJson);
+      if (inspectionTaskId) {
+        await this.database.inspectionTask.updateMany({
+          where: { id: inspectionTaskId },
+          data: { processStatus: "failed" },
+        });
+      }
     }
 
     return true;
@@ -126,23 +142,25 @@ export class JobRunner {
 
   private async processFrameJob(jobId: string, rawInput: string) {
     const input = this.parseFrameInput(rawInput);
+    const inspectionTaskId = await this.resolveInspectionTaskId(input.inspectionTaskId, input.mediaId);
     const sourcePath = this.toStoragePath(input.sourcePath);
     const outputDirectory = resolve(this.storageRoot, "media", "frames", input.mediaId);
-    const frames = await extractVideoFrames(sourcePath, outputDirectory, input.intervalSeconds);
+    const frames = await this.extractVideoFramesHandler(sourcePath, outputDirectory, input.intervalSeconds);
     const publicDirectory = `storage/media/frames/${input.mediaId}`;
 
-    await this.database.$transaction([
+    const frameRows = frames.map((frame) => ({
+      id: `frame-${input.mediaId}-${frame.timestampMs}`,
+      kind: "frame",
+      originalFileName: frame.fileName,
+      storagePath: `${publicDirectory}/${basename(frame.storagePath)}`,
+      mimeType: "image/jpeg",
+      fileSize: frame.fileSize,
+      parentMediaId: input.mediaId,
+      videoTimestampMs: frame.timestampMs,
+    }));
+    const operations: Prisma.PrismaPromise<unknown>[] = [
       this.database.mediaAsset.createMany({
-        data: frames.map((frame) => ({
-          id: `frame-${input.mediaId}-${frame.timestampMs}`,
-          kind: "frame",
-          originalFileName: frame.fileName,
-          storagePath: `${publicDirectory}/${basename(frame.storagePath)}`,
-          mimeType: "image/jpeg",
-          fileSize: frame.fileSize,
-          parentMediaId: input.mediaId,
-          videoTimestampMs: frame.timestampMs,
-        })),
+        data: frameRows,
         skipDuplicates: true,
       }),
       this.database.mediaProcessingJob.update({
@@ -165,27 +183,53 @@ export class JobRunner {
           summary: `视频抽帧完成，共生成 ${frames.length} 张证据帧`,
         },
       }),
-    ]);
+    ];
+    if (inspectionTaskId) {
+      operations.splice(1, 0,
+        this.database.taskPhoto.createMany({
+          data: frameRows.map((frame) => ({
+            id: `photo-${frame.id}`,
+            taskId: inspectionTaskId,
+            mediaAssetId: frame.id,
+            distributionStatus: "pending",
+            archiveObjectId: null,
+            videoTimestampMs: frame.videoTimestampMs,
+          })),
+          skipDuplicates: true,
+        }),
+        this.database.inspectionTask.update({
+          where: { id: inspectionTaskId },
+          data: {
+            processStatus: "ready_for_distribution",
+            photoCount: frameRows.length,
+            pendingPhotoCount: frameRows.length,
+          },
+        }),
+      );
+    }
+    await this.database.$transaction(operations);
   }
 
   private async processArchiveJob(jobId: string, rawInput: string) {
     const input = this.parseArchiveInput(rawInput);
+    const inspectionTaskId = await this.resolveInspectionTaskId(input.inspectionTaskId, input.mediaId);
     const sourcePath = this.toStoragePath(input.sourcePath);
     const outputDirectory = resolve(this.storageRoot, "media", "images", input.mediaId);
     const images = await this.extractArchiveImagesHandler(sourcePath, outputDirectory);
     const publicDirectory = `storage/media/images/${input.mediaId}`;
 
-    await this.database.$transaction([
+    const imageRows = images.map((image) => ({
+      id: `image-${input.mediaId}-${image.sortIndex + 1}`,
+      kind: "image",
+      originalFileName: image.fileName,
+      storagePath: `${publicDirectory}/${basename(image.storagePath)}`,
+      mimeType: image.mimeType,
+      fileSize: image.fileSize,
+      parentMediaId: input.mediaId,
+    }));
+    const operations: Prisma.PrismaPromise<unknown>[] = [
       this.database.mediaAsset.createMany({
-        data: images.map((image) => ({
-          id: `image-${input.mediaId}-${image.sortIndex + 1}`,
-          kind: "image",
-          originalFileName: image.fileName,
-          storagePath: `${publicDirectory}/${basename(image.storagePath)}`,
-          mimeType: image.mimeType,
-          fileSize: image.fileSize,
-          parentMediaId: input.mediaId,
-        })),
+        data: imageRows,
         skipDuplicates: true,
       }),
       this.database.mediaProcessingJob.update({
@@ -208,7 +252,30 @@ export class JobRunner {
           summary: `图片包解压完成，共生成 ${images.length} 张巡检照片`,
         },
       }),
-    ]);
+    ];
+    if (inspectionTaskId) {
+      operations.splice(1, 0,
+        this.database.taskPhoto.createMany({
+          data: imageRows.map((image) => ({
+            id: `photo-${image.id}`,
+            taskId: inspectionTaskId,
+            mediaAssetId: image.id,
+            distributionStatus: "pending",
+            archiveObjectId: null,
+          })),
+          skipDuplicates: true,
+        }),
+        this.database.inspectionTask.update({
+          where: { id: inspectionTaskId },
+          data: {
+            processStatus: "ready_for_distribution",
+            photoCount: imageRows.length,
+            pendingPhotoCount: imageRows.length,
+          },
+        }),
+      );
+    }
+    await this.database.$transaction(operations);
   }
 
   private parseTiffInput(rawInput: string): TiffJobInput {
@@ -231,6 +298,24 @@ export class JobRunner {
     const input = JSON.parse(rawInput) as Partial<ArchiveExtractionJobInput>;
     if (!input.mediaId || !input.sourcePath) throw new Error("图片包解压任务参数无效");
     return input as ArchiveExtractionJobInput;
+  }
+
+  private async resolveInspectionTaskId(inputTaskId: string | undefined, mediaId: string) {
+    if (inputTaskId) return inputTaskId;
+    const task = await this.database.inspectionTask.findUnique({
+      where: { sourceMediaId: mediaId },
+      select: { id: true },
+    });
+    return task?.id ?? null;
+  }
+
+  private readInspectionTaskId(rawInput: string) {
+    try {
+      const input = JSON.parse(rawInput) as { inspectionTaskId?: unknown };
+      return typeof input.inspectionTaskId === "string" ? input.inspectionTaskId : null;
+    } catch {
+      return null;
+    }
   }
 
   private toStoragePath(storedPath: string) {
