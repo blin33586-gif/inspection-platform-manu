@@ -485,6 +485,11 @@ h4 {
   height: 32px;
 }
 
+.map-edit-label-input.ant-input {
+  width: 156px;
+  height: 32px;
+}
+
 .map-draw-tools-panel .ant-btn.is-active {
   border-color: #0071e3;
   background: #0071e3;
@@ -526,8 +531,7 @@ h4 {
 }
 
 .map-drawing-finish-icon,
-.map-edit-vertex-icon,
-.map-label-anchor-icon {
+.map-edit-vertex-icon {
   background: transparent;
   border: 0;
 }
@@ -554,24 +558,6 @@ h4 {
   border-radius: 50%;
   background: #0071e3;
   box-shadow: 0 2px 8px rgba(0, 77, 165, 0.36);
-}
-
-.dashboard-map-label.editable {
-  min-width: 154px;
-  padding: 8px;
-  border-color: #0071e3;
-  background: rgba(255, 255, 255, 0.97);
-}
-
-.dashboard-map-label.editable input {
-  width: 100%;
-  border: 0;
-  border-bottom: 1px solid rgba(0, 113, 227, 0.32);
-  outline: 0;
-  background: transparent;
-  color: #102033;
-  font: inherit;
-  font-weight: 800;
 }
 
 .dashboard-tile-map .leaflet-container {
