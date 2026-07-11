@@ -161,12 +161,12 @@ export function IssuesPage() {
 
   return (
     <>
-      <PageHeader eyebrow="ISSUE LEDGER" title="问题台账" actions={<Button type="primary" onClick={() => setOpen(true)}>新增问题</Button>} />
+      <PageHeader eyebrow="FOLLOW-UP LEADS" title="待跟进线索" actions={<Button type="primary" onClick={() => setOpen(true)}>新增线索</Button>} />
       <section className="content-section">
         <div className="section-head">
           <div>
             <p className="eyebrow">ALL ISSUES</p>
-            <h3>重点问题列表</h3>
+            <h3>待跟进线索列表</h3>
           </div>
           <div className="filter-controls">
             <Input.Search

@@ -9,9 +9,9 @@ const navItems = [
 const workflowNavItems = [
   { to: "/media-library", label: "媒体库" },
   { to: "/reports", label: "巡检报告" },
-  { to: "/issues", label: "已发现问题" },
+  { to: "/issues", label: "待跟进线索" },
   { to: "/map-assets", label: "地图" },
-  { to: "/audit-logs", label: "审计" },
+  { to: "/audit-logs", label: "操作日志" },
 ];
 
 const projectNavItems = [

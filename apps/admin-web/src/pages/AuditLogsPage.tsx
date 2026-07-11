@@ -49,7 +49,7 @@ export function AuditLogsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="AUDIT LOGS" title="操作审计" />
+      <PageHeader eyebrow="OPERATION LOGS" title="操作日志" />
       <section className="content-section">
         <div className="section-head">
           <div>
