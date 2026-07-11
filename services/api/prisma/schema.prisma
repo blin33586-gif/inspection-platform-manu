@@ -36,6 +36,7 @@ model ManagedObject {
   issues   Issue[]
   reports  InspectionReport[]
   hotAreas MapHotArea[]
+  taskPhotos TaskPhoto[]
 
   @@index([objectType])
   @@index([status])
@@ -94,10 +95,12 @@ model InspectionReport {
   mimeType          String?
   fileSize          Int?
   processStatus     String   @default("uploaded")
+  taskId            String?  @unique
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   relatedObject ManagedObject? @relation(fields: [relatedObjectId], references: [id])
+  task          InspectionTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([relatedObjectId])
   @@index([reportType])
@@ -167,10 +170,55 @@ model MediaAsset {
   parentMedia MediaAsset?  @relation("MediaAssetFrames", fields: [parentMediaId], references: [id], onDelete: Cascade)
   frames      MediaAsset[]  @relation("MediaAssetFrames")
   jobs        MediaProcessingJob[]
+  inspectionTask InspectionTask? @relation("InspectionTaskSource")
+  taskPhoto      TaskPhoto?      @relation("TaskPhotoMedia")
 
   @@unique([parentMediaId, videoTimestampMs])
   @@index([kind])
   @@index([createdAt])
+}
+
+model InspectionTask {
+  id                String   @id
+  name              String
+  taskDate          DateTime
+  sourceType        String
+  inputType         String
+  processStatus     String
+  sourceMediaId     String?  @unique
+  photoCount        Int      @default(0)
+  pendingPhotoCount Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  sourceMedia MediaAsset?      @relation("InspectionTaskSource", fields: [sourceMediaId], references: [id], onDelete: SetNull)
+  photos      TaskPhoto[]
+  report      InspectionReport?
+
+  @@index([taskDate])
+  @@index([sourceType])
+  @@index([processStatus])
+  @@index([createdAt])
+}
+
+model TaskPhoto {
+  id                 String   @id
+  taskId             String
+  mediaAssetId       String   @unique
+  distributionStatus String   @default("pending")
+  archiveObjectId    String?
+  capturedAt         DateTime?
+  videoTimestampMs   Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  task          InspectionTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  mediaAsset    MediaAsset      @relation("TaskPhotoMedia", fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  archiveObject ManagedObject?  @relation(fields: [archiveObjectId], references: [id], onDelete: SetNull)
+
+  @@index([taskId, distributionStatus])
+  @@index([archiveObjectId])
+  @@index([capturedAt])
 }
 
 model MapHotArea {
