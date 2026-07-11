@@ -13,10 +13,22 @@ interface UploadedFileLike {
 }
 
 const allowedVideoExtensions = new Set([".mp4", ".mov"]);
+const archiveExtension = ".zip";
 
 @Injectable()
 export class MediaService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+
+  async createMediaFromUpload(file: UploadedFileLike | undefined, intervalSeconds: number) {
+    if (!file) throw new BadRequestException("请选择要上传的素材");
+
+    const extension = extname(file.originalname).toLowerCase();
+    if (allowedVideoExtensions.has(extension)) return this.createVideoFromUpload(file, intervalSeconds);
+    if (extension === archiveExtension) return this.createArchiveFromUpload(file);
+
+    await rm(file.path, { force: true });
+    throw new BadRequestException("仅支持 MP4、MOV 或 ZIP 文件");
+  }
 
   async createFrameExtractionJob(mediaId: string, intervalSeconds: number) {
     this.validateInterval(intervalSeconds);
@@ -72,6 +84,69 @@ export class MediaService {
     }
   }
 
+  async createArchiveFromUpload(file: UploadedFileLike) {
+    const id = `media-${randomUUID()}`;
+    const storedFileName = `${id}${archiveExtension}`;
+    const storagePath = join("storage/media/archives", storedFileName);
+    await mkdir("storage/media/archives", { recursive: true });
+    await rename(file.path, storagePath);
+
+    try {
+      const asset = await this.database.mediaAsset.create({
+        data: {
+          id,
+          kind: "image_bundle",
+          originalFileName: file.originalname,
+          storagePath,
+          mimeType: file.mimetype || "application/zip",
+          fileSize: file.size,
+        },
+      });
+      const job = await this.queueArchiveExtraction(asset);
+      await this.database.auditLog.create({
+        data: {
+          id: `audit-${randomUUID()}`,
+          actor: "admin",
+          action: "media.archive.upload",
+          targetType: "mediaAsset",
+          targetId: asset.id,
+          summary: `上传巡检图片包「${asset.originalFileName}」并创建解压任务`,
+        },
+      });
+      return { asset, job };
+    } catch (error) {
+      await rm(storagePath, { force: true });
+      throw error;
+    }
+  }
+
+  async listTasks() {
+    return this.database.mediaAsset.findMany({
+      where: { parentMediaId: null, kind: { in: ["video", "image_bundle"] } },
+      include: {
+        jobs: { orderBy: { createdAt: "desc" }, take: 1 },
+        frames: { orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }], take: 1 },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async listChildren(parentId: string) {
+    const parent = await this.database.mediaAsset.findUnique({ where: { id: parentId } });
+    if (!parent || parent.parentMediaId) throw new NotFoundException("媒体任务不存在");
+
+    return this.database.mediaAsset.findMany({
+      where: { parentMediaId: parentId, kind: { in: ["frame", "image"] } },
+      orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
+  async getAsset(id: string) {
+    const asset = await this.database.mediaAsset.findUnique({ where: { id } });
+    if (!asset) throw new NotFoundException("媒体素材不存在");
+    return asset;
+  }
+
   async listVideos() {
     return this.database.mediaAsset.findMany({
       where: { kind: "video" },
@@ -89,7 +164,9 @@ export class MediaService {
   async retryJob(id: string) {
     const job = await this.database.mediaProcessingJob.findUnique({ where: { id } });
     if (!job) throw new NotFoundException("媒体处理任务不存在");
-    if (job.jobType !== "frame_extract") throw new BadRequestException("该任务不支持视频抽帧重试");
+    if (!new Set(["frame_extract", "archive_extract"]).has(job.jobType)) {
+      throw new BadRequestException("该媒体处理任务不支持重试");
+    }
     if (job.status !== "failed") throw new BadRequestException("只有失败的任务可以重试");
 
     return this.database.mediaProcessingJob.update({
@@ -114,6 +191,22 @@ export class MediaService {
           sourcePath: media.storagePath,
           intervalSeconds,
         }),
+      },
+      update: {},
+    });
+  }
+
+  private queueArchiveExtraction(media: { id: string; storagePath: string }) {
+    const dedupeKey = `archive_extract:${media.id}`;
+    return this.database.mediaProcessingJob.upsert({
+      where: { dedupeKey },
+      create: {
+        id: `job-archive-${media.id}`,
+        jobType: "archive_extract",
+        status: "queued",
+        dedupeKey,
+        mediaId: media.id,
+        inputJson: JSON.stringify({ mediaId: media.id, sourcePath: media.storagePath }),
       },
       update: {},
     });

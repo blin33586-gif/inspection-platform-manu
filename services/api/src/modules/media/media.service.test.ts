@@ -118,3 +118,118 @@ test("requeues a failed frame extraction job", async () => {
     completedAt: null,
   });
 });
+
+test("stores an uploaded ZIP and automatically queues archive extraction", async () => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), "xunjianbao-archive-upload-"));
+  const tempPath = join(tempDirectory, "photos.zip");
+  await writeFile(tempPath, "zip-source");
+  const assetCreates: Array<{ data: Record<string, unknown> }> = [];
+  const jobUpserts: Array<Record<string, unknown>> = [];
+  const database = {
+    mediaAsset: {
+      create: async (input: { data: Record<string, unknown> }) => {
+        assetCreates.push(input);
+        return input.data;
+      },
+    },
+    mediaProcessingJob: {
+      upsert: async (input: Record<string, unknown>) => {
+        jobUpserts.push(input);
+        return input.create;
+      },
+    },
+    auditLog: { create: async () => undefined },
+  };
+  const service = new MediaService(database as never);
+
+  try {
+    const result = await service.createMediaFromUpload({
+      filename: "photos.zip",
+      originalname: "曲阳巡检照片.zip",
+      mimetype: "application/zip",
+      path: tempPath,
+      size: 18,
+    }, 3);
+
+    assert.equal(result.asset.kind, "image_bundle");
+    assert.equal(result.asset.originalFileName, "曲阳巡检照片.zip");
+    assert.equal((jobUpserts[0].create as Record<string, unknown>).jobType, "archive_extract");
+    assert.match(String((jobUpserts[0].create as Record<string, unknown>).dedupeKey), /^archive_extract:media-/);
+  } finally {
+    const storagePath = assetCreates[0]?.data.storagePath;
+    if (typeof storagePath === "string") await rm(storagePath, { force: true });
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
+});
+
+test("lists top-level media tasks with their latest processing job", async () => {
+  const findManyCalls: Array<Record<string, unknown>> = [];
+  const database = {
+    mediaAsset: {
+      findMany: async (input: Record<string, unknown>) => {
+        findManyCalls.push(input);
+        return [];
+      },
+    },
+  };
+  const service = new MediaService(database as never);
+
+  await service.listTasks();
+
+  assert.deepEqual(findManyCalls[0].where, {
+    parentMediaId: null,
+    kind: { in: ["video", "image_bundle"] },
+  });
+  assert.deepEqual(findManyCalls[0].include, {
+    jobs: { orderBy: { createdAt: "desc" }, take: 1 },
+    frames: { orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }], take: 1 },
+  });
+});
+
+test("lists task children in preview order", async () => {
+  const findManyCalls: Array<Record<string, unknown>> = [];
+  const database = {
+    mediaAsset: {
+      findUnique: async () => ({ id: "media-parent-1", kind: "video" }),
+      findMany: async (input: Record<string, unknown>) => {
+        findManyCalls.push(input);
+        return [];
+      },
+    },
+  };
+  const service = new MediaService(database as never);
+
+  await service.listChildren("media-parent-1");
+
+  assert.deepEqual(findManyCalls[0], {
+    where: { parentMediaId: "media-parent-1", kind: { in: ["frame", "image"] } },
+    orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }],
+  });
+});
+
+test("returns one persisted media asset", async () => {
+  const database = {
+    mediaAsset: {
+      findUnique: async () => ({ id: "frame-1", kind: "frame", originalFileName: "frame.jpg" }),
+    },
+  };
+  const service = new MediaService(database as never);
+
+  const asset = await service.getAsset("frame-1");
+
+  assert.equal(asset.id, "frame-1");
+});
+
+test("requeues a failed archive extraction job", async () => {
+  const database = {
+    mediaProcessingJob: {
+      findUnique: async () => ({ id: "job-archive-1", jobType: "archive_extract", status: "failed" }),
+      update: async () => ({ id: "job-archive-1", status: "queued", progress: 0 }),
+    },
+  };
+  const service = new MediaService(database as never);
+
+  const job = await service.retryJob("job-archive-1");
+
+  assert.equal(job.status, "queued");
+});

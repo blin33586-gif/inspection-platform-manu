@@ -20,16 +20,31 @@ export class MediaController {
     dest: "storage/media/tmp",
     limits: { fileSize: 2 * 1024 * 1024 * 1024 },
   }))
-  async uploadVideo(
+  async upload(
     @UploadedFile() file: UploadedFileLike | undefined,
     @Body() body: { intervalSeconds?: string },
   ) {
-    return ok(await this.mediaService.createVideoFromUpload(file, Number(body.intervalSeconds ?? 3)));
+    return ok(await this.mediaService.createMediaFromUpload(file, Number(body.intervalSeconds ?? 3)));
+  }
+
+  @Get("media-assets/tasks")
+  async tasks() {
+    return ok(await this.mediaService.listTasks());
   }
 
   @Get("media-assets/videos")
   async videos() {
     return ok(await this.mediaService.listVideos());
+  }
+
+  @Get("media-assets/:id/children")
+  async children(@Param("id") id: string) {
+    return ok(await this.mediaService.listChildren(id));
+  }
+
+  @Get("media-assets/:id")
+  async asset(@Param("id") id: string) {
+    return ok(await this.mediaService.getAsset(id));
   }
 
   @Post("media-jobs/frame-extraction")
