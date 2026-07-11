@@ -14,7 +14,6 @@ import {
   Grid3X3,
   ListChecks,
   MapPin,
-  PlayCircle,
   Plus,
   ScanSearch,
   Settings2,
@@ -26,8 +25,9 @@ import {
   XCircle,
 } from "lucide-react";
 import { mediaLibraryItems } from "../data";
-import { getApi, postFormApi, postJsonApi } from "../api/client";
-import { toPersistedVideoTask, type PersistedVideoTask, type VideoMediaRecord } from "./media-task-adapter";
+import { getApi, getApiUrl, postFormApi, postJsonApi } from "../api/client";
+import { MediaTaskPreview } from "../components/MediaTaskPreview";
+import { toMediaTaskViewModel, type MediaTaskRecord, type MediaTaskViewModel } from "./media-task-adapter";
 import "./media-library-detail.css";
 
 type VideoSource = "无人机视频" | "摄像头视频" | "AI眼镜同步" | "人工上传";
@@ -54,6 +54,9 @@ interface VideoAnalysisTask {
   jobId?: string | null;
   errorMessage?: string | null;
   isPersisted?: boolean;
+  assetKind?: "video" | "image_bundle";
+  kindLabel?: "视频" | "图片包";
+  contentUrl?: string;
 }
 
 interface IssueEvent {
@@ -302,35 +305,38 @@ export function MediaLibraryPage() {
   const [selectedReviewCategoryId, setSelectedReviewCategoryId] = useState("all");
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [categoryDrafts, setCategoryDrafts] = useState<ReviewCategory[]>([]);
-  const [persistedTasks, setPersistedTasks] = useState<PersistedVideoTask[]>([]);
+  const [persistedTasks, setPersistedTasks] = useState<MediaTaskViewModel[]>([]);
   const [uploadIntervalSeconds, setUploadIntervalSeconds] = useState(3);
   const [uploadingVideo, setUploadingVideo] = useState(false);
 
   const liveVideoTasks = useMemo<VideoAnalysisTask[]>(() => persistedTasks.map((item) => ({
     id: item.id,
-    name: `离线抽帧 · ${item.videoName}`,
-    videoName: item.videoName,
+    name: `素材任务 · ${item.originalFileName}`,
+    videoName: item.originalFileName,
     source: "人工上传",
     objectName: "待关联项目",
     uploadedAt: "已上传",
     duration: "--:--",
     frameIntervalSec: item.frameIntervalSec,
-    frameCount: item.frameCount,
+    frameCount: item.assetCount,
     status: item.status,
     progress: item.progress,
     eventCount: 0,
-    reportStatus: item.status === "已完成" ? "抽帧已完成" : "等待抽帧",
-    thumbnailUrl: thumb(1),
-    modelName: "FFmpeg 离线抽帧",
+    reportStatus: item.status === "已完成" ? "素材处理已完成" : "等待处理",
+    thumbnailUrl: item.posterAssetId ? getApiUrl(`/media-assets/${item.posterAssetId}/content`) : thumb(1),
+    modelName: item.assetKind === "video" ? "FFmpeg 离线抽帧" : "ZIP 图片解压",
     jobId: item.jobId,
     errorMessage: item.errorMessage,
     isPersisted: true,
+    assetKind: item.assetKind,
+    kindLabel: item.kindLabel,
+    contentUrl: item.assetKind === "video" ? getApiUrl(`/media-assets/${item.id}/content`) : undefined,
   })), [persistedTasks]);
   const allVideoTasks = useMemo(() => [...liveVideoTasks, ...demoVideoTasks], [liveVideoTasks]);
 
   const refreshPersistedTasks = async () => {
-    const records = await getApi<VideoMediaRecord[]>("/media-assets/videos");
-    setPersistedTasks(records.map(toPersistedVideoTask));
+    const records = await getApi<MediaTaskRecord[]>("/media-assets/tasks");
+    setPersistedTasks(records.map(toMediaTaskViewModel));
   };
 
   useEffect(() => {
@@ -414,7 +420,15 @@ export function MediaLibraryPage() {
 
   const createAnalysisTask = async () => {
     if (!selectedTask.isPersisted) {
-      message.warning("演示任务没有原始视频，请先上传真实 MP4 或 MOV 视频");
+      message.warning("演示任务没有原始素材，请先上传真实任务文件");
+      return;
+    }
+    if (selectedTask.status === "失败") {
+      await retryExtraction(selectedTask);
+      return;
+    }
+    if (selectedTask.assetKind === "image_bundle") {
+      message.info("图片包上传时已自动创建解压任务");
       return;
     }
     try {
@@ -423,17 +437,17 @@ export function MediaLibraryPage() {
         intervalSeconds: selectedTask.frameIntervalSec,
       });
       await refreshPersistedTasks();
-      message.success("抽帧任务已创建并进入后台队列");
+      message.success("处理任务已创建并进入后台队列");
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "创建抽帧任务失败");
+      message.error(error instanceof Error ? error.message : "创建处理任务失败");
     }
   };
 
-  const uploadVideo = () => {
+  const uploadMedia = () => {
     fileInputRef.current?.click();
   };
 
-  const handleVideoUpload = async (file: File | undefined) => {
+  const handleMediaUpload = async (file: File | undefined) => {
     if (!file) return;
     const formData = new FormData();
     formData.append("file", file);
@@ -443,9 +457,11 @@ export function MediaLibraryPage() {
       const result = await postFormApi<{ asset: { id: string } }>("/media-assets/upload", formData);
       await refreshPersistedTasks();
       setSelectedTaskId(result.asset.id);
-      message.success("视频已上传，抽帧任务已进入后台队列");
+      message.success(file.name.toLowerCase().endsWith(".zip")
+        ? "图片包已上传，解压任务已进入后台队列"
+        : "视频已上传，抽帧任务已进入后台队列");
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "视频上传失败");
+      message.error(error instanceof Error ? error.message : "素材上传失败");
     } finally {
       setUploadingVideo(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -487,7 +503,7 @@ export function MediaLibraryPage() {
           <Input
             allowClear
             prefix={<ScanSearch size={16} />}
-            placeholder="搜索视频名称、任务、小区、街道、问题类型"
+            placeholder="搜索素材名称、任务、小区、街道、问题类型"
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
           />
@@ -523,24 +539,24 @@ export function MediaLibraryPage() {
           />
           <input
             ref={fileInputRef}
-            accept="video/mp4,video/quicktime,.mp4,.mov"
+            accept="video/mp4,video/quicktime,application/zip,.mp4,.mov,.zip"
             className="video-file-input"
             type="file"
-            onChange={(event) => void handleVideoUpload(event.target.files?.[0])}
+            onChange={(event) => void handleMediaUpload(event.target.files?.[0])}
           />
-          <Button loading={uploadingVideo} type="primary" icon={<UploadCloud size={16} />} onClick={uploadVideo}>上传视频</Button>
-          <Button type="primary" icon={<Bot size={16} />} onClick={() => void createAnalysisTask()}>创建抽帧任务</Button>
+          <Button loading={uploadingVideo} type="primary" icon={<UploadCloud size={16} />} onClick={uploadMedia}>上传素材</Button>
+          <Button type="primary" icon={<Bot size={16} />} onClick={() => void createAnalysisTask()}>重新处理</Button>
           <Button icon={<FileText size={16} />} onClick={() => navigate("/reports/write")}>生成报告</Button>
         </section>
 
         <section className="media-stat-grid video-stat-grid">
           <article>
             <span className="stat-icon blue"><Video size={24} /></span>
-            <div><em>视频任务数</em><strong>{allVideoTasks.length}</strong><p>MP4 / MOV 离线分析</p></div>
+            <div><em>任务数</em><strong>{allVideoTasks.length}</strong><p>视频与图片包统一处理</p></div>
           </article>
           <article>
             <span className="stat-icon orange"><Gauge size={24} /></span>
-            <div><em>正在抽帧</em><strong>{allVideoTasks.filter((item) => item.status === "分析中").length}</strong><p>后台抽帧处理中</p></div>
+            <div><em>正在处理</em><strong>{allVideoTasks.filter((item) => item.status === "分析中").length}</strong><p>后台媒体处理中</p></div>
           </article>
           <article>
             <span className="stat-icon green"><AlertTriangle size={24} /></span>
@@ -591,9 +607,9 @@ export function MediaLibraryPage() {
               </div>
 
               <div className="media-gallery-toolbar video-task-toolbar">
-                <strong>视频任务</strong>
+                <strong>任务</strong>
                 <span>已筛选 {filteredTasks.length} 个任务</span>
-                <button type="button" onClick={() => void createAnalysisTask()}>重新抽帧</button>
+                <button type="button" onClick={() => void createAnalysisTask()}>重新处理</button>
                 <button type="button" onClick={() => message.info("批量复核入口已预留")}>批量复核</button>
                 <div>
                   <span>排序：上传时间 ↓</span>
@@ -618,10 +634,14 @@ export function MediaLibraryPage() {
                     }}
                   >
                     <div className="video-task-thumb">
-                      <img src={item.thumbnailUrl} alt={item.name} />
-                      <span className={`source-pill ${sourceMeta[item.source].tone}`}>{item.source}</span>
+                      <MediaTaskPreview
+                        assetKind={item.assetKind ?? "video"}
+                        alt={item.name}
+                        posterUrl={item.thumbnailUrl}
+                        videoUrl={item.contentUrl}
+                      />
+                      <span className={`source-pill ${sourceMeta[item.source].tone}`}>{item.kindLabel ?? item.source}</span>
                       <span className={`analysis-status ${taskStatusClass(item.status)}`}>{item.status}</span>
-                      <i><PlayCircle size={22} /></i>
                     </div>
                     <div className="video-task-body">
                       <div>
@@ -631,13 +651,13 @@ export function MediaLibraryPage() {
                       <p><MapPin size={14} />{item.objectName}</p>
                       <div className="video-task-meta">
                         <span><Timer size={14} />{item.duration}</span>
-                        <span>每 {item.frameIntervalSec} 秒抽 1 帧</span>
-                        <span>{item.frameCount} 帧</span>
+                        <span>{item.assetKind === "image_bundle" ? "图片包解压" : `每 ${item.frameIntervalSec} 秒抽 1 帧`}</span>
+                        <span>{item.frameCount} {item.assetKind === "image_bundle" ? "张" : "帧"}</span>
                         <span>{item.eventCount} 个事件</span>
                       </div>
                       <div className="task-progress"><i style={{ width: `${item.progress}%` }} /></div>
                       {item.status === "失败" ? <div className="video-task-error">
-                        <span>{item.errorMessage || "抽帧处理失败"}</span>
+                        <span>{item.errorMessage || "媒体处理失败"}</span>
                         <button type="button" onClick={(event) => {
                           event.stopPropagation();
                           void retryExtraction(item);

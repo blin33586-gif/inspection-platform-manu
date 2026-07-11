@@ -6,6 +6,45 @@
   display: none;
 }
 
+.video-analysis-page .media-task-preview,
+.video-analysis-page .media-task-preview img,
+.video-analysis-page .media-task-preview video {
+  width: 100%;
+  height: 100%;
+}
+
+.video-analysis-page .media-task-preview {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #dfe8f3;
+}
+
+.video-analysis-page .media-task-preview img,
+.video-analysis-page .media-task-preview video {
+  display: block;
+  object-fit: cover;
+}
+
+.video-analysis-page .media-task-preview-icon {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: rgba(16, 32, 51, 0.72);
+  backdrop-filter: blur(10px);
+  transition: opacity 0.18s ease;
+}
+
+.video-analysis-page .media-task-preview.is-playing .media-task-preview-icon {
+  opacity: 0;
+}
+
 .video-analysis-page .video-task-error {
   align-items: center;
   color: #c62828;
