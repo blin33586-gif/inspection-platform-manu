@@ -16,6 +16,7 @@
     "@xunjianbao/map-core": "workspace:*",
     "@xunjianbao/media-contracts": "workspace:*",
     "@xunjianbao/shared": "workspace:*",
+    "exiftool-vendored": "^36.0.0",
     "pg": "^8.22.0",
     "yauzl": "^3.4.0"
   },
