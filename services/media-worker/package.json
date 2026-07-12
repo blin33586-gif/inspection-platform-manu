@@ -9,6 +9,7 @@
     "test": "tsx --test",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
+    ,"telemetry:backfill": "tsx src/telemetry-backfill.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
