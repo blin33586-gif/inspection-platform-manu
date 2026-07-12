@@ -11,3 +11,4 @@ build/
 *.db-journal
 services/api/storage/
 backups/
+.worktrees/
