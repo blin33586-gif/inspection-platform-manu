@@ -17,6 +17,12 @@ export interface SelectableTaskPhoto {
   distributionStatus: string;
   archiveObjectId: string | null;
   videoTimestampMs: number | null;
+  capturedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  absoluteAltitudeMeters: number | null;
+  relativeAltitudeMeters: number | null;
+  telemetry: { gimbalYawDegrees:number|null; gimbalPitchDegrees:number|null; gimbalRollDegrees:number|null; focalLengthMillimeters:number|null; digitalZoomRatio:number|null } | null;
   mediaAsset: ReportMediaAssetRecord;
   archiveObject: { id: string; name: string; objectType: string } | null;
 }

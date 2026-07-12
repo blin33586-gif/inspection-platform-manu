@@ -57,6 +57,7 @@ interface PhotoItem {
   fileName?: string;
   fileSize?: number;
   uploadedAt?: string;
+  telemetry?: SelectableTaskPhoto["telemetry"] & { latitude:number|null; longitude:number|null; absoluteAltitudeMeters:number|null; relativeAltitudeMeters:number|null; capturedAt:string|null };
 }
 
 type ReportTaskOption = Pick<
@@ -613,6 +614,7 @@ export function ReportWritePage() {
           getApiUrl(`/media-assets/${taskPhoto.mediaAsset.id}/content`),
         ),
         taskPhotoId: taskPhoto.id,
+        telemetry: { gimbalYawDegrees: taskPhoto.telemetry?.gimbalYawDegrees ?? null, gimbalPitchDegrees: taskPhoto.telemetry?.gimbalPitchDegrees ?? null, gimbalRollDegrees: taskPhoto.telemetry?.gimbalRollDegrees ?? null, focalLengthMillimeters: taskPhoto.telemetry?.focalLengthMillimeters ?? null, digitalZoomRatio: taskPhoto.telemetry?.digitalZoomRatio ?? null, latitude: taskPhoto.latitude, longitude: taskPhoto.longitude, absoluteAltitudeMeters: taskPhoto.absoluteAltitudeMeters, relativeAltitudeMeters: taskPhoto.relativeAltitudeMeters, capturedAt: taskPhoto.capturedAt },
       };
     });
     const nextPhotos = [...taskPhotos, ...manualPhotos];
@@ -628,7 +630,9 @@ export function ReportWritePage() {
         Object.entries(current).filter(([photoId]) => retainedPhotoIds.has(Number(photoId))),
       );
       taskPhotos.forEach((photo) => {
-        if (!retained[photo.id]) retained[photo.id] = defaultCoordinateText;
+        if (!retained[photo.id]) retained[photo.id] = photo.telemetry?.latitude != null && photo.telemetry.longitude != null
+          ? formatCoordinateText(photo.telemetry.latitude, photo.telemetry.longitude, photo.telemetry.absoluteAltitudeMeters)
+          : "";
       });
       return retained;
     });
@@ -1219,8 +1223,10 @@ export function ReportWritePage() {
                   </div>
                   <div>
                     <dt>高度</dt>
-                    <dd>{activePhoto?.url ? "待读取" : "-"}</dd>
+                    <dd>{activePhoto?.telemetry?.absoluteAltitudeMeters != null ? `${activePhoto.telemetry.absoluteAltitudeMeters.toFixed(2)} m（海拔） / ${activePhoto.telemetry.relativeAltitudeMeters?.toFixed(2) ?? "-"} m（相对）` : "-"}</dd>
                   </div>
+                  <div><dt>云台</dt><dd>{activePhoto?.telemetry ? `偏航 ${activePhoto.telemetry.gimbalYawDegrees ?? "-"}° / 俯仰 ${activePhoto.telemetry.gimbalPitchDegrees ?? "-"}° / 横滚 ${activePhoto.telemetry.gimbalRollDegrees ?? "-"}°` : "-"}</dd></div>
+                  <div><dt>镜头</dt><dd>{activePhoto?.telemetry ? `${activePhoto.telemetry.focalLengthMillimeters ?? "-"} mm / ${activePhoto.telemetry.digitalZoomRatio ?? "-"}×` : "-"}</dd></div>
                 </dl>
                 <div className="location-qr-card">
                   <QRCode

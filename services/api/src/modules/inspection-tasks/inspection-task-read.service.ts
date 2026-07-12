@@ -108,7 +108,7 @@ export class InspectionTaskReadService {
     const [items, total] = await Promise.all([
       this.database.taskPhoto.findMany({
         where,
-        include: { mediaAsset: true, archiveObject: true },
+        include: { mediaAsset: true, archiveObject: true, telemetry: true },
         orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
