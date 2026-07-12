@@ -43,22 +43,38 @@ model ManagedObject {
 }
 
 model Issue {
-  id        String   @id
-  title     String
-  category  String
-  status    String
-  severity  String
-  foundAt   DateTime
-  objectId  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                      String   @id
+  title                   String
+  category                String
+  status                  String
+  severity                String
+  foundAt                 DateTime
+  objectId                String?
+  description             String?
+  locationName            String?
+  sourceTaskPhotoId       String?
+  sourceAnnotationVersion Int?
+  longitude               Float?
+  latitude                Float?
+  shareTokenHash          String?  @unique
+  shareEnabled            Boolean  @default(false)
+  cardStoragePath         String?
+  cardMimeType            String?
+  cardFileSize            Int?
+  publishedAt             DateTime?
+  publishIdempotencyKey   String?  @unique
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
-  object ManagedObject? @relation(fields: [objectId], references: [id])
-  attachments IssueAttachment[]
+  object          ManagedObject? @relation(fields: [objectId], references: [id])
+  sourceTaskPhoto TaskPhoto?     @relation(fields: [sourceTaskPhotoId], references: [id], onDelete: SetNull)
+  attachments     IssueAttachment[]
 
   @@index([objectId])
   @@index([status])
   @@index([foundAt])
+  @@index([sourceTaskPhotoId])
+  @@index([shareEnabled])
 }
 
 model IssueAttachment {
@@ -221,6 +237,7 @@ model TaskPhoto {
   archiveObject ManagedObject?  @relation(fields: [archiveObjectId], references: [id], onDelete: SetNull)
   reportPhotos  ReportPhoto[]
   annotationDocument PhotoAnnotationDocument?
+  sourceIssues        Issue[]
 
   @@index([taskId, distributionStatus])
   @@index([distributionStatus, capturedAt(sort: Desc), videoTimestampMs, createdAt(sort: Desc), id], map: "task_photo_pending_feed_idx")
