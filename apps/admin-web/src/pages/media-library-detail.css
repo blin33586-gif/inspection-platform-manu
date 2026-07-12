@@ -67,6 +67,45 @@
   margin: 0;
 }
 
+.real-task-title-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.real-task-title-row > div {
+  min-width: 0;
+}
+
+.real-task-delete-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid #e3e9f1;
+  border-radius: 50%;
+  color: #8b1f1f;
+  background: #fff;
+  cursor: pointer;
+  opacity: 0.72;
+  transition: border-color 0.16s ease, color 0.16s ease, opacity 0.16s ease, background 0.16s ease;
+}
+
+.real-task-delete-button:hover,
+.real-task-delete-button:focus-visible {
+  border-color: #ffb6b6;
+  color: #d92d20;
+  background: #fff4f4;
+  opacity: 1;
+}
+
+.real-task-delete-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .real-task-create-form {
   display: grid;
   gap: 16px;

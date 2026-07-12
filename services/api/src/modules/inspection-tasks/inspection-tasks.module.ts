@@ -7,6 +7,7 @@ import { TaskPhotoReadService } from "./task-photo-read.service.js";
 import { TaskPhotosController } from "./task-photos.controller.js";
 import { PhotoAnnotationController } from "./photo-annotation.controller.js";
 import { PhotoAnnotationService } from "./photo-annotation.service.js";
+import { InspectionTaskDeletionService } from "./inspection-task-deletion.service.js";
 
 @Module({
   controllers: [InspectionTasksController, TaskPhotosController, PhotoAnnotationController],
@@ -16,6 +17,7 @@ import { PhotoAnnotationService } from "./photo-annotation.service.js";
     InspectionTaskDistributionService,
     TaskPhotoReadService,
     PhotoAnnotationService,
+    InspectionTaskDeletionService,
   ],
 })
 export class InspectionTasksModule {}

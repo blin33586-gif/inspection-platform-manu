@@ -12,16 +12,18 @@ import {
   Images,
   ListChecks,
   ScanSearch,
+  Trash2,
   Timer,
   UploadCloud,
   Video,
 } from "lucide-react";
-import { getApi, getApiUrl, postFormApi, postJsonApi, withQuery } from "../api/client";
+import { deleteJsonApi, getApi, getApiUrl, postFormApi, postJsonApi, withQuery } from "../api/client";
 import { MediaTaskPreview } from "../components/MediaTaskPreview";
 import {
   toInspectionTaskViewModel,
   type InspectionTaskRecord,
 } from "./inspection-task-presenter";
+import { describeTaskPurgeImpact } from "./inspection-task-delete-presenter";
 import "./media-library-detail.css";
 
 type TaskSource = "manual" | "drone" | "camera" | "glasses";
@@ -94,6 +96,7 @@ export function MediaLibraryPage() {
   const [taskInput, setTaskInput] = useState<TaskInput>("video");
   const [intervalSeconds, setIntervalSeconds] = useState(3);
   const [files, setFiles] = useState<File[]>([]);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
   const loadTasks = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -182,6 +185,30 @@ export function MediaLibraryPage() {
     } catch (error) {
       message.error(error instanceof Error ? error.message : "重新处理失败");
     }
+  };
+
+  const confirmDeleteTask = (task: ReturnType<typeof toInspectionTaskViewModel>) => {
+    Modal.confirm({
+      title: "彻底删除任务",
+      content: describeTaskPurgeImpact(task),
+      okText: "彻底删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      async onOk() {
+        setDeletingTaskId(task.id);
+        try {
+          await deleteJsonApi(`/inspection-tasks/${encodeURIComponent(task.id)}`);
+          message.success("任务已彻底删除");
+          if (tasks.length === 1 && page > 1) setPage(page - 1);
+          else await loadTasks(true);
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : "任务删除失败");
+          throw error;
+        } finally {
+          setDeletingTaskId(null);
+        }
+      },
+    });
   };
 
   return (
@@ -273,7 +300,22 @@ export function MediaLibraryPage() {
                     <span className={`analysis-status ${task.statusTone}`}>{task.statusLabel}</span>
                   </div>
                   <div className="video-task-body">
-                    <div><strong>{task.name}</strong><span>{task.originalFileName}</span></div>
+                    <div className="real-task-title-row">
+                      <div><strong>{task.name}</strong><span>{task.originalFileName}</span></div>
+                      <button
+                        aria-label={`删除任务 ${task.name}`}
+                        className="real-task-delete-button"
+                        disabled={deletingTaskId === task.id}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          confirmDeleteTask(task);
+                        }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
                     <p><CalendarDays size={14} />任务日期 {task.taskDateLabel} · 上传 {task.createdAtLabel}</p>
                     <div className="video-task-meta">
                       <span>{task.inputLabel}</span>
