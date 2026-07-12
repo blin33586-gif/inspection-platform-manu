@@ -229,6 +229,10 @@ model TaskPhoto {
   archiveObjectId    String?
   capturedAt         DateTime?
   videoTimestampMs   Int?
+  latitude           Float?
+  longitude          Float?
+  absoluteAltitudeMeters Float?
+  relativeAltitudeMeters Float?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -238,12 +242,37 @@ model TaskPhoto {
   reportPhotos  ReportPhoto[]
   annotationDocument PhotoAnnotationDocument?
   sourceIssues        Issue[]
+  telemetry           TaskPhotoTelemetry?
 
   @@index([taskId, distributionStatus])
   @@index([distributionStatus, capturedAt(sort: Desc), videoTimestampMs, createdAt(sort: Desc), id], map: "task_photo_pending_feed_idx")
   @@index([taskId, videoTimestampMs, createdAt, id], map: "task_photo_task_order_idx")
   @@index([archiveObjectId])
   @@index([capturedAt])
+}
+
+model TaskPhotoTelemetry {
+  id                     String   @id
+  taskPhotoId            String   @unique
+  source                 String
+  sourceTimestampMs      Int
+  matchOffsetMs          Int
+  capturedAt             DateTime?
+  latitude               Float?
+  longitude              Float?
+  relativeAltitudeMeters Float?
+  absoluteAltitudeMeters Float?
+  gimbalYawDegrees       Float?
+  gimbalPitchDegrees     Float?
+  gimbalRollDegrees      Float?
+  focalLengthMillimeters Float?
+  digitalZoomRatio       Float?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  taskPhoto TaskPhoto @relation(fields: [taskPhotoId], references: [id], onDelete: Cascade)
+  @@index([capturedAt])
+  @@index([latitude, longitude])
 }
 
 model PhotoAnnotationDocument {
