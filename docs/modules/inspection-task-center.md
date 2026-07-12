@@ -5,7 +5,7 @@
 巡检宝将视频、ZIP 图片包和直接上传图片统一归入“任务”。任务只描述一次采集批次和来源，不直接关联小区、街道或重点点位。
 
 - 来源：人工上传、无人机、摄像头、智能眼镜。
-- 输入：MP4/MOV 视频、单个 ZIP 图片包、一张或多张 JPG/JPEG/PNG 图片。
+- 输入：MP4/MOV 视频、单个 ZIP 图片包，以及一张或多张 JPG/JPEG/JFIF/PNG/WebP/GIF/BMP/TIF/TIFF/HEIC/HEIF 图片。
 - 视频必须抽帧，抽帧间隔为 1-5 秒。
 - ZIP 必须解压并过滤非图片文件。
 - 所有输入最终都形成任务照片池。
@@ -14,8 +14,15 @@
 ## 真实处理流程
 
 1. `POST /api/v1/inspection-tasks` 创建任务并上传素材。
-2. 视频创建 `frame_extract` 异步任务；ZIP 创建 `archive_extract` 异步任务；直接图片立即入照片池。
-3. 媒体 Worker 使用 FFmpeg 抽帧或安全解压图片，并写入 `MediaAsset` 与 `TaskPhoto`。
+2. 视频创建 `frame_extract` 异步任务；ZIP 创建 `archive_extract` 异步任务；直接图片创建 `image_prepare` 异步任务。
+3. 媒体 Worker 使用 FFmpeg 抽帧或安全解压/整理图片，并写入 `MediaAsset` 与 `TaskPhoto`。
+
+### 图片格式与预览
+
+- ZIP 会跳过 `__MACOSX/`、`._*` 和 `.DS_Store` 等系统元数据文件。
+- 所有直接图片和 ZIP 内图片均校验文件扩展名与真实文件头；扩展名伪造的文件会被拒绝。
+- WebP/GIF 等浏览器可显示格式直接作为预览；BMP/TIFF/HEIC/HEIF 保留原件，同时生成 JPEG 预览图。
+- Worker 运行环境需要 FFmpeg；HEIC/HEIF 预览还需要 `heif-convert`（Debian 安装包：`libheif-examples`）。
 4. 任务状态变为 `ready_for_distribution`，前端通过真实统计和轮询同步处理结果。
 5. 照片通过分发动作归入唯一对象档案，或标记为忽略。
 6. 报告编写页可全选或部分选择任务照片，默认选择待分发与已归档照片；忽略照片保留手动选择能力。

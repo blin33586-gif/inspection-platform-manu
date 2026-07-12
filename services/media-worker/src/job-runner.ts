@@ -4,6 +4,11 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { extractArchiveImages, type ExtractedArchiveImage } from "./archive-image-extractor.js";
 import { extractVideoFrames, type ExtractedFrame } from "./ffmpeg-frame-extractor.js";
 import { runTiffTileJob } from "./gdal-tile-generator.js";
+import {
+  prepareInspectionImage,
+  type PreparedInspectionImage,
+  type PrepareInspectionImageInput,
+} from "./image-preview.js";
 
 interface TiffJobInput {
   mapAssetId: string;
@@ -25,6 +30,11 @@ interface ArchiveExtractionJobInput {
   sourcePath: string;
 }
 
+interface ImagePrepareJobInput {
+  inspectionTaskId: string;
+  mediaIds: string[];
+}
+
 interface JobRunnerHandlers {
   extractVideoFrames?: (
     inputPath: string,
@@ -35,11 +45,13 @@ interface JobRunnerHandlers {
     inputPath: string,
     outputDirectory: string,
   ) => Promise<ExtractedArchiveImage[]>;
+  prepareInspectionImage?: (input: PrepareInspectionImageInput) => Promise<PreparedInspectionImage>;
 }
 
 export class JobRunner {
   private readonly extractVideoFramesHandler: NonNullable<JobRunnerHandlers["extractVideoFrames"]>;
   private readonly extractArchiveImagesHandler: NonNullable<JobRunnerHandlers["extractArchiveImages"]>;
+  private readonly prepareInspectionImageHandler: NonNullable<JobRunnerHandlers["prepareInspectionImage"]>;
 
   constructor(
     private readonly database: PrismaClient,
@@ -48,6 +60,7 @@ export class JobRunner {
   ) {
     this.extractVideoFramesHandler = handlers.extractVideoFrames ?? extractVideoFrames;
     this.extractArchiveImagesHandler = handlers.extractArchiveImages ?? extractArchiveImages;
+    this.prepareInspectionImageHandler = handlers.prepareInspectionImage ?? prepareInspectionImage;
   }
 
   async processNext() {
@@ -58,6 +71,7 @@ export class JobRunner {
       if (job.jobType === "tiff_tile") await this.processTiffJob(job.id, job.inputJson);
       else if (job.jobType === "frame_extract") await this.processFrameJob(job.id, job.inputJson);
       else if (job.jobType === "archive_extract") await this.processArchiveJob(job.id, job.inputJson);
+      else if (job.jobType === "image_prepare") await this.processImagePrepareJob(job.id, job.inputJson);
       else throw new Error(`不支持的媒体任务类型：${job.jobType}`);
     } catch (error) {
       await this.database.mediaProcessingJob.update({
@@ -81,7 +95,7 @@ export class JobRunner {
 
   private async claimOne() {
     const candidate = await this.database.mediaProcessingJob.findFirst({
-      where: { jobType: { in: ["tiff_tile", "frame_extract", "archive_extract"] }, status: "queued" },
+      where: { jobType: { in: ["tiff_tile", "frame_extract", "archive_extract", "image_prepare"] }, status: "queued" },
       orderBy: { createdAt: "asc" },
     });
     if (!candidate) return null;
@@ -225,6 +239,9 @@ export class JobRunner {
       storagePath: `${publicDirectory}/${basename(image.storagePath)}`,
       mimeType: image.mimeType,
       fileSize: image.fileSize,
+      previewStoragePath: image.previewStoragePath ? `${publicDirectory}/previews/${basename(image.previewStoragePath)}` : null,
+      previewMimeType: image.previewMimeType ?? null,
+      previewFileSize: image.previewFileSize ?? null,
       parentMediaId: input.mediaId,
     }));
     const operations: Prisma.PrismaPromise<unknown>[] = [
@@ -278,6 +295,78 @@ export class JobRunner {
     await this.database.$transaction(operations);
   }
 
+  private async processImagePrepareJob(jobId: string, rawInput: string) {
+    const input = this.parseImagePrepareInput(rawInput);
+    const assets = await this.database.mediaAsset.findMany({
+      where: { id: { in: input.mediaIds } },
+      select: { id: true, originalFileName: true, storagePath: true },
+    });
+    const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
+    const orderedAssets = input.mediaIds.map((id) => assetsById.get(id));
+    if (orderedAssets.some((asset) => !asset)) throw new Error("直接上传图片素材不存在");
+
+    const prepared = [] as Array<{ id: string; prepared: PreparedInspectionImage }>;
+    for (const asset of orderedAssets) {
+      const source = asset!;
+      prepared.push({
+        id: source.id,
+        prepared: await this.prepareInspectionImageHandler({
+          sourcePath: this.toStoragePath(source.storagePath),
+          originalFileName: source.originalFileName,
+          previewDirectory: resolve(this.storageRoot, "media", "previews"),
+          previewFileName: `${source.id}.jpg`,
+        }),
+      });
+    }
+
+    const operations: Prisma.PrismaPromise<unknown>[] = [
+      ...prepared.map(({ id, prepared: result }) => this.database.mediaAsset.update({
+        where: { id },
+        data: {
+          mimeType: result.mimeType,
+          previewStoragePath: result.previewStoragePath ? `storage/media/previews/${basename(result.previewStoragePath)}` : null,
+          previewMimeType: result.previewMimeType ?? null,
+          previewFileSize: result.previewFileSize ?? null,
+        },
+      })),
+      this.database.taskPhoto.createMany({
+        data: prepared.map(({ id }) => ({
+          id: `photo-${id}`,
+          taskId: input.inspectionTaskId,
+          mediaAssetId: id,
+          distributionStatus: "pending",
+          archiveObjectId: null,
+        })),
+        skipDuplicates: true,
+      }),
+      this.database.inspectionTask.update({
+        where: { id: input.inspectionTaskId },
+        data: { processStatus: "ready_for_distribution", photoCount: prepared.length, pendingPhotoCount: prepared.length },
+      }),
+      this.database.mediaProcessingJob.update({
+        where: { id: jobId },
+        data: {
+          status: "completed",
+          progress: 100,
+          completedAt: new Date(),
+          errorMessage: null,
+          outputJson: JSON.stringify({ imageCount: prepared.length, preparedImageCount: prepared.length }),
+        },
+      }),
+      this.database.auditLog.create({
+        data: {
+          id: `audit-${randomUUID()}`,
+          actor: "system",
+          action: "media.images.ready",
+          targetType: "inspectionTask",
+          targetId: input.inspectionTaskId,
+          summary: `直接上传图片校验完成，共生成 ${prepared.length} 张巡检照片`,
+        },
+      }),
+    ];
+    await this.database.$transaction(operations);
+  }
+
   private parseTiffInput(rawInput: string): TiffJobInput {
     const input = JSON.parse(rawInput) as Partial<TiffJobInput>;
     if (!input.mapAssetId || !input.sourcePath || !Number.isInteger(input.minZoom) || !Number.isInteger(input.maxZoom)) {
@@ -298,6 +387,14 @@ export class JobRunner {
     const input = JSON.parse(rawInput) as Partial<ArchiveExtractionJobInput>;
     if (!input.mediaId || !input.sourcePath) throw new Error("图片包解压任务参数无效");
     return input as ArchiveExtractionJobInput;
+  }
+
+  private parseImagePrepareInput(rawInput: string): ImagePrepareJobInput {
+    const input = JSON.parse(rawInput) as Partial<ImagePrepareJobInput>;
+    if (!input.inspectionTaskId || !Array.isArray(input.mediaIds) || !input.mediaIds.length || input.mediaIds.some((id) => !id)) {
+      throw new Error("直接图片预览任务参数无效");
+    }
+    return input as ImagePrepareJobInput;
   }
 
   private async resolveInspectionTaskId(inputTaskId: string | undefined, mediaId: string) {

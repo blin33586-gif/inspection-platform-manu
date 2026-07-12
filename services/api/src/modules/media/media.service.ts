@@ -170,7 +170,7 @@ export class MediaService {
   async retryJob(id: string) {
     const job = await this.database.mediaProcessingJob.findUnique({ where: { id } });
     if (!job) throw new NotFoundException("媒体处理任务不存在");
-    if (!new Set(["frame_extract", "archive_extract"]).has(job.jobType)) {
+    if (!new Set(["frame_extract", "archive_extract", "image_prepare"]).has(job.jobType)) {
       throw new BadRequestException("该媒体处理任务不支持重试");
     }
     if (job.status !== "failed") throw new BadRequestException("只有失败的任务可以重试");

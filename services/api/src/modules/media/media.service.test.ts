@@ -254,3 +254,17 @@ test("requeues a failed archive extraction job", async () => {
 
   assert.equal(job.status, "queued");
 });
+
+test("requeues a failed direct image preparation job", async () => {
+  const database = {
+    mediaProcessingJob: {
+      findUnique: async () => ({ id: "job-image-1", jobType: "image_prepare", status: "failed" }),
+      update: async () => ({ id: "job-image-1", status: "queued", progress: 0 }),
+    },
+  };
+  const service = new MediaService(database as never);
+
+  const job = await service.retryJob("job-image-1");
+
+  assert.equal(job.status, "queued");
+});

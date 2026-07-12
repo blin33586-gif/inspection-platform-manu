@@ -129,21 +129,21 @@ export class InspectionTaskWriteService {
             taskDate: input.taskDate,
             sourceType: input.sourceType,
             inputType: input.inputType,
-            processStatus: "ready_for_distribution",
-            photoCount: movedFiles.length,
-            pendingPhotoCount: movedFiles.length,
+            processStatus: "queued",
+            photoCount: 0,
+            pendingPhotoCount: 0,
           },
         });
-        await database.taskPhoto.createMany({
-          data: movedFiles.map(({ mediaId }) => ({
-            id: `photo-${randomUUID()}`,
-            taskId,
-            mediaAssetId: mediaId,
-            distributionStatus: "pending",
-            archiveObjectId: null,
-          })),
+        await database.mediaProcessingJob.create({
+          data: {
+            id: `job-${randomUUID()}`,
+            jobType: "image_prepare",
+            status: "queued",
+            dedupeKey: `image_prepare:${taskId}`,
+            inputJson: JSON.stringify({ inspectionTaskId: taskId, mediaIds: movedFiles.map((item) => item.mediaId) }),
+          },
         });
-        await this.writeAudit(database, taskId, `创建图片任务「${input.name}」，共 ${movedFiles.length} 张照片`);
+        await this.writeAudit(database, taskId, `创建图片任务「${input.name}」，共 ${movedFiles.length} 张，等待后台校验与预览处理`);
         return task;
       });
     } catch (error) {
@@ -171,5 +171,10 @@ function defaultMimeType(extension: string) {
   if (extension === ".mov") return "video/quicktime";
   if (extension === ".zip") return "application/zip";
   if (extension === ".png") return "image/png";
+  if (extension === ".webp") return "image/webp";
+  if (extension === ".gif") return "image/gif";
+  if (extension === ".bmp") return "image/bmp";
+  if (extension === ".tif" || extension === ".tiff") return "image/tiff";
+  if (extension === ".heic" || extension === ".heif") return "image/heif";
   return "image/jpeg";
 }

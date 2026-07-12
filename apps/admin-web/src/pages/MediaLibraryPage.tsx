@@ -73,7 +73,7 @@ const inputOptions = [
 const acceptByInput: Record<TaskInput, string> = {
   video: ".mp4,.mov,video/mp4,video/quicktime",
   archive: ".zip,application/zip",
-  images: ".jpg,.jpeg,.png,image/jpeg,image/png",
+  images: ".jpg,.jpeg,.jfif,.png,.webp,.gif,.bmp,.tif,.tiff,.heic,.heif,image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,image/heif",
 };
 
 export function MediaLibraryPage() {

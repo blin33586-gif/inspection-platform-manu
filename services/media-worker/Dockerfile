@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN corepack enable \
   && apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg gdal-bin \
+  && apt-get install -y --no-install-recommends ffmpeg gdal-bin libheif-examples \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./

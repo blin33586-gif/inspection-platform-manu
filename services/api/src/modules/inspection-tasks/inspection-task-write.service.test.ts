@@ -54,7 +54,7 @@ test("creates video and archive tasks with mandatory processing jobs", async () 
   }
 });
 
-test("creates one ready task and pending task photos for multiple direct images", async () => {
+test("queues direct images for header validation and preview preparation", async () => {
   const root = await mkdtemp(join(tmpdir(), "xunjianbao-task-images-"));
   const images = [await makeUpload(root, "a.jpg"), await makeUpload(root, "b.png")];
   const { database, calls } = createDatabase();
@@ -63,13 +63,16 @@ test("creates one ready task and pending task photos for multiple direct images"
   try {
     const result = await service.create({ name: "图片任务", taskDate: "2026-07-11", sourceType: "glasses", inputType: "images" }, images);
 
-    assert.equal(result.processStatus, "ready_for_distribution");
-    assert.equal(calls.tasks[0].photoCount, 2);
-    assert.equal(calls.tasks[0].pendingPhotoCount, 2);
+    assert.equal(result.processStatus, "queued");
+    assert.equal(calls.tasks[0].photoCount, 0);
+    assert.equal(calls.tasks[0].pendingPhotoCount, 0);
     assert.equal(calls.assetBatches[0].length, 2);
-    assert.equal(calls.photoBatches[0].length, 2);
-    assert.equal(calls.photoBatches[0].every((item) => item.distributionStatus === "pending" && item.archiveObjectId === null), true);
-    assert.equal(calls.jobs.length, 0);
+    assert.equal(calls.assetBatches[0].every((item) => item.kind === "image"), true);
+    assert.equal(calls.photoBatches.length, 0);
+    assert.equal(calls.jobs.length, 1);
+    assert.equal(calls.jobs[0].jobType, "image_prepare");
+    assert.match(String(calls.jobs[0].inputJson), /"inspectionTaskId"/);
+    assert.match(String(calls.jobs[0].inputJson), /"mediaIds"/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1,6 +1,8 @@
+export * from "./image-format.js";
+
 export type MediaKind = "image" | "video" | "frame" | "map_source" | "map_tile";
 
-export type MediaJobType = "frame_extract" | "tiff_tile";
+export type MediaJobType = "frame_extract" | "archive_extract" | "image_prepare" | "tiff_tile";
 
 export type MediaJobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 

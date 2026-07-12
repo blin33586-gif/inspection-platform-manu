@@ -166,6 +166,9 @@ importers:
       '@xunjianbao/map-core':
         specifier: workspace:*
         version: link:../../packages/map-core
+      '@xunjianbao/media-contracts':
+        specifier: workspace:*
+        version: link:../../packages/media-contracts
       '@xunjianbao/shared':
         specifier: workspace:*
         version: link:../../packages/shared

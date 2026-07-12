@@ -41,6 +41,37 @@ test("returns a complete image response", async () => {
   }
 });
 
+test("serves a browser-safe preview when a source image requires conversion", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-media-preview-"));
+  const sourceDirectory = join(storageRoot, "media", "images");
+  const previewDirectory = join(storageRoot, "media", "previews");
+  await mkdir(sourceDirectory, { recursive: true });
+  await mkdir(previewDirectory, { recursive: true });
+  await writeFile(join(sourceDirectory, "inspection.heic"), Buffer.from("original-heic"));
+  await writeFile(join(previewDirectory, "inspection.jpg"), Buffer.from("jpeg-preview"));
+  const database = {
+    mediaAsset: {
+      findUnique: async () => ({
+        id: "image-preview-1",
+        storagePath: "storage/media/images/inspection.heic",
+        mimeType: "image/heif",
+        originalFileName: "inspection.heic",
+        previewStoragePath: "storage/media/previews/inspection.jpg",
+        previewMimeType: "image/jpeg",
+      }),
+    },
+  };
+
+  try {
+    const service = new MediaContentService(database as never, storageRoot);
+    const result = await service.resolveContent("image-preview-1", undefined);
+    assert.equal(result.headers["Content-Type"], "image/jpeg");
+    assert.equal((await readStream(result.stream)).toString(), "jpeg-preview");
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
 test("returns a partial video response for a byte range", async () => {
   const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-video-content-"));
   const videoDirectory = join(storageRoot, "media", "videos");

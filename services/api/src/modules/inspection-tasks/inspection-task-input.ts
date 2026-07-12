@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { extname } from "node:path";
+import { isSupportedImageFileName } from "@xunjianbao/media-contracts";
 
 export type TaskSourceType = "manual" | "drone" | "camera" | "glasses";
 export type TaskInputType = "video" | "archive" | "images";
@@ -32,7 +33,6 @@ export interface NormalizedTaskInput {
 const taskSources = new Set<TaskSourceType>(["manual", "drone", "camera", "glasses"]);
 const inputTypes = new Set<TaskInputType>(["video", "archive", "images"]);
 const videoExtensions = new Set([".mp4", ".mov"]);
-const imageExtensions = new Set([".jpg", ".jpeg", ".png"]);
 
 export function validateTaskInput(
   body: InspectionTaskInputBody,
@@ -72,8 +72,8 @@ export function validateTaskInput(
   if (inputType === "images") {
     if (normalizedFiles.length === 0) throw new BadRequestException("请至少选择一张图片");
     if (normalizedFiles.length > 500) throw new BadRequestException("单个任务最多上传 500 张图片");
-    if (normalizedFiles.some((file) => !imageExtensions.has(extensionOf(file)))) {
-      throw new BadRequestException("图片仅支持 JPG、JPEG 或 PNG 格式");
+    if (normalizedFiles.some((file) => !isSupportedImageFileName(file.originalname))) {
+      throw new BadRequestException("图片仅支持 JPG、JPEG、JFIF、PNG、WebP、GIF、BMP、TIF、TIFF、HEIC 或 HEIF 格式");
     }
   }
 

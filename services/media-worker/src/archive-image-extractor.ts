@@ -3,6 +3,13 @@ import { extname, posix, win32, join } from "node:path";
 import type { Readable } from "node:stream";
 import type { Entry, ZipFile } from "yauzl";
 import { openPromise } from "yauzl";
+import {
+  detectImageFormat,
+  isSupportedImageFileName,
+  shouldIgnoreArchiveEntry,
+  type SupportedImageMime,
+} from "@xunjianbao/media-contracts";
+import { prepareInspectionImage } from "./image-preview.js";
 
 export interface ArchiveLimits {
   maxImages: number;
@@ -13,9 +20,12 @@ export interface ArchiveLimits {
 export interface ExtractedArchiveImage {
   fileName: string;
   storagePath: string;
-  mimeType: "image/jpeg" | "image/png";
+  mimeType: SupportedImageMime;
   fileSize: number;
   sortIndex: number;
+  previewStoragePath?: string;
+  previewMimeType?: "image/jpeg";
+  previewFileSize?: number;
 }
 
 export const defaultArchiveLimits: ArchiveLimits = {
@@ -23,8 +33,6 @@ export const defaultArchiveLimits: ArchiveLimits = {
   maxExpandedBytes: 8 * 1024 ** 3,
   maxFileBytes: 50 * 1024 ** 2,
 };
-
-const supportedExtensions = new Set([".jpg", ".jpeg", ".png"]);
 
 export function validateArchiveEntryName(fileName: string) {
   if (
@@ -39,14 +47,8 @@ export function validateArchiveEntryName(fileName: string) {
   }
 }
 
-export function detectImageMime(fileName: string, content: Buffer): "image/jpeg" | "image/png" {
-  const extension = extname(fileName).toLowerCase();
-  const isJpeg = content.length >= 3 && content[0] === 0xff && content[1] === 0xd8 && content[2] === 0xff;
-  const isPng = content.length >= 8 && content.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-
-  if ((extension === ".jpg" || extension === ".jpeg") && isJpeg) return "image/jpeg";
-  if (extension === ".png" && isPng) return "image/png";
-  throw new Error(`图片格式无效：${fileName}`);
+export function detectImageMime(fileName: string, content: Buffer): SupportedImageMime {
+  return detectImageFormat(fileName, content).mimeType;
 }
 
 export async function extractArchiveImages(
@@ -79,9 +81,9 @@ async function extractEntries(archive: ZipFile, outputDirectory: string, limits:
     for await (const entry of archive.eachEntry()) {
       validateArchiveEntry(entry);
       if (entry.fileName.endsWith("/")) continue;
+      if (shouldIgnoreArchiveEntry(entry.fileName)) continue;
 
-      const extension = extname(entry.fileName).toLowerCase();
-      if (!supportedExtensions.has(extension)) continue;
+      if (!isSupportedImageFileName(entry.fileName)) continue;
       if (images.length >= limits.maxImages) throw new Error(`图片数量超过 ${limits.maxImages} 张`);
       if (entry.uncompressedSize > limits.maxFileBytes) throw new Error(`单张图片超过 ${formatMegabytes(limits.maxFileBytes)} MB`);
       if (expandedBytes + entry.uncompressedSize > limits.maxExpandedBytes) {
@@ -90,7 +92,7 @@ async function extractEntries(archive: ZipFile, outputDirectory: string, limits:
 
       const stream = await archive.openReadStreamPromise(entry);
       const content = await readBoundedStream(stream, limits.maxFileBytes);
-      const mimeType = detectImageMime(entry.fileName, content);
+      detectImageMime(entry.fileName, content);
       expandedBytes += content.length;
       if (expandedBytes > limits.maxExpandedBytes) {
         throw new Error(`解压后文件总量超过 ${formatMegabytes(limits.maxExpandedBytes)} MB`);
@@ -99,13 +101,25 @@ async function extractEntries(archive: ZipFile, outputDirectory: string, limits:
       const fileName = uniqueFlatName(posix.basename(entry.fileName), usedNames);
       const storagePath = join(outputDirectory, fileName);
       await writeFile(storagePath, content, { flag: "wx" });
-      images.push({ fileName, storagePath, mimeType, fileSize: content.length, sortIndex: images.length });
+      const prepared = await prepareInspectionImage({
+        sourcePath: storagePath,
+        originalFileName: fileName,
+        previewDirectory: join(outputDirectory, "previews"),
+        previewFileName: `${fileName.slice(0, -extname(fileName).length) || "image"}.jpg`,
+      });
+      images.push({
+        fileName,
+        storagePath,
+        fileSize: content.length,
+        sortIndex: images.length,
+        ...prepared,
+      });
     }
   } finally {
     archive.close();
   }
 
-  if (!images.length) throw new Error("压缩包中没有有效的 JPG、JPEG 或 PNG 图片");
+  if (!images.length) throw new Error("压缩包中没有有效的巡检图片");
   return images;
 }
 

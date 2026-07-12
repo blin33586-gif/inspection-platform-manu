@@ -31,7 +31,8 @@ export class MediaContentService {
     const asset = await this.database.mediaAsset.findUnique({ where: { id } });
     if (!asset) throw new NotFoundException("媒体素材不存在");
 
-    const filePath = this.resolveStoragePath(asset.storagePath);
+    const servingPreview = Boolean(asset.previewStoragePath && asset.previewMimeType);
+    const filePath = this.resolveStoragePath(servingPreview ? asset.previewStoragePath! : asset.storagePath);
     let fileSize: number;
     try {
       fileSize = (await stat(filePath)).size;
@@ -41,8 +42,8 @@ export class MediaContentService {
 
     const range = parseByteRange(rangeHeader, fileSize);
     const commonHeaders: Record<string, string | number> = {
-      "Content-Type": asset.mimeType,
-      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(asset.originalFileName)}`,
+      "Content-Type": servingPreview ? asset.previewMimeType! : asset.mimeType,
+      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(servingPreview ? previewFileName(asset.originalFileName) : asset.originalFileName)}`,
       "Accept-Ranges": "bytes",
       "Cache-Control": "private, max-age=300",
     };
@@ -75,6 +76,12 @@ export class MediaContentService {
     }
     return filePath;
   }
+}
+
+function previewFileName(originalFileName: string) {
+  const dot = originalFileName.lastIndexOf(".");
+  const stem = dot === -1 ? originalFileName : originalFileName.slice(0, dot);
+  return `${stem || "inspection-image"}.jpg`;
 }
 
 export function parseByteRange(header: string | undefined, fileSize: number) {

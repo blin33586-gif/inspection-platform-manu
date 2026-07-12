@@ -164,6 +164,9 @@ model MediaAsset {
   storagePath      String
   mimeType         String
   fileSize         Int
+  previewStoragePath String?
+  previewMimeType    String?
+  previewFileSize    Int?
   parentMediaId    String?
   videoTimestampMs Int?
   createdAt        DateTime @default(now())
