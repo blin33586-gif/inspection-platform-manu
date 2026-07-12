@@ -35,7 +35,7 @@ export class IssueEventPublishService {
       const sourcePath = photo.mediaAsset.previewStoragePath || photo.mediaAsset.storagePath;
       const source = await readFile(resolve(process.cwd(), sourcePath));
       const shareUrl = this.shareUrl(token);
-      const png = await renderIssueCard({ annotatedPhoto: source, locationName: input.locationName, foundAt: input.foundAt.replace("T", " ").slice(0, 16), category: input.category, description: input.description, shareUrl });
+      const png = await renderIssueCard({ annotatedPhoto: source, annotationJson: photo.annotationDocument.annotationJson, locationName: input.locationName, foundAt: input.foundAt.replace("T", " ").slice(0, 16), category: input.category, description: input.description, shareUrl });
       const finalPath = `storage/issues/cards/${id}.png`;
       const tempPath = `${finalPath}.${randomUUID()}.tmp`;
       await mkdir(dirname(resolve(process.cwd(), finalPath)), { recursive: true });

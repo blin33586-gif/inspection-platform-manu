@@ -281,6 +281,7 @@ export function ReportWritePage() {
   const taskIdFromQuery = searchParams.get("taskId");
   const objectUrlsRef = useRef<string[]>([]);
   const nextPhotoIdRef = useRef(initialPhotoItems.length + 1);
+  const issuePushKeyRef = useRef("");
   const photoCanvasRef = useRef<HTMLDivElement | null>(null);
   const [reportTitle, setReportTitle] = useState("曲阳路街道无人机巡检报告");
   const [reportDate, setReportDate] = useState(getTodayDateString());
@@ -752,7 +753,7 @@ export function ReportWritePage() {
     try {
       const result = await postJsonApi<IssuePushResult>(`/task-photos/${encodeURIComponent(activePhoto.taskPhotoId)}/publish-issue`, {
         ...draft,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: issuePushKeyRef.current || (issuePushKeyRef.current = crypto.randomUUID()),
         expectedAnnotationVersion: annotationVersions[activePhoto.id] ?? 0,
       });
       setIssuePushResult(result);
@@ -1134,7 +1135,7 @@ export function ReportWritePage() {
                 <span>图片说明 / 问题描述 <em>*</em></span>
                 <Space className="report-description-actions" size={10}>
                   <Button disabled={!activePhoto} loading={savingAnnotation} onClick={() => void saveActiveDescription()}>暂存</Button>
-                  <Button disabled={!activePhoto?.taskPhotoId || !activeDescription.trim() || !(annotationVersions[activePhoto.id] > 0)} onClick={() => { setIssuePushResult(null); setIssuePushOpen(true); }}>事件推送</Button>
+                  <Button disabled={!activePhoto?.taskPhotoId || !activeDescription.trim() || !(annotationVersions[activePhoto.id] > 0)} onClick={() => { issuePushKeyRef.current = crypto.randomUUID(); setIssuePushResult(null); setIssuePushOpen(true); }}>事件推送</Button>
                   <Button disabled={!hasNextPhoto} type="primary" onClick={goToNextPhoto}>下一张</Button>
                 </Space>
               </div>
