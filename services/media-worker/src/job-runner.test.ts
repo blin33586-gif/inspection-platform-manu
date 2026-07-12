@@ -227,6 +227,7 @@ test("writes extracted video frames into the task photo pool", async () => {
       { fileName: "frame-0000000001.jpg", storagePath: "/tmp/frame-1.jpg", fileSize: 10, timestampMs: 0 },
       { fileName: "frame-0000000002.jpg", storagePath: "/tmp/frame-2.jpg", fileSize: 12, timestampMs: 3000 },
     ],
+    enrichExtractedFrames: async (_path, frames) => ({ frames: frames.map((frame) => ({ ...frame, telemetry: null })), stats: {} }),
   });
 
   assert.equal(await runner.processNext(), true);

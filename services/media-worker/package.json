@@ -9,6 +9,7 @@
     "test": "tsx --test",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
+    ,"telemetry:backfill": "tsx src/telemetry-backfill.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
@@ -16,6 +17,7 @@
     "@xunjianbao/map-core": "workspace:*",
     "@xunjianbao/media-contracts": "workspace:*",
     "@xunjianbao/shared": "workspace:*",
+    "exiftool-vendored": "^36.0.0",
     "pg": "^8.22.0",
     "yauzl": "^3.4.0"
   },
