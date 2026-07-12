@@ -9,6 +9,7 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       AUTH_SECRET: ${AUTH_SECRET}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL}
     volumes:
       - api-storage:/app/services/api/storage
     ports:

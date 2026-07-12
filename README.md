@@ -83,6 +83,7 @@ prisma
 DATABASE_URL=postgresql://xunjianbao:change-me@127.0.0.1:5432/xunjianbao?schema=public
 API_PORT=3010
 VITE_API_BASE_URL=http://127.0.0.1:3010/api/v1
+PUBLIC_APP_URL=http://127.0.0.1:5182
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=xunjianbao2026
 AUTH_SECRET=change-me-before-production
@@ -100,6 +101,7 @@ cp .env.example .env
 DATABASE_URL=postgresql://xunjianbao_app:URL编码后的强密码@腾讯云数据库内网地址:5432/xunjianbao?schema=public&sslmode=require
 API_PORT=3010
 VITE_API_BASE_URL=/api/v1
+PUBLIC_APP_URL=https://你的巡检宝域名
 ADMIN_USERNAME=你的管理员账号
 ADMIN_PASSWORD=强密码
 AUTH_SECRET=一串随机长密钥
@@ -110,6 +112,7 @@ AUTH_SECRET=一串随机长密钥
 - `DATABASE_URL`：PostgreSQL 连接串；生产环境使用腾讯云 TencentDB for PostgreSQL 的内网地址。
 - `API_PORT`：后端服务端口，默认 `3010`。
 - `VITE_API_BASE_URL`：前端请求 API 的地址。
+- `PUBLIC_APP_URL`：二维码和问题分享链接使用的巡检宝公网地址，生产环境必须填写 HTTPS 域名。
 - `ADMIN_USERNAME` / `ADMIN_PASSWORD`：管理端登录账号密码。
 - `AUTH_SECRET`：登录 token 签名密钥，生产环境必须改。
 
@@ -301,6 +304,7 @@ nano .env
 DATABASE_URL=postgresql://xunjianbao_app:URL编码后的强密码@腾讯云数据库内网地址:5432/xunjianbao?schema=public&sslmode=require
 API_PORT=3010
 VITE_API_BASE_URL=/api/v1
+PUBLIC_APP_URL=https://你的巡检宝域名
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=换成强密码
 AUTH_SECRET=换成随机长字符串

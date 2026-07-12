@@ -34,6 +34,7 @@ import {
   toEditableReportDraft,
 } from "./report-edit-state";
 import { toReportPhoto } from "./report-media-adapter";
+import { resolvePhotoCapturedAt, resolvePhotoCoordinateText } from "./report-photo-metadata";
 import {
   fromAnnotationPayload,
   parsePhotoCoordinates,
@@ -243,12 +244,6 @@ function parseCoordinateText(value: string) {
   return { latitude, longitude };
 }
 
-function formatCoordinateText(latitude: number | null, longitude: number | null, altitude: number | null) {
-  if (latitude === null || longitude === null) return "";
-  const base = `${latitude}, ${longitude}`;
-  return altitude === null ? base : `${base}, ${altitude}`;
-}
-
 function buildMapLocationUrl(coordinateText: string, title: string) {
   const coordinate = parseCoordinateText(coordinateText);
 
@@ -455,7 +450,7 @@ export function ReportWritePage() {
     setPhotoDescriptions((current) => ({ ...current, [photo.id]: document.issueDescription ?? "" }));
     setPhotoCoordinates((current) => ({
       ...current,
-      [photo.id]: formatCoordinateText(document.latitude, document.longitude, document.altitude),
+      [photo.id]: resolvePhotoCoordinateText(document, photo.telemetry),
     }));
     setAnnotationVersions((current) => ({ ...current, [photo.id]: document.currentVersion }));
   };
@@ -630,9 +625,10 @@ export function ReportWritePage() {
         Object.entries(current).filter(([photoId]) => retainedPhotoIds.has(Number(photoId))),
       );
       taskPhotos.forEach((photo) => {
-        if (!retained[photo.id]) retained[photo.id] = photo.telemetry?.latitude != null && photo.telemetry.longitude != null
-          ? formatCoordinateText(photo.telemetry.latitude, photo.telemetry.longitude, photo.telemetry.absoluteAltitudeMeters)
-          : "";
+        if (!retained[photo.id]) retained[photo.id] = resolvePhotoCoordinateText(
+          { latitude: null, longitude: null, altitude: null },
+          photo.telemetry,
+        );
       });
       return retained;
     });
@@ -1199,7 +1195,7 @@ export function ReportWritePage() {
                   </div>
                   <div>
                     <dt>拍摄时间</dt>
-                    <dd>{activePhoto?.uploadedAt ?? "-"}</dd>
+                    <dd>{resolvePhotoCapturedAt(activePhoto?.uploadedAt, activePhoto?.telemetry?.capturedAt)}</dd>
                   </div>
                   <div>
                     <dt>拍摄设备</dt>

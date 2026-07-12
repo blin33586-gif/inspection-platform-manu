@@ -1,14 +1,16 @@
 import type { ApiResponse } from "@xunjianbao/shared";
 import { ApiClientError } from "./api-client-error";
+import { buildApiUrl } from "./api-url";
 import { getToken } from "../auth/session";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3010/api/v1";
 
 export function getApiUrl(path: string) {
-  const token = getToken();
-  const url = new URL(`${apiBaseUrl}${path}`, window.location.origin);
-  if (token) url.searchParams.set("token", token);
-  return url.toString();
+  return buildApiUrl(apiBaseUrl, path, window.location.origin, getToken() ?? undefined);
+}
+
+export function getPublicApiUrl(path: string) {
+  return buildApiUrl(apiBaseUrl, path, window.location.origin);
 }
 
 export function withQuery(path: string, query: Record<string, string | number | undefined>) {

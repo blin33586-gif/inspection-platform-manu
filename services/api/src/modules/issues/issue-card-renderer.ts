@@ -61,16 +61,21 @@ export async function renderIssueCard(input: RenderIssueCardInput) {
     .toBuffer();
 }
 
-function buildAnnotationOverlay(value?: string) {
+export function buildAnnotationOverlay(value?: string) {
   let elements: Array<Record<string, unknown>> = [];
   try { elements = value ? (JSON.parse(value) as { elements?: Array<Record<string, unknown>> }).elements ?? [] : []; } catch { elements = []; }
-  const marks = elements.map((item) => {
+  const definitions: string[] = [];
+  const marks = elements.map((item, index) => {
     const color = typeof item.color === "string" ? escapeXml(item.color) : "#ef4444";
     const x = Number(item.x ?? 0) * 1200; const y = Number(item.y ?? 0) * 980;
     if (item.type === "rectangle") return `<rect x="${x}" y="${y}" width="${Number(item.width ?? 0) * 1200}" height="${Number(item.height ?? 0) * 980}" fill="none" stroke="${color}" stroke-width="8"/>`;
-    if (item.type === "arrow") return `<line x1="${x}" y1="${y}" x2="${Number(item.endX ?? 0) * 1200}" y2="${Number(item.endY ?? 0) * 980}" stroke="${color}" stroke-width="8" marker-end="url(#arrow)"/>`;
+    if (item.type === "arrow") {
+      const markerId = `arrow-${index}`;
+      definitions.push(`<marker id="${markerId}" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto"><path d="M0,0 L0,8 L11,4 z" fill="${color}"/></marker>`);
+      return `<line x1="${x}" y1="${y}" x2="${Number(item.endX ?? 0) * 1200}" y2="${Number(item.endY ?? 0) * 980}" stroke="${color}" stroke-width="8" marker-end="url(#${markerId})"/>`;
+    }
     if (item.type === "text") return `<text x="${x}" y="${y}" fill="${color}" font-size="34" font-family="PingFang SC, sans-serif" font-weight="600">${escapeXml(String(item.text ?? ""))}</text>`;
     return "";
   }).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="980"><defs><marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto"><path d="M0,0 L0,8 L11,4 z" fill="#ef4444"/></marker></defs>${marks}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="980"><defs>${definitions.join("")}</defs>${marks}</svg>`;
 }

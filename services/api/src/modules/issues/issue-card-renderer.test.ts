@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import sharp from "sharp";
-import { buildIssueCardSvg, renderIssueCard } from "./issue-card-renderer.js";
+import { buildAnnotationOverlay, buildIssueCardSvg, renderIssueCard } from "./issue-card-renderer.js";
 
 const sampleInput = {
   annotatedPhoto: Buffer.alloc(0),
@@ -39,4 +39,14 @@ test("preserves source photo pixels in the 70 percent photo region", async () =>
 
   assert.ok(data[offset] < 170, `expected photo red channel below 170, received ${data[offset]}`);
   assert.ok(data[offset + 2] > 150, `expected photo blue channel above 150, received ${data[offset + 2]}`);
+});
+
+test("preserves the selected arrow color for both line and arrowhead", () => {
+  const overlay = buildAnnotationOverlay(JSON.stringify({
+    canvasVersion: 1,
+    elements: [{ id: "a-1", type: "arrow", x: 0.1, y: 0.2, endX: 0.8, endY: 0.7, color: "#f59e0b", text: "施工车辆" }],
+  }));
+
+  assert.match(overlay, /stroke="#f59e0b"/);
+  assert.match(overlay, /fill="#f59e0b"/);
 });
