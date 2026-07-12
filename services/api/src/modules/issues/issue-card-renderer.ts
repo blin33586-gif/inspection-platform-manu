@@ -32,7 +32,7 @@ export function buildIssueCardSvg(input: SvgInput) {
       .head { fill: #ffffff; font-size: 34px; font-weight: 600; }
       .small { fill: #506274; font-size: 18px; }
     </style>
-    <rect width="1200" height="1400" rx="28" fill="#ffffff"/>
+    <rect y="1064" width="1200" height="336" fill="#ffffff"/>
     <rect width="1200" height="84" fill="#155493"/>
     <text class="head" x="42" y="55">巡检问题</text>
     <rect data-role="photo" x="0" y="84" width="1200" height="980" fill="transparent"/>

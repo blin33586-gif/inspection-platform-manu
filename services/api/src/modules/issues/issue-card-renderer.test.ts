@@ -28,3 +28,15 @@ test("renders a valid PNG", async () => {
 
   assert.deepEqual([...output.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });
+
+test("preserves source photo pixels in the 70 percent photo region", async () => {
+  const annotatedPhoto = await sharp({
+    create: { width: 800, height: 600, channels: 4, background: { r: 127, g: 155, b: 178, alpha: 1 } },
+  }).png().toBuffer();
+  const output = await renderIssueCard({ ...sampleInput, annotatedPhoto });
+  const { data, info } = await sharp(output).raw().toBuffer({ resolveWithObject: true });
+  const offset = (300 * info.width + 600) * info.channels;
+
+  assert.ok(data[offset] < 170, `expected photo red channel below 170, received ${data[offset]}`);
+  assert.ok(data[offset + 2] > 150, `expected photo blue channel above 150, received ${data[offset + 2]}`);
+});
