@@ -1,4 +1,5 @@
 export * from "./image-format.js";
+export * from "./annotation-document.js";
 
 export type MediaKind = "image" | "video" | "frame" | "map_source" | "map_tile";
 

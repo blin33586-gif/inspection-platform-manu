@@ -220,12 +220,53 @@ model TaskPhoto {
   mediaAsset    MediaAsset      @relation("TaskPhotoMedia", fields: [mediaAssetId], references: [id], onDelete: Cascade)
   archiveObject ManagedObject?  @relation(fields: [archiveObjectId], references: [id], onDelete: SetNull)
   reportPhotos  ReportPhoto[]
+  annotationDocument PhotoAnnotationDocument?
 
   @@index([taskId, distributionStatus])
   @@index([distributionStatus, capturedAt(sort: Desc), videoTimestampMs, createdAt(sort: Desc), id], map: "task_photo_pending_feed_idx")
   @@index([taskId, videoTimestampMs, createdAt, id], map: "task_photo_task_order_idx")
   @@index([archiveObjectId])
   @@index([capturedAt])
+}
+
+model PhotoAnnotationDocument {
+  id               String   @id
+  taskPhotoId      String   @unique
+  currentVersion   Int      @default(1)
+  annotationJson   String
+  issueDescription String?
+  longitude        Float?
+  latitude         Float?
+  altitude         Float?
+  source           String   @default("manual")
+  createdBy        String
+  updatedBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  taskPhoto TaskPhoto                @relation(fields: [taskPhotoId], references: [id], onDelete: Cascade)
+  versions  PhotoAnnotationVersion[]
+
+  @@index([updatedAt])
+}
+
+model PhotoAnnotationVersion {
+  id               String   @id
+  documentId       String
+  version          Int
+  annotationJson   String
+  issueDescription String?
+  longitude        Float?
+  latitude         Float?
+  altitude         Float?
+  source           String
+  createdBy        String
+  createdAt        DateTime @default(now())
+
+  document PhotoAnnotationDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, version])
+  @@index([documentId, createdAt])
 }
 
 model ReportPhoto {

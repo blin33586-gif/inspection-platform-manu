@@ -16,4 +16,11 @@ test("defines the real inspection task and task photo schema", async () => {
   assert.match(schema, /taskId\s+String\?\s+@unique/);
   assert.match(schema, /@@index\(\[distributionStatus, capturedAt\(sort: Desc\), videoTimestampMs, createdAt\(sort: Desc\), id\], map: "task_photo_pending_feed_idx"\)/);
   assert.match(schema, /@@index\(\[taskId, videoTimestampMs, createdAt, id\], map: "task_photo_task_order_idx"\)/);
+  assert.match(schema, /annotationDocument\s+PhotoAnnotationDocument\?/);
+  assert.match(schema, /model PhotoAnnotationDocument\s*\{/);
+  assert.match(schema, /taskPhotoId\s+String\s+@unique/);
+  assert.match(schema, /currentVersion\s+Int\s+@default\(1\)/);
+  assert.match(schema, /versions\s+PhotoAnnotationVersion\[\]/);
+  assert.match(schema, /model PhotoAnnotationVersion\s*\{/);
+  assert.match(schema, /@@unique\(\[documentId, version\]\)/);
 });
