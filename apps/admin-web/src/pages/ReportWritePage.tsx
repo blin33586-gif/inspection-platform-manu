@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
-import { Button, DatePicker, Input, message, QRCode, Select, Space, Upload } from "antd";
+import { Button, DatePicker, Input, message, Modal, QRCode, Select, Space, Upload } from "antd";
 import {
   ArrowUpRight,
   ImagePlus,
@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { ReportSummary } from "@xunjianbao/shared";
-import { getApi, getApiUrl, postJsonApi } from "../api/client";
+import { getApi, getApiUrl, postJsonApi, putJsonApi } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { TaskPhotoSelector, type SelectableTaskPhoto } from "../components/TaskPhotoSelector";
 import type { InspectionTaskRecord } from "./inspection-task-presenter";
@@ -32,10 +32,18 @@ import {
   toEditableReportDraft,
 } from "./report-edit-state";
 import { toReportPhoto } from "./report-media-adapter";
+import {
+  fromAnnotationPayload,
+  parsePhotoCoordinates,
+  toAnnotationPayload,
+  type ReportCanvasAnnotation,
+  type ReportAnnotationShape,
+  type ReportAnnotationTone,
+} from "./report-annotation-state";
 
 type ToolKey = "pointer" | "move" | "rect" | "arrow" | "text";
-type AnnotationShape = Exclude<ToolKey, "pointer" | "move">;
-type AnnotationTone = "danger" | "warning" | "info";
+type AnnotationShape = ReportAnnotationShape;
+type AnnotationTone = ReportAnnotationTone;
 
 interface PhotoItem {
   id: number;
@@ -54,22 +62,35 @@ type ReportTaskOption = Pick<
   "id" | "name" | "taskDate" | "processStatus" | "report"
 >;
 
-interface ReportAnnotation {
-  id: number;
-  photoId: number;
-  title: string;
-  tone: AnnotationTone;
-  shape: AnnotationShape;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+interface ReportAnnotation extends ReportCanvasAnnotation {
   position: string;
-  description: string;
-  lineStartX?: number;
-  lineStartY?: number;
-  lineEndX?: number;
-  lineEndY?: number;
+}
+
+interface PhotoAnnotationDocumentRecord {
+  taskPhotoId: string;
+  currentVersion: number;
+  annotationJson: Parameters<typeof fromAnnotationPayload>[0];
+  issueDescription: string | null;
+  longitude: number | null;
+  latitude: number | null;
+  altitude: number | null;
+  source: "manual" | "ai";
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+interface PhotoAnnotationVersionRecord {
+  version: number;
+  annotationJson: Parameters<typeof fromAnnotationPayload>[0];
+  issueDescription: string | null;
+  longitude: number | null;
+  latitude: number | null;
+  altitude: number | null;
+  source: "manual" | "ai";
+  createdBy: string;
+  createdAt: string;
 }
 
 interface DraftAnnotation {
@@ -219,6 +240,12 @@ function parseCoordinateText(value: string) {
   return { latitude, longitude };
 }
 
+function formatCoordinateText(latitude: number | null, longitude: number | null, altitude: number | null) {
+  if (latitude === null || longitude === null) return "";
+  const base = `${latitude}, ${longitude}`;
+  return altitude === null ? base : `${base}, ${altitude}`;
+}
+
 function buildMapLocationUrl(coordinateText: string, title: string) {
   const coordinate = parseCoordinateText(coordinateText);
 
@@ -273,6 +300,10 @@ export function ReportWritePage() {
   const [movingAnnotation, setMovingAnnotation] = useState<MovingAnnotation | null>(null);
   const [photoDescriptions, setPhotoDescriptions] = useState<Record<number, string>>({});
   const [photoCoordinates, setPhotoCoordinates] = useState<Record<number, string>>({});
+  const [annotationVersions, setAnnotationVersions] = useState<Record<number, number>>({});
+  const [savingAnnotation, setSavingAnnotation] = useState(false);
+  const [annotationHistoryOpen, setAnnotationHistoryOpen] = useState(false);
+  const [annotationHistory, setAnnotationHistory] = useState<PhotoAnnotationVersionRecord[]>([]);
 
   const selectedTask = useMemo(
     () => taskOptions.find((item) => item.id === selectedTaskId) ?? null,
@@ -312,6 +343,9 @@ export function ReportWritePage() {
     setAnnotations([]);
     setPhotoDescriptions({});
     setPhotoCoordinates({});
+    setAnnotationVersions({});
+    setAnnotationHistory([]);
+    setAnnotationHistoryOpen(false);
   };
 
   useEffect(() => {
@@ -392,6 +426,41 @@ export function ReportWritePage() {
   const hasNextPhoto = activePhotoIndex >= 0 && activePhotoIndex < photos.length - 1;
   const activeToolLabel = useMemo(() => toolItems.find((item) => item.key === activeTool)?.label ?? "矩形框", [activeTool]);
   const annotationTotal = activePhotoAnnotations.length;
+
+  const restorePhotoAnnotation = (photo: PhotoItem, document: PhotoAnnotationDocumentRecord) => {
+    const restored = fromAnnotationPayload(document.annotationJson, photo.id).map((item) => ({
+      ...item,
+      position: buildPosition(item),
+    }));
+    setAnnotations((current) => [
+      ...current.filter((item) => item.photoId !== photo.id),
+      ...restored,
+    ]);
+    setPhotos((current) => current.map((item) => (
+      item.id === photo.id ? { ...item, state: restored.length ? "已标注" : "待标注" } : item
+    )));
+    setPhotoDescriptions((current) => ({ ...current, [photo.id]: document.issueDescription ?? "" }));
+    setPhotoCoordinates((current) => ({
+      ...current,
+      [photo.id]: formatCoordinateText(document.latitude, document.longitude, document.altitude),
+    }));
+    setAnnotationVersions((current) => ({ ...current, [photo.id]: document.currentVersion }));
+  };
+
+  useEffect(() => {
+    if (!activePhoto?.taskPhotoId) return;
+    const controller = new AbortController();
+    void getApi<PhotoAnnotationDocumentRecord>(
+      `/task-photos/${encodeURIComponent(activePhoto.taskPhotoId)}/annotation`,
+      controller.signal,
+    )
+      .then((document) => restorePhotoAnnotation(activePhoto, document))
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        message.error(error instanceof Error ? error.message : "照片标注读取失败");
+      });
+    return () => controller.abort();
+  }, [activePhoto?.id, activePhoto?.taskPhotoId]);
 
   const markActivePhotoAnnotated = (nextAnnotations: ReportAnnotation[]) => {
     if (!activePhoto) return;
@@ -627,13 +696,59 @@ export function ReportWritePage() {
     }));
   };
 
-  const saveActiveDescription = () => {
+  const saveActiveDescription = async () => {
     if (!activePhoto) {
       message.warning("请先上传图片");
       return;
     }
+    if (!activePhoto.taskPhotoId) {
+      message.warning("本地临时上传图片请先归入巡检任务后再保存标注");
+      return;
+    }
 
-    message.success(`第 ${activePhoto.id} 张图片说明已暂存`);
+    let coordinates;
+    try {
+      coordinates = parsePhotoCoordinates(activeCoordinateText);
+    } catch (error) {
+      message.warning(error instanceof Error ? error.message : "坐标格式无效");
+      return;
+    }
+
+    setSavingAnnotation(true);
+    try {
+      const document = await putJsonApi<PhotoAnnotationDocumentRecord>(
+        `/task-photos/${encodeURIComponent(activePhoto.taskPhotoId)}/annotation`,
+        {
+          expectedVersion: annotationVersions[activePhoto.id] ?? 0,
+          annotationJson: toAnnotationPayload(activePhotoAnnotations),
+          issueDescription: activeDescription,
+          ...coordinates,
+          source: "manual",
+        },
+      );
+      restorePhotoAnnotation(activePhoto, document);
+      message.success(`第 ${activePhoto.id} 张图片标注已保存`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "标注保存失败");
+    } finally {
+      setSavingAnnotation(false);
+    }
+  };
+
+  const openAnnotationHistory = async () => {
+    if (!activePhoto?.taskPhotoId) {
+      message.info("当前图片尚未关联巡检任务");
+      return;
+    }
+    try {
+      const versions = await getApi<PhotoAnnotationVersionRecord[]>(
+        `/task-photos/${encodeURIComponent(activePhoto.taskPhotoId)}/annotation/versions`,
+      );
+      setAnnotationHistory(versions);
+      setAnnotationHistoryOpen(true);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "标注历史读取失败");
+    }
   };
 
   const goToNextPhoto = () => {
@@ -991,7 +1106,7 @@ export function ReportWritePage() {
               <div className="report-description-head">
                 <span>图片说明 / 问题描述 <em>*</em></span>
                 <Space className="report-description-actions" size={10}>
-                  <Button disabled={!activePhoto} onClick={saveActiveDescription}>暂存</Button>
+                  <Button disabled={!activePhoto} loading={savingAnnotation} onClick={() => void saveActiveDescription()}>暂存</Button>
                   <Button disabled={!hasNextPhoto} type="primary" onClick={goToNextPhoto}>下一张</Button>
                 </Space>
               </div>
@@ -1039,6 +1154,7 @@ export function ReportWritePage() {
               )) : <div className="annotation-empty-note">请先上传图片，再添加标注</div>}
             </div>
             <Button block disabled={!activePhoto} icon={<Plus size={16} />} onClick={addAnnotation}>添加标注</Button>
+            <Button block disabled={!activePhoto?.taskPhotoId} onClick={() => void openAnnotationHistory()}>历史版本</Button>
 
             <div className="photo-info-panel">
               <h3>照片信息</h3>
@@ -1110,6 +1226,22 @@ export function ReportWritePage() {
         onCancel={() => setPhotoSelectorOpen(false)}
         onConfirm={applyTaskPhotoSelection}
       />
+
+      <Modal
+        footer={<Button onClick={() => setAnnotationHistoryOpen(false)}>关闭</Button>}
+        onCancel={() => setAnnotationHistoryOpen(false)}
+        open={annotationHistoryOpen}
+        title="当前照片标注历史"
+      >
+        {annotationHistory.length ? annotationHistory.map((version) => (
+          <article className="annotation-history-item" key={version.version}>
+            <strong>版本 {version.version}{version.version === annotationVersions[activePhoto?.id ?? 0] ? "（当前）" : ""}</strong>
+            <span>{version.createdAt ? new Date(version.createdAt).toLocaleString("zh-CN", { hour12: false }) : "-"}</span>
+            <p>{version.issueDescription || "未填写照片说明"}</p>
+            <small>{version.annotationJson.elements.length} 个标注元素，来源：{version.source === "ai" ? "AI" : "人工"}</small>
+          </article>
+        )) : <div className="annotation-empty-note">当前照片尚无已保存的历史版本</div>}
+      </Modal>
     </>
   );
 }

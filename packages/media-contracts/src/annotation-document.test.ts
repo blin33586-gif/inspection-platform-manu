@@ -15,6 +15,7 @@ test("accepts relative rectangle, arrow, and text elements", () => {
         height: 0.4,
         color: "#ef4444",
         text: "堆料区域",
+        description: "楼顶堆料需要复核",
       },
       {
         id: "arrow-1",
@@ -48,6 +49,7 @@ test("accepts relative rectangle, arrow, and text elements", () => {
         height: 0.4,
         color: "#ef4444",
         text: "堆料区域",
+        description: "楼顶堆料需要复核",
       },
       {
         id: "arrow-1",

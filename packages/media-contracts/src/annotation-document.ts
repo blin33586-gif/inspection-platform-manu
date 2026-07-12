@@ -9,6 +9,7 @@ export interface AnnotationRectangleElement {
   height: number;
   color: string;
   text?: string;
+  description?: string;
 }
 
 export interface AnnotationArrowElement {
@@ -20,6 +21,7 @@ export interface AnnotationArrowElement {
   endY: number;
   color: string;
   text?: string;
+  description?: string;
 }
 
 export interface AnnotationTextElement {
@@ -30,6 +32,7 @@ export interface AnnotationTextElement {
   color: string;
   text: string;
   width?: number;
+  description?: string;
 }
 
 export type AnnotationElement = AnnotationRectangleElement | AnnotationArrowElement | AnnotationTextElement;
@@ -73,6 +76,7 @@ function validateElement(value: unknown, ids: Set<string>): AnnotationElement {
       height: value.height,
       color: value.color,
       ...(optionalText(value.text)),
+      ...(optionalDescription(value.description)),
     };
   }
 
@@ -88,6 +92,7 @@ function validateElement(value: unknown, ids: Set<string>): AnnotationElement {
       endY: value.endY,
       color: value.color,
       ...(optionalText(value.text)),
+      ...(optionalDescription(value.description)),
     };
   }
 
@@ -102,6 +107,7 @@ function validateElement(value: unknown, ids: Set<string>): AnnotationElement {
       color: value.color,
       text: value.text,
       ...(value.width === undefined ? {} : { width: value.width }),
+      ...(optionalDescription(value.description)),
     };
   }
 
@@ -118,6 +124,12 @@ function optionalText(value: unknown) {
   if (value === undefined) return {};
   if (typeof value !== "string") throw new Error("标注文字无效");
   return { text: value };
+}
+
+function optionalDescription(value: unknown) {
+  if (value === undefined) return {};
+  if (typeof value !== "string") throw new Error("标注说明无效");
+  return { description: value };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
