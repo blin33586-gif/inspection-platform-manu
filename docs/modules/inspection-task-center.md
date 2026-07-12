@@ -33,6 +33,8 @@
 - `InspectionTask`：任务主表，保存任务日期、来源、输入类型、处理状态和照片计数。
 - `MediaAsset`：保存原始视频、ZIP、直接图片、抽帧图片或解压图片的物理文件信息。
 - `TaskPhoto`：任务照片业务表，每条记录只允许一个 `archiveObjectId`。
+- `PhotoAnnotationDocument`：一张任务照片的一份当前标注文档，保存相对坐标标注、问题说明、经纬度、来源、当前版本与操作者。
+- `PhotoAnnotationVersion`：当前标注文档的只读历史快照，`documentId + version` 唯一。
 - `ManagedObject`：小区、街道、重点点位档案。
 - `InspectionReport`：综合报告，`taskId` 唯一。
 - `ReportPhoto`：综合报告与任务照片的有序关系，`reportId + taskPhotoId` 唯一。
@@ -47,6 +49,10 @@
 - `GET /api/v1/task-photos?status=pending`：待分发照片池。
 - `GET /api/v1/managed-objects/:objectId/photos`：指定档案的真实照片墙。
 - `PATCH /api/v1/inspection-tasks/:id/photos/:photoId/distribution`：归档或忽略照片。
+- `GET /api/v1/task-photos/:photoId/annotation`：读取当前标注；未保存时返回版本 `0` 的空文档。
+- `PUT /api/v1/task-photos/:photoId/annotation`：以 `expectedVersion` 保存当前标注；版本冲突返回 `409`。
+- `GET /api/v1/task-photos/:photoId/annotation/versions`：读取当前版本与不可修改历史版本。
+- `GET /api/v1/task-photos/:photoId/annotation/versions/:version`：读取指定历史版本。
 - `POST /api/v1/reports`：创建或更新任务综合报告，并事务保存 `taskPhotoIds`。
 - `GET /api/v1/reports/:id`：报告详情及有序 `taskPhotoIds`。
 - `GET /api/v1/media-assets/:id/content`：读取原始视频和照片文件。
@@ -67,6 +73,8 @@
 - 编辑已有综合报告时先读取报告详情，再恢复字段、原有照片顺序与 `taskPhotoIds`；取消照片选择器不会清空已保存关系。
 - 报告查询参数中的历史任务会按编号直接读取，不受任务列表默认 100 条分页限制。
 - 并发分发失败的一方返回冲突，不写入成功审计，也不向前端报告伪成功。
+- 标注统一使用 `0..1` 相对坐标；矩形、箭头、文字、颜色和说明均被校验后入库，刷新页面或从档案、媒体库进入同一照片时读取相同的当前标注。
+- 标注保存采用乐观锁。保存请求必须带 `expectedVersion`，旧页面返回 `409` 后必须刷新，不能覆盖后保存的内容。
 
 主要数据库迁移文件：
 
