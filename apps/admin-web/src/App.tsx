@@ -18,6 +18,7 @@ import { PointDetailPage } from "./pages/PointDetailPage";
 import { IssueDetailPage } from "./pages/IssueDetailPage";
 import { ReportDetailPage } from "./pages/ReportDetailPage";
 import { ReportWritePage } from "./pages/ReportWritePage";
+import { PublicIssueSharePage } from "./pages/PublicIssueSharePage";
 
 function RequireAuth() {
   return getToken() ? <Outlet /> : <Navigate to="/login" replace />;
@@ -27,6 +28,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/s/issue/:shareToken" element={<PublicIssueSharePage />} />
       <Route element={<RequireAuth />}>
         <Route element={<Shell />}>
           <Route path="/" element={<DashboardPage />} />

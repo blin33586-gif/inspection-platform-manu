@@ -25,6 +25,8 @@ import type { ReportSummary } from "@xunjianbao/shared";
 import { getApi, getApiUrl, postJsonApi, putJsonApi } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { TaskPhotoSelector, type SelectableTaskPhoto } from "../components/TaskPhotoSelector";
+import { IssueEventPushModal } from "../components/IssueEventPushModal";
+import type { IssuePushDraft, IssuePushResult } from "./issue-event-push-state";
 import type { InspectionTaskRecord } from "./inspection-task-presenter";
 import {
   effectiveReportTaskPhotoIds,
@@ -279,6 +281,7 @@ export function ReportWritePage() {
   const taskIdFromQuery = searchParams.get("taskId");
   const objectUrlsRef = useRef<string[]>([]);
   const nextPhotoIdRef = useRef(initialPhotoItems.length + 1);
+  const issuePushKeyRef = useRef("");
   const photoCanvasRef = useRef<HTMLDivElement | null>(null);
   const [reportTitle, setReportTitle] = useState("曲阳路街道无人机巡检报告");
   const [reportDate, setReportDate] = useState(getTodayDateString());
@@ -291,6 +294,9 @@ export function ReportWritePage() {
   const [restoredIssueCount, setRestoredIssueCount] = useState(0);
   const [restoredContentSummary, setRestoredContentSummary] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [issuePushOpen, setIssuePushOpen] = useState(false);
+  const [issuePushLoading, setIssuePushLoading] = useState(false);
+  const [issuePushResult, setIssuePushResult] = useState<IssuePushResult | null>(null);
   const [reportArea, setReportArea] = useState(defaultReportArea);
   const [activeTool, setActiveTool] = useState<ToolKey>("rect");
   const [photos, setPhotos] = useState<PhotoItem[]>(initialPhotoItems);
@@ -423,6 +429,12 @@ export function ReportWritePage() {
   const activeDescription = activePhoto ? photoDescriptions[activePhoto.id] ?? "" : "";
   const activeCoordinateText = activePhoto ? photoCoordinates[activePhoto.id] ?? "" : "";
   const activeMapUrl = activePhoto ? buildMapLocationUrl(activeCoordinateText, activePhoto.fileName ?? "巡检照片位置") : "";
+  const issuePushInitial: IssuePushDraft = {
+    locationName: reportArea,
+    foundAt: `${reportDate}T${new Date().toTimeString().slice(0, 5)}`,
+    category: activePhotoAnnotations[0]?.title ?? "",
+    description: activeDescription,
+  };
   const hasNextPhoto = activePhotoIndex >= 0 && activePhotoIndex < photos.length - 1;
   const activeToolLabel = useMemo(() => toolItems.find((item) => item.key === activeTool)?.label ?? "矩形框", [activeTool]);
   const annotationTotal = activePhotoAnnotations.length;
@@ -733,6 +745,22 @@ export function ReportWritePage() {
     } finally {
       setSavingAnnotation(false);
     }
+  };
+
+  const publishIssueEvent = async (draft: IssuePushDraft) => {
+    if (!activePhoto?.taskPhotoId) return;
+    setIssuePushLoading(true);
+    try {
+      const result = await postJsonApi<IssuePushResult>(`/task-photos/${encodeURIComponent(activePhoto.taskPhotoId)}/publish-issue`, {
+        ...draft,
+        idempotencyKey: issuePushKeyRef.current || (issuePushKeyRef.current = crypto.randomUUID()),
+        expectedAnnotationVersion: annotationVersions[activePhoto.id] ?? 0,
+      });
+      setIssuePushResult(result);
+      message.success("问题已推送到台账");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "事件推送失败");
+    } finally { setIssuePushLoading(false); }
   };
 
   const openAnnotationHistory = async () => {
@@ -1107,6 +1135,7 @@ export function ReportWritePage() {
                 <span>图片说明 / 问题描述 <em>*</em></span>
                 <Space className="report-description-actions" size={10}>
                   <Button disabled={!activePhoto} loading={savingAnnotation} onClick={() => void saveActiveDescription()}>暂存</Button>
+                  <Button disabled={!activePhoto?.taskPhotoId || !activeDescription.trim() || !(annotationVersions[activePhoto.id] > 0)} onClick={() => { issuePushKeyRef.current = crypto.randomUUID(); setIssuePushResult(null); setIssuePushOpen(true); }}>事件推送</Button>
                   <Button disabled={!hasNextPhoto} type="primary" onClick={goToNextPhoto}>下一张</Button>
                 </Space>
               </div>
@@ -1217,6 +1246,7 @@ export function ReportWritePage() {
         </div>
       </section>
 
+      <IssueEventPushModal open={issuePushOpen} initial={issuePushInitial} loading={issuePushLoading} result={issuePushResult} onCancel={() => setIssuePushOpen(false)} onSubmit={(value) => void publishIssueEvent(value)} />
       <TaskPhotoSelector
         initialSelectedIds={selectorInitialSelectedIds}
         open={photoSelectorOpen}
