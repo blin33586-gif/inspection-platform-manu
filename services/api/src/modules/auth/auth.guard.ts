@@ -12,6 +12,7 @@ export class AuthGuard implements CanActivate {
       request.method === "OPTIONS"
       || request.path === "/api/v1/auth/login"
       || request.path === "/api/v1/health"
+      || request.path.startsWith("/api/v1/public/issues/")
     ) return true;
 
     const token = this.tokenFromRequest(request);
