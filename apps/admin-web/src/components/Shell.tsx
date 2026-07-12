@@ -55,7 +55,7 @@ export function Shell() {
                 type="button"
                 onClick={() => setIsProjectMenuOpen((value) => !value)}
               >
-                项目
+                档案库
                 <span aria-hidden="true">⌄</span>
               </button>
               <div className="nav-dropdown" role="menu">

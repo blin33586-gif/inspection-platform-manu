@@ -6,7 +6,7 @@ test("keeps business modules in the primary navigation", () => {
   assert.deepEqual(PRIMARY_NAV_ITEMS, [
     { to: "/media-library", label: "任务库" },
     { to: "/reports", label: "报告库" },
-    { to: "/issues", label: "待跟进线索" },
+    { to: "/issues", label: "问题库" },
   ]);
 });
 
