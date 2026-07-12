@@ -208,6 +208,50 @@ button {
   background: rgba(255, 255, 255, 0.76);
 }
 
+.account-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.account-menu-trigger {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 8px;
+  color: #424245;
+  font-size: 12px;
+  background: transparent;
+}
+
+.account-menu-trigger span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.account-dropdown {
+  top: calc(100% + 7px);
+  right: 0;
+  min-width: 132px;
+}
+
+.account-menu:hover .account-dropdown,
+.account-menu:focus-within .account-dropdown,
+.account-menu.open .account-dropdown {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.account-menu:hover .account-menu-trigger,
+.account-menu:focus-within .account-menu-trigger,
+.account-menu.active .account-menu-trigger {
+  color: var(--blue-700);
+  background: rgba(0, 113, 227, 0.1);
+}
+
 .project-pill span,
 .project-pill strong {
   display: block;

@@ -1,17 +1,10 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearSession, getUser } from "../auth/session";
+import { ACCOUNT_NAV_ITEMS, PRIMARY_NAV_ITEMS } from "./navigation-config";
 
 const navItems = [
   { to: "/", label: "地图总览" },
-];
-
-const workflowNavItems = [
-  { to: "/media-library", label: "媒体库" },
-  { to: "/reports", label: "巡检报告" },
-  { to: "/issues", label: "待跟进线索" },
-  { to: "/map-assets", label: "地图" },
-  { to: "/audit-logs", label: "操作日志" },
 ];
 
 const projectNavItems = [
@@ -26,7 +19,11 @@ export function Shell() {
   const user = getUser();
   const isHome = location.pathname === "/";
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const isProjectActive = projectNavItems.some((item) => (
+    location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+  ));
+  const isAccountActive = ACCOUNT_NAV_ITEMS.some((item) => (
     location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
   ));
 
@@ -69,7 +66,7 @@ export function Shell() {
                 ))}
               </div>
             </div>
-            {workflowNavItems.map((item) => (
+            {PRIMARY_NAV_ITEMS.map((item) => (
               <NavLink key={item.to} to={item.to}>
                 {item.label}
               </NavLink>
@@ -80,6 +77,25 @@ export function Shell() {
             <div>
               <span>Dock 3 / 曲阳路街道</span>
               <strong>{user?.name ?? "管理员"}</strong>
+            </div>
+            <div className={`account-menu ${isAccountActive ? "active" : ""} ${isAccountMenuOpen ? "open" : ""}`}>
+              <button
+                aria-expanded={isAccountMenuOpen}
+                aria-haspopup="menu"
+                className="account-menu-trigger"
+                type="button"
+                onClick={() => setIsAccountMenuOpen((value) => !value)}
+              >
+                更多
+                <span aria-hidden="true">⌄</span>
+              </button>
+              <div className="nav-dropdown account-dropdown" role="menu">
+                {ACCOUNT_NAV_ITEMS.map((item) => (
+                  <NavLink key={item.to} role="menuitem" to={item.to} onClick={() => setIsAccountMenuOpen(false)}>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
             </div>
             <button className="logout-button" type="button" onClick={logout}>退出</button>
           </div>
