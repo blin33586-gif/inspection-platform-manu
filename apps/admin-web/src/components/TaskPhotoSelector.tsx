@@ -6,7 +6,9 @@ import type { ReportMediaAssetRecord } from "../pages/report-media-adapter";
 import {
   defaultTaskPhotoSelection,
   filterTaskPhotos,
+  orderedSelectedTaskPhotos,
   setTaskPhotoSelected,
+  taskPhotoEmptyDescription,
   type TaskPhotoStatusFilter,
 } from "../pages/task-photo-selection";
 
@@ -28,7 +30,7 @@ interface TaskPhotoPage {
 
 interface TaskPhotoSelectorProps {
   open: boolean;
-  task: { id: string; name: string } | null;
+  task: { id: string; name: string; processStatus?: string } | null;
   initialSelectedIds: string[];
   selectionInitialized: boolean;
   preferredMediaId?: string | null;
@@ -93,7 +95,10 @@ export function TaskPhotoSelector({
     [photos, statusFilter],
   );
   const visiblePhotos = filteredPhotos.slice((page - 1) * pageSize, page * pageSize);
-  const selectedPhotos = photos.filter((photo) => selectedIds.has(photo.id));
+  const selectedPhotos = useMemo(
+    () => orderedSelectedTaskPhotos(photos, selectedIds, initialSelectedIds),
+    [initialSelectedIds, photos, selectedIds],
+  );
   const allFilteredSelected = filteredPhotos.length > 0
     && filteredPhotos.every((photo) => selectedIds.has(photo.id));
 
@@ -185,7 +190,7 @@ export function TaskPhotoSelector({
           })}
         </div>
       ) : (
-        <Empty image={<Images size={44} />} description="当前筛选下没有照片" />
+        <Empty image={<Images size={44} />} description={taskPhotoEmptyDescription(task?.processStatus)} />
       )}
 
       {filteredPhotos.length > pageSize ? (

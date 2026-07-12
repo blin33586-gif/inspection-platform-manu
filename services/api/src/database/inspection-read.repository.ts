@@ -176,6 +176,7 @@ export class InspectionReadRepository {
 
     return reports.map((report) => ({
       id: report.id,
+      taskId: report.taskId,
       title: report.title,
       reportDate: formatDate(report.reportDate),
       reportType: report.reportType as ReportSummary["reportType"],

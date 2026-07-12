@@ -11,6 +11,7 @@ import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 import { readSubmittedReports } from "../utils/reportDraftStore";
+import { reportWritePath } from "./report-edit-state";
 
 const fallbackReports: PageResult<ReportSummary> = {
   items: reports,
@@ -221,6 +222,9 @@ export function ReportsPage() {
       render: (_id, report) => (
         <Space className="report-row-actions" size={8}>
           <Button size="small" icon={<Eye size={14} />} href={`/reports/${report.id}`}>预览</Button>
+          {report.taskId ? (
+            <Button size="small" icon={<FilePenLine size={14} />} href={reportWritePath(report.taskId)}>编辑</Button>
+          ) : null}
           {report.fileName ? (
             <Button size="small" icon={<Download size={14} />} href={getApiUrl(`/reports/${report.id}/file`)}>下载</Button>
           ) : (

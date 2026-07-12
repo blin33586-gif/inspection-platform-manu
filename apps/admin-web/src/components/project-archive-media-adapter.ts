@@ -33,6 +33,23 @@ export interface ProjectArchiveMediaItem {
   fileName: string;
 }
 
+export function isArchiveMediaResponseCurrent(
+  requestedObjectId: string,
+  activeObjectId: string | null | undefined,
+) {
+  return requestedObjectId === activeObjectId;
+}
+
+export function isArchiveMediaRequestCurrent(
+  requestId: number,
+  latestRequestId: number,
+  requestedObjectId: string,
+  activeObjectId: string | null | undefined,
+) {
+  return requestId === latestRequestId
+    && isArchiveMediaResponseCurrent(requestedObjectId, activeObjectId);
+}
+
 const sourceLabels: Record<string, string> = {
   manual: "人工上传",
   drone: "无人机",
@@ -60,11 +77,21 @@ export function toProjectArchiveMediaItem(
     linkedObjectName: photo.archiveObject?.name ?? "尚未归档",
     issueTitle: photo.task.name,
     status: statusLabels[photo.distributionStatus] ?? photo.distributionStatus,
-    capturedAt: formatShanghaiDateTime(photo.capturedAt ?? photo.mediaAsset.createdAt),
+    capturedAt: photo.capturedAt
+      ? formatShanghaiDateTime(photo.capturedAt)
+      : photo.videoTimestampMs !== null
+        ? formatVideoTimestamp(photo.videoTimestampMs)
+        : formatShanghaiDateTime(photo.mediaAsset.createdAt),
     sourceName: sourceLabels[photo.task.sourceType] ?? photo.task.sourceType,
     thumbnailUrl,
     fileName: photo.mediaAsset.originalFileName,
   };
+}
+
+function formatVideoTimestamp(value: number) {
+  const seconds = Math.floor(value / 1000);
+  const minutes = Math.floor(seconds / 60);
+  return `视频 ${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function formatShanghaiDateTime(value: string) {

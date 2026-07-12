@@ -7,6 +7,7 @@ import { ApiResourceError } from "../components/ApiResourceError";
 import { MediaAssetGallery } from "../components/MediaAssetGallery";
 import { toMediaGalleryItem, type MediaGalleryItem } from "../components/media-asset-presenter";
 import { toInspectionTaskViewModel, type InspectionTaskRecord } from "./inspection-task-presenter";
+import { reportWritePath } from "./report-edit-state";
 import "./media-library-detail.css";
 
 interface TaskDetailRecord extends Omit<InspectionTaskRecord, "photos"> {
@@ -170,8 +171,8 @@ export function MediaTaskDetailPage() {
 
         <section className="real-task-detail-actions">
           <div><strong>{task.pendingPhotoCount} 张待分发</strong><span>每张照片只能归入一个小区、街道或重点点位档案</span></div>
-          <Button icon={<FileText size={16} />} type="primary" onClick={() => task.report?.id ? navigate("/reports") : navigate(`/reports/write?taskId=${encodeURIComponent(task.id)}`)}>
-            {task.report?.id ? "查看综合报告" : "编写综合报告"}
+          <Button icon={<FileText size={16} />} type="primary" onClick={() => navigate(reportWritePath(task.id))}>
+            {task.report?.id ? "编辑综合报告" : "编写综合报告"}
           </Button>
         </section>
 

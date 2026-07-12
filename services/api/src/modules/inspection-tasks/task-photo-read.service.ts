@@ -3,7 +3,6 @@ import type { Prisma } from "@prisma/client";
 import { DatabaseService } from "../../database/database.service.js";
 
 export interface TaskPhotoQuery {
-  status?: string;
   page?: string;
   pageSize?: string;
 }
@@ -14,7 +13,7 @@ export class TaskPhotoReadService {
 
   async list(query: TaskPhotoQuery) {
     const where: Prisma.TaskPhotoWhereInput = {
-      distributionStatus: query.status || "pending",
+      distributionStatus: "pending",
     };
     return this.findPage(where, query);
   }
@@ -42,11 +41,20 @@ export class TaskPhotoReadService {
       this.database.taskPhoto.findMany({
         where,
         include: {
-          mediaAsset: true,
+          mediaAsset: {
+            select: {
+              id: true,
+              kind: true,
+              originalFileName: true,
+              mimeType: true,
+              fileSize: true,
+              createdAt: true,
+            },
+          },
           archiveObject: true,
           task: { select: { id: true, name: true, taskDate: true, sourceType: true } },
         },
-        orderBy: [{ capturedAt: "desc" }, { videoTimestampMs: "asc" }, { createdAt: "desc" }],
+        orderBy: [{ capturedAt: "desc" }, { videoTimestampMs: "asc" }, { createdAt: "desc" }, { id: "asc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

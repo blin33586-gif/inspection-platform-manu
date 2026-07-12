@@ -21,10 +21,16 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import type { ReportSummary } from "@xunjianbao/shared";
 import { getApi, getApiUrl, postJsonApi } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { TaskPhotoSelector, type SelectableTaskPhoto } from "../components/TaskPhotoSelector";
 import type { InspectionTaskRecord } from "./inspection-task-presenter";
+import {
+  effectiveReportTaskPhotoIds,
+  mergeReportTaskOptions,
+  toEditableReportDraft,
+} from "./report-edit-state";
 import { toReportPhoto } from "./report-media-adapter";
 
 type ToolKey = "pointer" | "move" | "rect" | "arrow" | "text";
@@ -42,6 +48,11 @@ interface PhotoItem {
   fileSize?: number;
   uploadedAt?: string;
 }
+
+type ReportTaskOption = Pick<
+  InspectionTaskRecord,
+  "id" | "name" | "taskDate" | "processStatus" | "report"
+>;
 
 interface ReportAnnotation {
   id: number;
@@ -93,6 +104,7 @@ interface MovingAnnotation {
 const initialAnnotations: ReportAnnotation[] = [];
 const initialPhotoItems: PhotoItem[] = [];
 const defaultCoordinateText = "31.288210, 121.491320";
+const defaultReportArea = "曲阳路街道重点区域";
 
 const toolItems: { key: ToolKey; label: string; icon: typeof MousePointer2 }[] = [
   { key: "pointer", label: "选择", icon: MousePointer2 },
@@ -244,11 +256,15 @@ export function ReportWritePage() {
   const [reportTitle, setReportTitle] = useState("曲阳路街道无人机巡检报告");
   const [reportDate, setReportDate] = useState(getTodayDateString());
   const [selectedTaskId, setSelectedTaskId] = useState(taskIdFromQuery ?? "");
-  const [taskOptions, setTaskOptions] = useState<InspectionTaskRecord[]>([]);
+  const [taskOptions, setTaskOptions] = useState<ReportTaskOption[]>([]);
   const [photoSelectorOpen, setPhotoSelectorOpen] = useState(false);
   const [selectionInitializedTaskId, setSelectionInitializedTaskId] = useState<string | null>(null);
+  const [restoredReportTaskId, setRestoredReportTaskId] = useState<string | null>(null);
+  const [restoredTaskPhotoIds, setRestoredTaskPhotoIds] = useState<string[]>([]);
+  const [restoredIssueCount, setRestoredIssueCount] = useState(0);
+  const [restoredContentSummary, setRestoredContentSummary] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [reportArea, setReportArea] = useState("曲阳路街道重点区域");
+  const [reportArea, setReportArea] = useState(defaultReportArea);
   const [activeTool, setActiveTool] = useState<ToolKey>("rect");
   const [photos, setPhotos] = useState<PhotoItem[]>(initialPhotoItems);
   const [activePhotoId, setActivePhotoId] = useState<number | null>(null);
@@ -266,6 +282,26 @@ export function ReportWritePage() {
     () => photos.flatMap((photo) => photo.taskPhotoId ? [photo.taskPhotoId] : []),
     [photos],
   );
+  const effectiveTaskPhotoIds = useMemo(() => effectiveReportTaskPhotoIds({
+    currentTaskId: selectedTaskId,
+    workspaceTaskId: selectionInitializedTaskId,
+    workspacePhotoIds: selectedTaskPhotoIds,
+    restoredTaskId: restoredReportTaskId,
+    restoredPhotoIds: restoredTaskPhotoIds,
+  }), [
+    restoredReportTaskId,
+    restoredTaskPhotoIds,
+    selectedTaskId,
+    selectedTaskPhotoIds,
+    selectionInitializedTaskId,
+  ]);
+  const selectorSelectionInitialized = selectionInitializedTaskId === selectedTaskId
+    || restoredReportTaskId === selectedTaskId;
+  const selectorInitialSelectedIds = selectionInitializedTaskId === selectedTaskId
+    ? selectedTaskPhotoIds
+    : restoredReportTaskId === selectedTaskId
+      ? restoredTaskPhotoIds
+      : [];
 
   const clearReportWorkspace = () => {
     objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
@@ -286,18 +322,19 @@ export function ReportWritePage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void getApi<{ items: InspectionTaskRecord[] }>("/inspection-tasks?pageSize=100", controller.signal)
-      .then((result) => {
-        setTaskOptions(result.items);
-        const selected = result.items.find((item) => item.id === taskIdFromQuery);
-        if (selected) {
-          clearReportWorkspace();
-          setSelectedTaskId(selected.id);
-          setSelectionInitializedTaskId(null);
-          setReportTitle(`${selected.name}综合报告`);
-          setReportDate(selected.taskDate.slice(0, 10));
-          setPhotoSelectorOpen(true);
-        }
+    const taskPage = getApi<{ items: InspectionTaskRecord[] }>(
+      "/inspection-tasks?pageSize=100",
+      controller.signal,
+    );
+    const directTask = taskIdFromQuery
+      ? getApi<ReportTaskOption>(`/inspection-tasks/${encodeURIComponent(taskIdFromQuery)}`, controller.signal)
+      : Promise.resolve(null);
+
+    void Promise.all([taskPage, directTask])
+      .then(([result, loadedTask]) => {
+        const options = mergeReportTaskOptions<ReportTaskOption>(result.items, loadedTask);
+        setTaskOptions(options);
+        if (loadedTask) setSelectedTaskId(loadedTask.id);
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -305,6 +342,46 @@ export function ReportWritePage() {
       });
     return () => controller.abort();
   }, [taskIdFromQuery]);
+
+  useEffect(() => {
+    if (!selectedTask) return;
+    const controller = new AbortController();
+
+    clearReportWorkspace();
+    setSelectionInitializedTaskId(null);
+    setRestoredReportTaskId(null);
+    setRestoredTaskPhotoIds([]);
+    setRestoredIssueCount(0);
+    setRestoredContentSummary("");
+    setReportTitle(`${selectedTask.name}综合报告`);
+    setReportDate(selectedTask.taskDate.slice(0, 10));
+    setReportArea(defaultReportArea);
+    setPhotoSelectorOpen(false);
+
+    if (!selectedTask.report?.id) {
+      setPhotoSelectorOpen(true);
+      return () => controller.abort();
+    }
+
+    void getApi<ReportSummary>(`/reports/${encodeURIComponent(selectedTask.report.id)}`, controller.signal)
+      .then((report) => {
+        const draft = toEditableReportDraft(report);
+        setReportTitle(draft.title);
+        setReportDate(draft.reportDate);
+        setReportArea(draft.reportArea);
+        setRestoredTaskPhotoIds(draft.taskPhotoIds);
+        setRestoredIssueCount(draft.issueCount);
+        setRestoredContentSummary(draft.contentSummary);
+        setRestoredReportTaskId(selectedTask.id);
+        setPhotoSelectorOpen(true);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        message.error(error instanceof Error ? error.message : "已有报告读取失败");
+      });
+
+    return () => controller.abort();
+  }, [selectedTask?.id, selectedTask?.report?.id]);
 
   const activePhoto = photos.find((item) => item.id === activePhotoId);
   const activePhotoAnnotations = activePhoto ? annotations.filter((item) => item.photoId === activePhoto.id) : [];
@@ -435,17 +512,7 @@ export function ReportWritePage() {
   };
 
   const handleTaskChange = (value: string) => {
-    if (value !== selectedTaskId) {
-      clearReportWorkspace();
-      setSelectionInitializedTaskId(null);
-    }
     setSelectedTaskId(value);
-    const task = taskOptions.find((item) => item.id === value);
-    if (task) {
-      setReportTitle(`${task.name}综合报告`);
-      setReportDate(task.taskDate.slice(0, 10));
-    }
-    setPhotoSelectorOpen(true);
   };
 
   const applyTaskPhotoSelection = (selectedPhotos: SelectableTaskPhoto[]) => {
@@ -488,6 +555,8 @@ export function ReportWritePage() {
       current !== null && retainedPhotoIds.has(current) ? current : nextPhotos[0]?.id ?? null
     ));
     setSelectionInitializedTaskId(selectedTaskId);
+    setRestoredTaskPhotoIds(taskPhotos.map((photo) => photo.taskPhotoId!));
+    setRestoredReportTaskId(selectedTaskId);
     setPhotoSelectorOpen(false);
     message.success(`已载入 ${taskPhotos.length} 张任务照片`);
   };
@@ -515,7 +584,7 @@ export function ReportWritePage() {
       message.warning("请填写巡检区域");
       return;
     }
-    if (!selectedTaskId) {
+    if (!selectedTaskId || !selectedTask) {
       message.warning("请选择报告所属任务");
       return;
     }
@@ -524,12 +593,12 @@ export function ReportWritePage() {
     try {
       await postJsonApi("/reports", {
         taskId: selectedTaskId,
-        taskPhotoIds: selectedTaskPhotoIds,
+        taskPhotoIds: effectiveTaskPhotoIds,
         title: normalizedTitle,
         reportDate: normalizedDate,
         relatedObjectName: normalizedArea,
-        issueCount: annotations.length,
-        contentSummary: Object.values(photoDescriptions).filter(Boolean).join("\n"),
+        issueCount: Math.max(restoredIssueCount, annotations.length),
+        contentSummary: Object.values(photoDescriptions).filter(Boolean).join("\n") || restoredContentSummary,
       });
       message.success("综合报告已提交，并同步到报告管理");
       navigate("/reports");
@@ -768,7 +837,7 @@ export function ReportWritePage() {
               <Button type="primary" icon={<ImagePlus size={16} />}>多选上传图片</Button>
             </Upload>
             <Button icon={<Save size={16} />} onClick={saveDraft}>保存草稿</Button>
-            <Button loading={submitting} type="primary" icon={<Send size={16} />} onClick={() => void submitReport()}>提交报告</Button>
+            <Button disabled={!selectedTask} loading={submitting} type="primary" icon={<Send size={16} />} onClick={() => void submitReport()}>提交报告</Button>
           </Space>
         )}
       />
@@ -801,11 +870,11 @@ export function ReportWritePage() {
                 options={taskOptions.map((item) => ({ label: `${item.taskDate.slice(0, 10)} · ${item.name}`, value: item.id }))}
               />
               <Button
-                disabled={!selectedTaskId}
+                disabled={!selectedTask}
                 icon={<Images size={16} />}
                 onClick={() => setPhotoSelectorOpen(true)}
               >
-                选择照片 {selectedTaskPhotoIds.length ? `(${selectedTaskPhotoIds.length})` : ""}
+                选择照片 {effectiveTaskPhotoIds.length ? `(${effectiveTaskPhotoIds.length})` : ""}
               </Button>
             </div>
           </label>
@@ -1033,10 +1102,10 @@ export function ReportWritePage() {
       </section>
 
       <TaskPhotoSelector
-        initialSelectedIds={selectedTaskPhotoIds}
+        initialSelectedIds={selectorInitialSelectedIds}
         open={photoSelectorOpen}
         preferredMediaId={preferredMediaId}
-        selectionInitialized={selectionInitializedTaskId === selectedTaskId}
+        selectionInitialized={selectorSelectionInitialized}
         task={selectedTask}
         onCancel={() => setPhotoSelectorOpen(false)}
         onConfirm={applyTaskPhotoSelection}

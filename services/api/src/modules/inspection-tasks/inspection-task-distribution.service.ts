@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 
@@ -33,19 +33,38 @@ export class InspectionTaskDistributionService {
         if (!archiveObject) throw new NotFoundException("对象档案不存在");
       }
 
-      const updated = await database.taskPhoto.update({
-        where: { id: photoId },
-        data: input.action === "archive"
-          ? { distributionStatus: "archived", archiveObjectId: archiveObject!.id }
-          : { distributionStatus: "ignored", archiveObjectId: null },
-      });
-      const pendingPhotoCount = await database.taskPhoto.count({
-        where: { taskId, distributionStatus: "pending" },
-      });
+      const photoData = input.action === "archive"
+        ? { distributionStatus: "archived", archiveObjectId: archiveObject!.id }
+        : { distributionStatus: "ignored", archiveObjectId: null };
+      let transitionedFromPending = false;
+      if (photo.distributionStatus === "pending") {
+        const transition = await database.taskPhoto.updateMany({
+          where: { id: photoId, taskId, distributionStatus: "pending" },
+          data: photoData,
+        });
+        transitionedFromPending = transition.count === 1;
+        if (!transitionedFromPending) {
+          throw new ConflictException("照片已由其他操作完成分发，请刷新后重试");
+        }
+      } else {
+        await database.taskPhoto.update({ where: { id: photoId }, data: photoData });
+      }
+
+      const updated = await database.taskPhoto.findUnique({ where: { id: photoId } });
+      if (!updated) throw new NotFoundException("任务照片不存在");
+
+      const task = transitionedFromPending
+        ? await database.inspectionTask.update({
+            where: { id: taskId },
+            data: { pendingPhotoCount: { decrement: 1 } },
+          })
+        : await database.inspectionTask.findUnique({ where: { id: taskId } });
+      if (!task) throw new NotFoundException("巡检任务不存在");
+      const pendingPhotoCount = Math.max(0, task.pendingPhotoCount);
       await database.inspectionTask.update({
         where: { id: taskId },
         data: {
-          pendingPhotoCount,
+          ...(pendingPhotoCount !== task.pendingPhotoCount ? { pendingPhotoCount } : {}),
           processStatus: pendingPhotoCount > 0 ? "ready_for_distribution" : "completed",
         },
       });

@@ -42,3 +42,29 @@ test("returns task and ordered photo ids in report detail", async () => {
   assert.deepEqual(result?.taskPhotoIds, ["photo-2", "photo-1"]);
   assert.equal(result?.contentSummary, "综合巡检结果");
 });
+
+test("includes the task id in report list rows so reports can be edited", async () => {
+  const database = {
+    inspectionReport: {
+      findMany: async () => [{
+        id: "report-1",
+        taskId: "task-1",
+        title: "7月巡检综合报告",
+        reportDate: new Date("2026-07-11T00:00:00.000Z"),
+        reportType: "comprehensive",
+        relatedObjectName: "曲阳路街道",
+        issueCount: 3,
+        fileName: null,
+        originalFileName: null,
+        mimeType: null,
+        fileSize: null,
+        processStatus: "completed",
+      }],
+    },
+  };
+  const repository = new InspectionReadRepository(database as never);
+
+  const [report] = await repository.reports();
+
+  assert.equal(report.taskId, "task-1");
+});

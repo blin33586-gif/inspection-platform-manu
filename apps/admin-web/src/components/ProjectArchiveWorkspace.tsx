@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Input, message, Modal, Spin } from "antd";
 import { Download, Pencil, Printer, Search, Trash2, UploadCloud } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getApi, getApiUrl, patchJsonApi } from "../api/client";
 import {
+  isArchiveMediaRequestCurrent,
+  isArchiveMediaResponseCurrent,
   toProjectArchiveMediaItem,
   type ArchiveTaskPhotoRecord,
   type ProjectArchiveMediaItem,
@@ -160,6 +162,10 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
   const [mediaLoading, setMediaLoading] = useState(false);
   const [pendingMediaLoading, setPendingMediaLoading] = useState(false);
   const [pushingPhotoId, setPushingPhotoId] = useState<string | null>(null);
+  const activeObjectIdRef = useRef<string | null>(activeItem?.id ?? null);
+  const linkedMediaRequestRef = useRef(0);
+  const pendingMediaRequestRef = useRef(0);
+  activeObjectIdRef.current = activeItem?.id ?? null;
   const [basicInfo, setBasicInfo] = useState<BasicInfoDraft>(() => buildBasicInfo(meta, activeItem));
   const [basicInfoDraft, setBasicInfoDraft] = useState<BasicInfoDraft>(() => buildBasicInfo(meta, activeItem));
   const pendingCount = activeItem ? Math.max(1, Math.round(activeItem.issueCount * 0.38)) : 0;
@@ -170,14 +176,46 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
     path: `/${variant === "community" ? "communities" : variant === "road" ? "roads" : "points"}`,
     items,
   }];
-  const refreshLinkedMedia = useCallback(async (signal?: AbortSignal) => {
-    if (!activeItem) return;
+  const refreshLinkedMedia = useCallback(async (objectId: string, signal?: AbortSignal) => {
+    const requestId = ++linkedMediaRequestRef.current;
     const photos = await loadArchiveMediaItems(
-      `/managed-objects/${encodeURIComponent(activeItem.id)}/photos`,
+      `/managed-objects/${encodeURIComponent(objectId)}/photos`,
       signal,
     );
-    setLinkedMediaItems(photos);
-  }, [activeItem?.id]);
+    if (isArchiveMediaRequestCurrent(
+      requestId,
+      linkedMediaRequestRef.current,
+      objectId,
+      activeObjectIdRef.current,
+    )) {
+      setLinkedMediaItems(photos);
+    }
+  }, []);
+
+  const refreshAvailableMedia = useCallback(async (objectId: string, signal?: AbortSignal) => {
+    const requestId = ++pendingMediaRequestRef.current;
+    setPendingMediaLoading(true);
+    try {
+      const photos = await loadArchiveMediaItems("/task-photos", signal);
+      if (isArchiveMediaRequestCurrent(
+        requestId,
+        pendingMediaRequestRef.current,
+        objectId,
+        activeObjectIdRef.current,
+      )) {
+        setAvailableMediaItems(photos);
+      }
+    } finally {
+      if (isArchiveMediaRequestCurrent(
+        requestId,
+        pendingMediaRequestRef.current,
+        objectId,
+        activeObjectIdRef.current,
+      )) {
+        setPendingMediaLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const nextBasicInfo = buildBasicInfo(meta, activeItem);
@@ -187,13 +225,19 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
   }, [activeItem?.id, activeItem?.relatedName, activeItem?.typeLabel, meta]);
 
   useEffect(() => {
+    linkedMediaRequestRef.current += 1;
+    pendingMediaRequestRef.current += 1;
+    setLinkedMediaItems([]);
+    setAvailableMediaItems([]);
+    setPendingMediaLoading(false);
+    setMediaModalOpen(false);
     if (!activeItem) {
-      setLinkedMediaItems([]);
       return;
     }
+    const objectId = activeItem.id;
     const controller = new AbortController();
     setMediaLoading(true);
-    void refreshLinkedMedia(controller.signal)
+    void refreshLinkedMedia(objectId, controller.signal)
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         message.error(error instanceof Error ? error.message : "档案照片读取失败");
@@ -202,31 +246,39 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
         if (!controller.signal.aborted) setMediaLoading(false);
       });
     return () => controller.abort();
-  }, [activeItem, refreshLinkedMedia]);
+  }, [activeItem?.id, refreshLinkedMedia]);
 
   const openMediaModal = async () => {
+    if (!activeItem) return;
+    const objectId = activeItem.id;
     setMediaModalOpen(true);
-    setPendingMediaLoading(true);
+    setAvailableMediaItems([]);
     try {
-      setAvailableMediaItems(await loadArchiveMediaItems("/task-photos?status=pending"));
+      await refreshAvailableMedia(objectId);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "待分发照片读取失败");
-    } finally {
-      setPendingMediaLoading(false);
+      if (isArchiveMediaResponseCurrent(objectId, activeObjectIdRef.current)) {
+        message.error(error instanceof Error ? error.message : "待分发照片读取失败");
+      }
     }
   };
 
   const pushMediaToArchive = async (media: ProjectArchiveMediaItem) => {
     if (!activeItem) return;
+    const objectId = activeItem.id;
+    const objectName = activeItem.name;
     setPushingPhotoId(media.taskPhotoId);
     try {
       await patchJsonApi(
         `/inspection-tasks/${encodeURIComponent(media.taskId)}/photos/${encodeURIComponent(media.taskPhotoId)}/distribution`,
-        { action: "archive", archiveObjectId: activeItem.id },
+        { action: "archive", archiveObjectId: objectId },
       );
-      setAvailableMediaItems((current) => current.filter((item) => item.taskPhotoId !== media.taskPhotoId));
-      await refreshLinkedMedia();
-      message.success(`${media.fileName} 已归档到 ${activeItem.name}`);
+      await Promise.all([
+        refreshLinkedMedia(objectId),
+        refreshAvailableMedia(objectId),
+      ]);
+      if (isArchiveMediaResponseCurrent(objectId, activeObjectIdRef.current)) {
+        message.success(`${media.fileName} 已归档到 ${objectName}`);
+      }
     } catch (error) {
       message.error(error instanceof Error ? error.message : "照片推送失败");
     } finally {
@@ -462,7 +514,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	                  <div className="archive-photo-visual">
 	                    <img className="archive-photo-media-image" src={photo.thumbnailUrl} alt={photo.title} />
 	                    <span className={`photo-status ${statusTone(photo.status)}`}>{photo.status}</span>
-	                    <em>{photo.capturedAt.slice(5, 16)}</em>
+	                    <em>{photo.capturedAt.startsWith("视频 ") ? photo.capturedAt : photo.capturedAt.slice(5, 16)}</em>
 	                  </div>
 	                  <strong>{photo.issueTitle}</strong>
 	                  <span className="archive-photo-source">{photo.sourceName} / {photo.fileName}</span>
@@ -481,7 +533,11 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	          <Modal
 	            title={`从媒体库推送到 ${activeItem.name}`}
 	            open={mediaModalOpen}
-	            onCancel={() => setMediaModalOpen(false)}
+            onCancel={() => {
+              pendingMediaRequestRef.current += 1;
+              setPendingMediaLoading(false);
+              setMediaModalOpen(false);
+            }}
 	            footer={null}
 	            width={760}
 	          >

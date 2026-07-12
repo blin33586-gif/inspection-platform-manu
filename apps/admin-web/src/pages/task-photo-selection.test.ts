@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   defaultTaskPhotoSelection,
   filterTaskPhotos,
+  orderedSelectedTaskPhotos,
   setTaskPhotoSelected,
+  taskPhotoEmptyDescription,
 } from "./task-photo-selection.js";
 
 const photos = [
@@ -38,5 +40,19 @@ test("toggles one photo while preserving selections from other pages", () => {
   assert.deepEqual(
     [...setTaskPhotoSelected(selected, "photo-pending", false)],
     ["photo-on-another-page"],
+  );
+});
+
+test("shows a processing message before a task has produced photos", () => {
+  assert.equal(taskPhotoEmptyDescription("queued"), "任务照片正在处理中");
+  assert.equal(taskPhotoEmptyDescription("running"), "任务照片正在处理中");
+  assert.equal(taskPhotoEmptyDescription("completed"), "当前筛选下没有照片");
+});
+
+test("preserves the saved report photo order when selection is unchanged", () => {
+  const selected = new Set(["photo-pending", "photo-archived"]);
+  assert.deepEqual(
+    orderedSelectedTaskPhotos(photos, selected, ["photo-archived", "photo-pending"]).map((photo) => photo.id),
+    ["photo-archived", "photo-pending"],
   );
 });

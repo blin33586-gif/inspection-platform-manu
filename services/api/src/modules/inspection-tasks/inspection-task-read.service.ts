@@ -109,7 +109,7 @@ export class InspectionTaskReadService {
       this.database.taskPhoto.findMany({
         where,
         include: { mediaAsset: true, archiveObject: true },
-        orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }],
+        orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

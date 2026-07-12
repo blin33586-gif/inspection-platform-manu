@@ -36,3 +36,31 @@ export function setTaskPhotoSelected(
   else next.delete(photoId);
   return next;
 }
+
+export function taskPhotoEmptyDescription(processStatus?: string) {
+  return processStatus === "queued" || processStatus === "running"
+    ? "任务照片正在处理中"
+    : "当前筛选下没有照片";
+}
+
+export function orderedSelectedTaskPhotos<T extends TaskPhotoSelectionRecord>(
+  photos: T[],
+  selectedIds: ReadonlySet<string>,
+  preferredOrder: string[],
+) {
+  const byId = new Map(photos.map((photo) => [photo.id, photo]));
+  const ordered: T[] = [];
+  const appended = new Set<string>();
+
+  preferredOrder.forEach((id) => {
+    const photo = byId.get(id);
+    if (photo && selectedIds.has(id)) {
+      ordered.push(photo);
+      appended.add(id);
+    }
+  });
+  photos.forEach((photo) => {
+    if (selectedIds.has(photo.id) && !appended.has(photo.id)) ordered.push(photo);
+  });
+  return ordered;
+}

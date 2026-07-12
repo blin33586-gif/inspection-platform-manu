@@ -60,3 +60,23 @@ test("returns paged tasks and statistics from database counts", async () => {
   });
   assert.equal(calls.find((call) => call.model === "findMany")?.input.skip, 5);
 });
+
+test("orders task photos deterministically when timestamps are tied", async () => {
+  let photoQuery: Record<string, unknown> | undefined;
+  const database = {
+    inspectionTask: { findUnique: async () => ({ id: "task-1" }) },
+    taskPhoto: {
+      findMany: async (input: Record<string, unknown>) => (photoQuery = input, []),
+      count: async () => 0,
+    },
+  };
+  const service = new InspectionTaskReadService(database as never);
+
+  await service.photos("task-1", { pageSize: "100" });
+
+  assert.deepEqual(photoQuery?.orderBy, [
+    { videoTimestampMs: "asc" },
+    { createdAt: "asc" },
+    { id: "asc" },
+  ]);
+});

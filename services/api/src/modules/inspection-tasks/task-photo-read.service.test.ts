@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TaskPhotoReadService } from "./task-photo-read.service.js";
+import { TaskPhotoReadService, type TaskPhotoQuery } from "./task-photo-read.service.js";
 
-test("lists pending task photos with task and media details", async () => {
+test("lists pending task photos with a deterministic order and browser-safe media details", async () => {
   const calls: Array<{ method: string; input: Record<string, unknown> }> = [];
   const database = {
     taskPhoto: {
@@ -18,7 +18,8 @@ test("lists pending task photos with task and media details", async () => {
   };
   const service = new TaskPhotoReadService(database as never);
 
-  const result = await service.list({ status: "pending", page: "2", pageSize: "5" });
+  const untrustedQuery = { status: "archived", page: "2", pageSize: "5" } as unknown as TaskPhotoQuery;
+  const result = await service.list(untrustedQuery);
 
   assert.deepEqual(result, { items: [{ id: "photo-1" }], page: 2, pageSize: 5, total: 6 });
   const listInput = calls.find((call) => call.method === "findMany")?.input;
@@ -26,10 +27,25 @@ test("lists pending task photos with task and media details", async () => {
   assert.equal(listInput?.skip, 5);
   assert.equal(listInput?.take, 5);
   assert.deepEqual(listInput?.include, {
-    mediaAsset: true,
+    mediaAsset: {
+      select: {
+        id: true,
+        kind: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        createdAt: true,
+      },
+    },
     archiveObject: true,
     task: { select: { id: true, name: true, taskDate: true, sourceType: true } },
   });
+  assert.deepEqual(listInput?.orderBy, [
+    { capturedAt: "desc" },
+    { videoTimestampMs: "asc" },
+    { createdAt: "desc" },
+    { id: "asc" },
+  ]);
 });
 
 test("lists only photos archived to the requested managed object", async () => {

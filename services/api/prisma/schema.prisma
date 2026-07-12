@@ -219,6 +219,8 @@ model TaskPhoto {
   reportPhotos  ReportPhoto[]
 
   @@index([taskId, distributionStatus])
+  @@index([distributionStatus, capturedAt(sort: Desc), videoTimestampMs, createdAt(sort: Desc), id], map: "task_photo_pending_feed_idx")
+  @@index([taskId, videoTimestampMs, createdAt, id], map: "task_photo_task_order_idx")
   @@index([archiveObjectId])
   @@index([capturedAt])
 }

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { toProjectArchiveMediaItem } from "./project-archive-media-adapter.js";
+import {
+  isArchiveMediaRequestCurrent,
+  isArchiveMediaResponseCurrent,
+  toProjectArchiveMediaItem,
+} from "./project-archive-media-adapter.js";
 
 test("maps a real task photo into an archive media card", () => {
   const item = toProjectArchiveMediaItem({
@@ -62,4 +66,39 @@ test("labels an unassigned manual photo as pending", () => {
   assert.equal(item.status, "待分发");
   assert.equal(item.linkedObjectName, "尚未归档");
   assert.equal(item.sourceName, "人工上传");
+});
+
+test("rejects an archive photo response after the active object changed", () => {
+  assert.equal(isArchiveMediaResponseCurrent("community-1", "community-1"), true);
+  assert.equal(isArchiveMediaResponseCurrent("community-1", "community-2"), false);
+  assert.equal(isArchiveMediaResponseCurrent("community-1", null), false);
+});
+
+test("uses the video position when an extracted frame has no capture time", () => {
+  const item = toProjectArchiveMediaItem({
+    id: "photo-frame",
+    taskId: "task-video",
+    mediaAssetId: "media-frame",
+    distributionStatus: "pending",
+    archiveObjectId: null,
+    capturedAt: null,
+    videoTimestampMs: 65_000,
+    mediaAsset: {
+      id: "media-frame",
+      originalFileName: "frame.jpg",
+      mimeType: "image/jpeg",
+      fileSize: 1024,
+      createdAt: "2026-07-11T08:00:00.000Z",
+    },
+    archiveObject: null,
+    task: { id: "task-video", name: "视频任务", taskDate: "2026-07-11", sourceType: "drone" },
+  }, "/media-frame");
+
+  assert.equal(item.capturedAt, "视频 01:05");
+});
+
+test("does not let an older request finish the loading state for a newer request", () => {
+  assert.equal(isArchiveMediaRequestCurrent(2, 2, "community-1", "community-1"), true);
+  assert.equal(isArchiveMediaRequestCurrent(1, 2, "community-1", "community-1"), false);
+  assert.equal(isArchiveMediaRequestCurrent(2, 2, "community-1", "community-2"), false);
 });
