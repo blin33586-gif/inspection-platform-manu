@@ -3,6 +3,7 @@ import { basename, relative, resolve, sep } from "node:path";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { extractArchiveImages, type ExtractedArchiveImage } from "./archive-image-extractor.js";
 import { extractVideoFrames, type ExtractedFrame } from "./ffmpeg-frame-extractor.js";
+import { enrichExtractedFrames, type EnrichedFrame } from "./frame-telemetry-enrichment.js";
 import { runTiffTileJob } from "./gdal-tile-generator.js";
 import {
   prepareInspectionImage,
@@ -46,12 +47,14 @@ interface JobRunnerHandlers {
     outputDirectory: string,
   ) => Promise<ExtractedArchiveImage[]>;
   prepareInspectionImage?: (input: PrepareInspectionImageInput) => Promise<PreparedInspectionImage>;
+  enrichExtractedFrames?: (videoPath:string, frames:ExtractedFrame[]) => Promise<{frames:EnrichedFrame[];stats:Record<string,unknown>}>;
 }
 
 export class JobRunner {
   private readonly extractVideoFramesHandler: NonNullable<JobRunnerHandlers["extractVideoFrames"]>;
   private readonly extractArchiveImagesHandler: NonNullable<JobRunnerHandlers["extractArchiveImages"]>;
   private readonly prepareInspectionImageHandler: NonNullable<JobRunnerHandlers["prepareInspectionImage"]>;
+  private readonly enrichExtractedFramesHandler: NonNullable<JobRunnerHandlers["enrichExtractedFrames"]>;
 
   constructor(
     private readonly database: PrismaClient,
@@ -61,6 +64,7 @@ export class JobRunner {
     this.extractVideoFramesHandler = handlers.extractVideoFrames ?? extractVideoFrames;
     this.extractArchiveImagesHandler = handlers.extractArchiveImages ?? extractArchiveImages;
     this.prepareInspectionImageHandler = handlers.prepareInspectionImage ?? prepareInspectionImage;
+    this.enrichExtractedFramesHandler = handlers.enrichExtractedFrames ?? enrichExtractedFrames;
   }
 
   async processNext() {
@@ -159,7 +163,8 @@ export class JobRunner {
     const inspectionTaskId = await this.resolveInspectionTaskId(input.inspectionTaskId, input.mediaId);
     const sourcePath = this.toStoragePath(input.sourcePath);
     const outputDirectory = resolve(this.storageRoot, "media", "frames", input.mediaId);
-    const frames = await this.extractVideoFramesHandler(sourcePath, outputDirectory, input.intervalSeconds);
+    const extractedFrames = await this.extractVideoFramesHandler(sourcePath, outputDirectory, input.intervalSeconds);
+    const { frames, stats } = await this.enrichExtractedFramesHandler(sourcePath, extractedFrames);
     const publicDirectory = `storage/media/frames/${input.mediaId}`;
 
     const frameRows = frames.map((frame) => ({
@@ -184,7 +189,7 @@ export class JobRunner {
           progress: 100,
           completedAt: new Date(),
           errorMessage: null,
-          outputJson: JSON.stringify({ frameCount: frames.length, frameDirectory: publicDirectory }),
+          outputJson: JSON.stringify({ frameCount: frames.length, frameDirectory: publicDirectory, ...stats }),
         },
       }),
       this.database.auditLog.create({
@@ -201,13 +206,18 @@ export class JobRunner {
     if (inspectionTaskId) {
       operations.splice(1, 0,
         this.database.taskPhoto.createMany({
-          data: frameRows.map((frame) => ({
+          data: frameRows.map((frame, index) => ({
             id: `photo-${frame.id}`,
             taskId: inspectionTaskId,
             mediaAssetId: frame.id,
             distributionStatus: "pending",
             archiveObjectId: null,
             videoTimestampMs: frame.videoTimestampMs,
+            capturedAt: frames[index].telemetry?.capturedAt,
+            latitude: frames[index].telemetry?.latitude,
+            longitude: frames[index].telemetry?.longitude,
+            absoluteAltitudeMeters: frames[index].telemetry?.absoluteAltitudeMeters,
+            relativeAltitudeMeters: frames[index].telemetry?.relativeAltitudeMeters,
           })),
           skipDuplicates: true,
         }),
@@ -220,6 +230,7 @@ export class JobRunner {
           },
         }),
       );
+      for (const frame of frames) if (frame.telemetry) operations.splice(-1,0,this.database.taskPhotoTelemetry.upsert({where:{taskPhotoId:`photo-${frameRows.find(row=>row.videoTimestampMs===frame.timestampMs)!.id}`},create:{id:`telemetry-${frameRows.find(row=>row.videoTimestampMs===frame.timestampMs)!.id}`,taskPhotoId:`photo-${frameRows.find(row=>row.videoTimestampMs===frame.timestampMs)!.id}`,source:"dji_subtitle",sourceTimestampMs:frame.telemetry.timestampMs,matchOffsetMs:frame.telemetry.matchOffsetMs,capturedAt:frame.telemetry.capturedAt,latitude:frame.telemetry.latitude,longitude:frame.telemetry.longitude,relativeAltitudeMeters:frame.telemetry.relativeAltitudeMeters,absoluteAltitudeMeters:frame.telemetry.absoluteAltitudeMeters,gimbalYawDegrees:frame.telemetry.gimbalYawDegrees,gimbalPitchDegrees:frame.telemetry.gimbalPitchDegrees,gimbalRollDegrees:frame.telemetry.gimbalRollDegrees,focalLengthMillimeters:frame.telemetry.focalLengthMillimeters,digitalZoomRatio:frame.telemetry.digitalZoomRatio},update:{sourceTimestampMs:frame.telemetry.timestampMs,matchOffsetMs:frame.telemetry.matchOffsetMs,capturedAt:frame.telemetry.capturedAt,latitude:frame.telemetry.latitude,longitude:frame.telemetry.longitude,relativeAltitudeMeters:frame.telemetry.relativeAltitudeMeters,absoluteAltitudeMeters:frame.telemetry.absoluteAltitudeMeters,gimbalYawDegrees:frame.telemetry.gimbalYawDegrees,gimbalPitchDegrees:frame.telemetry.gimbalPitchDegrees,gimbalRollDegrees:frame.telemetry.gimbalRollDegrees,focalLengthMillimeters:frame.telemetry.focalLengthMillimeters,digitalZoomRatio:frame.telemetry.digitalZoomRatio}}));
     }
     await this.database.$transaction(operations);
   }
