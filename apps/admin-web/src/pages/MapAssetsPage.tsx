@@ -2,15 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Form, Input, message, Table, Tag, Upload } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { UploadFile } from "antd/es/upload/interface";
-import type { MapAssetSummary, PageResult } from "@xunjianbao/shared";
+import type { MapAssetPageResult, MapAssetSummary } from "@xunjianbao/shared";
 import { postFormApi, withQuery } from "../api/client";
 import { getApiErrorCopy } from "../api/api-error-copy";
+import { getCurrentProject } from "../auth/session";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 import {
   formatMapFileSize,
   isSupportedMapFile,
   mapMapHistoryResponse,
+  MapUploadRequestGate,
+  presentMapFailureReason,
   shouldPollMapHistory,
   type MapHistoryRow,
 } from "./map-upload-presenter";
@@ -20,11 +23,12 @@ interface MapUploadForm {
   file: UploadFile[];
 }
 
-const emptyMapHistory: PageResult<MapAssetSummary> = {
+const emptyMapHistory: MapAssetPageResult = {
   items: [],
   page: 1,
   pageSize: 20,
   total: 0,
+  hasProcessing: false,
 };
 
 const mapStatusColors: Record<string, string> = {
@@ -40,25 +44,32 @@ export function MapAssetsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const uploadSequence = useRef(0);
+  const projectId = getCurrentProject()?.id ?? "";
+  const uploadGate = useRef(new MapUploadRequestGate());
   const mounted = useRef(true);
-  const historyResource = useApiResource<PageResult<MapAssetSummary>>(
+  const historyResource = useApiResource<MapAssetPageResult>(
     withQuery("/map-assets", { page, pageSize }),
     emptyMapHistory,
+    projectId,
   );
   const history = useMemo(
     () => mapMapHistoryResponse(historyResource.data),
     [historyResource.data],
   );
-  const polling = shouldPollMapHistory(historyResource.data.items);
+  const polling = shouldPollMapHistory(historyResource.data);
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      uploadSequence.current += 1;
+      uploadGate.current.abortCurrent();
     };
   }, []);
+
+  useEffect(() => {
+    setSubmitting(false);
+    return () => uploadGate.current.abortCurrent();
+  }, [projectId]);
 
   useEffect(() => {
     if (!polling) return undefined;
@@ -77,24 +88,25 @@ export function MapAssetsPage() {
       return;
     }
 
-    const requestId = ++uploadSequence.current;
+    const controller = uploadGate.current.tryStart();
+    if (!controller) return;
     const formData = new FormData();
     formData.append("file", uploadFile);
     formData.append("name", values.name.trim());
 
     setSubmitting(true);
     try {
-      await postFormApi<MapAssetSummary>("/map-assets/upload", formData);
-      if (!mounted.current || requestId !== uploadSequence.current) return;
+      await postFormApi<MapAssetSummary>("/map-assets/upload", formData, controller.signal);
+      if (!mounted.current || controller.signal.aborted) return;
       message.success("地图已上传，后台处理完成后将自动设为当前地图");
       form.resetFields();
       setPage(1);
       historyResource.reload();
     } catch (error) {
-      if (!mounted.current || requestId !== uploadSequence.current) return;
-      message.error(error instanceof Error ? error.message : "地图上传失败");
+      if (!mounted.current || controller.signal.aborted) return;
+      message.error(presentMapFailureReason(error instanceof Error ? error.message : null));
     } finally {
-      if (mounted.current && requestId === uploadSequence.current) setSubmitting(false);
+      if (uploadGate.current.finish(controller) && mounted.current) setSubmitting(false);
     }
   };
 
@@ -123,7 +135,7 @@ export function MapAssetsPage() {
         <div className="map-history-status">
           <Tag color={record.processStatus === "published" && !record.isActive ? "default" : mapStatusColors[record.processStatus] ?? "default"}>{value}</Tag>
           {record.processStatus === "failed"
-            ? <span className="map-history-error">{record.errorMessage || "未返回失败原因"}</span>
+            ? <span className="map-history-error">{presentMapFailureReason(record.errorMessage)}</span>
             : null}
         </div>
       ),

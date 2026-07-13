@@ -158,7 +158,13 @@ test("isolates map detail by the selected project", async () => {
     mapAsset: {
       findUnique: async (input: Record<string, unknown>) => {
         query = input;
-        return { ...mapRecord, uploadedBy: null, activatedAt: null, errorMessage: "瓦片包结构必须为 z/x/y.png" };
+        return {
+          ...mapRecord,
+          uploadedBy: null,
+          activatedAt: null,
+          processStatus: "processed",
+          errorMessage: "gdal2tiles.py failed: /Users/worker/private/source.tif\nTraceback: secret",
+        };
       },
     },
   };
@@ -169,5 +175,25 @@ test("isolates map detail by the selected project", async () => {
   assert.deepEqual(query?.where, { id: "map-1", projectId: "quyang" });
   assert.equal(asset?.uploadedByName, null);
   assert.equal(asset?.activatedAt, null);
-  assert.equal(asset?.errorMessage, "瓦片包结构必须为 z/x/y.png");
+  assert.equal(asset?.processStatus, "published");
+  assert.equal(asset?.errorMessage, "地图处理失败，请重新上传；如仍失败请联系管理员");
+});
+
+test("checks active map processing only inside the selected project", async () => {
+  let query: Record<string, unknown> | undefined;
+  const database = {
+    mapAsset: {
+      count: async (input: Record<string, unknown>) => {
+        query = input;
+        return 1;
+      },
+    },
+  };
+  const repository = new InspectionReadRepository(database as never);
+
+  assert.equal(await repository.hasActiveMapProcessing(), true);
+  assert.deepEqual(query?.where, {
+    projectId: "quyang",
+    processStatus: { in: ["queued", "running", "processing"] },
+  });
 });

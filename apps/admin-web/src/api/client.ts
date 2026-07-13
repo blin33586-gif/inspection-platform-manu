@@ -42,9 +42,10 @@ export async function getApi<T>(path: string, signal?: AbortSignal): Promise<T> 
   return body.data;
 }
 
-export async function postFormApi<T>(path: string, formData: FormData): Promise<T> {
+export async function postFormApi<T>(path: string, formData: FormData, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: "POST",
+    signal,
     headers: authHeaders(),
     body: formData,
   });

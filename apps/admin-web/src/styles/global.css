@@ -375,7 +375,6 @@ h4 {
   min-width: 132px;
 }
 
-.map-filter-controls,
 .audit-filter-controls {
   min-width: min(100%, 520px);
 }
@@ -2884,17 +2883,12 @@ h4 {
 
 .map-history-error {
   color: var(--red-500);
+  display: -webkit-box;
+  max-width: 320px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   line-height: 1.5;
-}
-
-.coordinate-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.coordinate-grid .ant-input-number {
-  width: 100%;
 }
 
 .project-filter-row {
@@ -5189,7 +5183,6 @@ h4 {
   .detail-layout,
   .detail-kpis,
   .map-upload-form,
-  .coordinate-grid,
   .report-write-basic,
   .report-write-workspace,
   .project-archive-shell,

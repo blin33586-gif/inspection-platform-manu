@@ -2,6 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MapHotAreaService } from "./map-hot-area.service.js";
 
+test("converts a legacy uploaded map to the canonical published state when adding a hot area", async () => {
+  let mapUpdate: Record<string, unknown> | undefined;
+  const database = {
+    mapAsset: {
+      findUnique: async () => ({ id: "map-legacy", name: "旧地图", processStatus: "uploaded" }),
+      update: async (input: Record<string, unknown>) => { mapUpdate = input; return input; },
+    },
+    mapHotArea: {
+      create: async () => ({
+        id: "hot-area-1",
+        label: "入口",
+        objectType: "point",
+        objectId: null,
+        x: null,
+        y: null,
+        width: null,
+        height: null,
+        polygon: null,
+        color: null,
+      }),
+    },
+  };
+  const service = new MapHotAreaService(database as never, { record: async () => undefined } as never);
+
+  await service.create("map-legacy", { label: "入口", objectType: "point" });
+
+  assert.equal((mapUpdate?.data as Record<string, unknown>).processStatus, "published");
+});
+
 test("updates a named community area without changing its linked archive", async () => {
   const updateCalls: Array<{ data: Record<string, unknown> }> = [];
   const auditRecords: Array<{ action: string; summary: string }> = [];

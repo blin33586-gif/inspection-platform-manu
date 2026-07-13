@@ -144,6 +144,24 @@ test("Multer accepts supported extensions case-insensitively on the unified rout
   }
 });
 
+test("map history response exposes project-wide processing outside the current page", async () => {
+  const controller = new mapAssetsController.MapAssetsController(
+    {} as never,
+    {
+      mapAssets: async () => [{ id: "map-terminal", processStatus: "published" }],
+      hasActiveMapProcessing: async () => true,
+    } as never,
+    {} as never,
+    {} as never,
+  );
+
+  const response = await controller.list({ page: "2", pageSize: "1" });
+
+  assert.equal(response.data.hasProcessing, true);
+  assert.equal(response.data.page, 2);
+  assert.deepEqual(response.data.items, []);
+});
+
 test("the legacy tile-package Multer boundary remains ZIP-only", () => {
   const fileFilter = (mapAssetsController as unknown as {
     TILE_PACKAGE_UPLOAD_OPTIONS?: { fileFilter?: TestFileFilter };
@@ -309,7 +327,7 @@ test("atomically rolls back queued history and preserves a failed history when j
   assert.equal(records.size, 1);
   const [failedRecord] = records.values();
   assert.equal(failedRecord.processStatus, "failed");
-  assert.equal(failedRecord.errorMessage, "queue unavailable");
+  assert.equal(failedRecord.errorMessage, "地图处理失败，请重新上传；如仍失败请联系管理员");
   assert.equal(await readFile(storedPath, "utf8"), "map-source");
   await rm(storedPath, { force: true });
   await rm(tempDirectory, { recursive: true, force: true });

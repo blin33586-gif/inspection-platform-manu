@@ -149,6 +149,44 @@ export interface MapAssetSummary {
   errorMessage?: string | null;
 }
 
+export type MapAssetProcessStatus = "queued" | "running" | "published" | "failed";
+
+export interface MapAssetPageResult extends PageResult<MapAssetSummary> {
+  hasProcessing: boolean;
+}
+
+export const MAP_PROCESSING_FAILURE_FALLBACK = "地图处理失败，请重新上传；如仍失败请联系管理员";
+
+export function normalizeMapAssetProcessStatus(status: string): MapAssetProcessStatus {
+  if (status === "queued" || status === "running" || status === "published" || status === "failed") return status;
+  if (status === "processing") return "running";
+  if (status === "processed" || status === "uploaded" || status === "ready") return "published";
+  return "failed";
+}
+
+export function sanitizeMapProcessingFailureMessage(value: unknown) {
+  const message = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  if (!message) return MAP_PROCESSING_FAILURE_FALLBACK;
+  if (/ZIP 条目数量超过|ZIP 展开大小超过/.test(message)) return "ZIP 瓦片包过大，请精简后重新上传";
+  if (/重复瓦片坐标/.test(message)) return "ZIP 包含重复瓦片坐标，请检查后重新上传";
+  if (/瓦片路径无效|瓦片目录结构无效|仅支持 z\/x\/y|瓦片坐标超出有效范围/.test(message)) {
+    return "ZIP 瓦片目录必须为 z/x/y.png，且坐标有效";
+  }
+  if (/PNG 内容无效/.test(message)) return "ZIP 中包含无效 PNG 瓦片，请检查后重新上传";
+  if (/未找到 PNG 瓦片/.test(message)) return "ZIP 中未找到有效 PNG 瓦片";
+  if (/GDAL 未生成有效/.test(message)) return "TIF 未生成有效地图瓦片，请检查坐标系和图像内容";
+  if (
+    /gdal|proj(?:ection)?|traceback|stderr|prisma|sql|database|\b(?:select|insert|update|delete)\b/i.test(message)
+    || /(?:^|\s)(?:\/[A-Za-z0-9._-]+){2,}/.test(message)
+    || /[A-Za-z]:\\/.test(message)
+    || /\bat\s+\S+\s*\(/.test(message)
+  ) {
+    return MAP_PROCESSING_FAILURE_FALLBACK;
+  }
+  if (!/[\u3400-\u9fff]/.test(message)) return MAP_PROCESSING_FAILURE_FALLBACK;
+  return message.slice(0, 120) || MAP_PROCESSING_FAILURE_FALLBACK;
+}
+
 export interface TileMapMetadata {
   minZoom: number;
   maxZoom: number;

@@ -73,7 +73,7 @@ export class MapHotAreaService {
       where: { id: mapAssetId, projectId },
       data: {
         hotAreaCount: { increment: 1 },
-        ...(mapAsset.processStatus === "uploaded" ? { processStatus: "processed" } : {}),
+        ...(mapAsset.processStatus === "uploaded" ? { processStatus: "published" } : {}),
       },
     });
 

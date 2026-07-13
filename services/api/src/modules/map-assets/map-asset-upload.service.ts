@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { createTiffTileJob } from "@xunjianbao/map-core";
+import { sanitizeMapProcessingFailureMessage } from "@xunjianbao/shared";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import { currentIdentity, currentProjectId } from "../auth/project-context.js";
@@ -162,7 +163,7 @@ export class MapAssetUploadService {
         throw error;
       }
 
-      const errorMessage = error instanceof Error ? error.message : "地图处理任务入队失败";
+      const errorMessage = sanitizeMapProcessingFailureMessage(error instanceof Error ? error.message : error);
       try {
         await this.database.mapAsset.create({
           data: { ...assetData, processStatus: "failed", errorMessage },

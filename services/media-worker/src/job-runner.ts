@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, rename, rm } from "node:fs/promises";
 import { basename, relative, resolve, sep } from "node:path";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import type { TileMapMetadata } from "@xunjianbao/shared";
+import { sanitizeMapProcessingFailureMessage, type TileMapMetadata } from "@xunjianbao/shared";
 import { extractArchiveImages, type ExtractedArchiveImage } from "./archive-image-extractor.js";
 import { extractVideoFrames, type ExtractedFrame } from "./ffmpeg-frame-extractor.js";
 import { enrichExtractedFrames, type EnrichedFrame } from "./frame-telemetry-enrichment.js";
@@ -100,6 +100,10 @@ export class JobRunner {
 
       try {
         const projectId = job.projectId || "quyang";
+        if (job.jobType === "tiff_tile" || job.jobType === "map_tile_package") {
+          const mapAssetId = this.readMapAssetId(job.inputJson);
+          if (mapAssetId) await this.markMapJobRunning(projectId, mapAssetId);
+        }
         if (job.jobType === "tiff_tile") await this.processTiffJob(job.id, projectId, job.inputJson);
         else if (job.jobType === "map_tile_package") await this.processMapTilePackageJob(job.id, projectId, job.inputJson);
         else if (job.jobType === "frame_extract") await this.processFrameJob(job.id, projectId, job.inputJson);
@@ -141,14 +145,14 @@ export class JobRunner {
   }
 
   private async failMapJob(jobId: string, projectId: string, mapAssetId: string, error: unknown) {
-    const errorMessage = this.errorMessage(error);
+    const errorMessage = sanitizeMapProcessingFailureMessage(error instanceof Error ? error.message : error);
     await Promise.allSettled([
       Promise.resolve().then(() => this.database.mediaProcessingJob.update({
         where: { id: jobId },
         data: { status: "failed", errorMessage },
       })),
       Promise.resolve().then(() => this.database.mapAsset.updateMany({
-        where: { id: mapAssetId, projectId, processStatus: "queued" },
+        where: { id: mapAssetId, projectId, processStatus: { in: ["queued", "running"] } },
         data: { processStatus: "failed", errorMessage, isActive: false },
       })),
     ]);
@@ -156,6 +160,13 @@ export class JobRunner {
 
   private errorMessage(error: unknown) {
     return error instanceof Error ? error.message.slice(0, 1000) : "媒体处理失败";
+  }
+
+  private async markMapJobRunning(projectId: string, mapAssetId: string) {
+    await this.database.mapAsset.updateMany({
+      where: { id: mapAssetId, projectId, processStatus: "queued" },
+      data: { processStatus: "running", errorMessage: null },
+    });
   }
 
   private async claimOne() {
@@ -307,7 +318,9 @@ export class JobRunner {
 
     const expectedSourceType = jobType === "tiff_tile" ? "tiff" : "tile";
     if (mapAsset.sourceType !== expectedSourceType) throw new Error("地图任务类型与资产源类型不匹配");
-    if (mapAsset.processStatus !== "queued") throw new Error("地图资产当前处理状态不允许执行该任务");
+    if (mapAsset.processStatus !== "queued" && mapAsset.processStatus !== "running") {
+      throw new Error("地图资产当前处理状态不允许执行该任务");
+    }
     if (!mapAsset.storagePath) throw new Error("地图资产源文件路径缺失");
 
     const payloadSourcePath = this.toStoragePath(input.sourcePath);

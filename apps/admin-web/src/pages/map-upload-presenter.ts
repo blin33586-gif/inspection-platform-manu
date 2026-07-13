@@ -1,4 +1,11 @@
-import type { MapAssetSummary, PageResult } from "@xunjianbao/shared";
+import {
+  MAP_PROCESSING_FAILURE_FALLBACK,
+  normalizeMapAssetProcessStatus,
+  sanitizeMapProcessingFailureMessage,
+  type MapAssetPageResult,
+  type MapAssetSummary,
+  type PageResult,
+} from "@xunjianbao/shared";
 
 type MapProcessingState = Pick<MapAssetSummary, "processStatus" | "isActive">;
 
@@ -17,12 +24,12 @@ export interface MapHistoryRow {
 }
 
 export function mapStatusLabel(map: MapProcessingState) {
-  if (map.processStatus === "published" && map.isActive) return "当前使用";
-  if (map.processStatus === "published") return "历史版本";
-  if (map.processStatus === "queued") return "等待处理";
-  if (map.processStatus === "running" || map.processStatus === "processing") return "处理中";
-  if (map.processStatus === "failed") return "处理失败";
-  return "状态未知";
+  const status = normalizeMapAssetProcessStatus(map.processStatus);
+  if (status === "published" && map.isActive) return "当前使用";
+  if (status === "published") return "历史版本";
+  if (status === "queued") return "等待处理";
+  if (status === "running") return "处理中";
+  return "处理失败";
 }
 
 export function isSupportedMapFile(fileName: string) {
@@ -43,11 +50,40 @@ export function formatMapFileSize(bytes: number | null) {
   return `${Number(value.toFixed(1))} ${units[unitIndex]}`;
 }
 
-export function shouldPollMapHistory(maps: Array<Pick<MapAssetSummary, "processStatus">>) {
-  return maps.some((map) => ["queued", "running", "processing"].includes(map.processStatus));
+export function shouldPollMapHistory(history: {
+  hasProcessing: boolean;
+  items: Array<Pick<MapAssetSummary, "processStatus">>;
+}) {
+  return history.hasProcessing;
 }
 
-export function mapMapHistoryResponse(history: PageResult<MapAssetSummary>): PageResult<MapHistoryRow> {
+export function presentMapFailureReason(value: string | null | undefined) {
+  return sanitizeMapProcessingFailureMessage(value ?? MAP_PROCESSING_FAILURE_FALLBACK);
+}
+
+export class MapUploadRequestGate {
+  private current: AbortController | null = null;
+
+  tryStart() {
+    if (this.current) return null;
+    this.current = new AbortController();
+    return this.current;
+  }
+
+  finish(controller: AbortController) {
+    if (this.current !== controller) return false;
+    this.current = null;
+    return true;
+  }
+
+  abortCurrent() {
+    const current = this.current;
+    this.current = null;
+    current?.abort();
+  }
+}
+
+export function mapMapHistoryResponse(history: MapAssetPageResult): PageResult<MapHistoryRow> & { hasProcessing: boolean } {
   return {
     ...history,
     items: history.items.map((map) => ({
@@ -58,10 +94,10 @@ export function mapMapHistoryResponse(history: PageResult<MapAssetSummary>): Pag
       fileSize: map.fileSize ?? null,
       uploadedByName: map.uploadedByName || "-",
       uploadedAt: map.createdAt,
-      processStatus: map.processStatus,
+      processStatus: normalizeMapAssetProcessStatus(map.processStatus),
       statusLabel: mapStatusLabel(map),
       isActive: map.isActive === true,
-      errorMessage: map.errorMessage ?? null,
+      errorMessage: map.processStatus === "failed" ? presentMapFailureReason(map.errorMessage) : null,
     })),
   };
 }

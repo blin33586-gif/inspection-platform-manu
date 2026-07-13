@@ -151,8 +151,8 @@ async function main() {
 
   await prisma.mapAsset.createMany({
     data: [
-      { id: "map-street-main", name: "曲阳路街道总览图", mapType: "街道总览", sourceType: "image", fileName: "quyang-street-main.png", processStatus: "processed", hotAreaCount: 6 },
-      { id: "map-yutian", name: "玉田新村小区示意图", mapType: "小区地图", sourceType: "tiff", fileName: "yutian-community.tif", processStatus: "processed", hotAreaCount: 3 },
+      { id: "map-street-main", name: "曲阳路街道总览图", mapType: "街道总览", sourceType: "image", fileName: "quyang-street-main.png", processStatus: "published", hotAreaCount: 6 },
+      { id: "map-yutian", name: "玉田新村小区示意图", mapType: "小区地图", sourceType: "tiff", fileName: "yutian-community.tif", processStatus: "published", hotAreaCount: 3 },
     ],
   });
 

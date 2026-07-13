@@ -1,5 +1,16 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { DashboardSummary, IssueStatus, IssueSummary, ManagedObjectSummary, MapAssetSummary, PointSummary, ReportSummary, TileMapMetadata } from "@xunjianbao/shared";
+import {
+  normalizeMapAssetProcessStatus,
+  sanitizeMapProcessingFailureMessage,
+  type DashboardSummary,
+  type IssueStatus,
+  type IssueSummary,
+  type ManagedObjectSummary,
+  type MapAssetSummary,
+  type PointSummary,
+  type ReportSummary,
+  type TileMapMetadata,
+} from "@xunjianbao/shared";
 import { currentProjectId } from "../modules/auth/project-context.js";
 import { DatabaseService } from "./database.service.js";
 
@@ -305,6 +316,15 @@ export class InspectionReadRepository {
     return assets.map((asset) => this.toMapAssetSummary(asset));
   }
 
+  async hasActiveMapProcessing() {
+    return (await this.database.mapAsset.count({
+      where: {
+        projectId: currentProjectId(),
+        processStatus: { in: ["queued", "running", "processing"] },
+      },
+    })) > 0;
+  }
+
   async mapAsset(id: string) {
     const asset = await this.database.mapAsset.findUnique({
       where: { id, projectId: currentProjectId() },
@@ -407,12 +427,12 @@ export class InspectionReadRepository {
       fileSize: asset.fileSize,
       tileMetadata: this.parseTileMetadata(asset.tileMetadata),
       isActive: asset.isActive,
-      processStatus: asset.processStatus,
+      processStatus: normalizeMapAssetProcessStatus(asset.processStatus),
       hotAreaCount: asset.hotAreaCount,
       uploadedByName: asset.uploadedBy?.name ?? null,
       createdAt: asset.createdAt.toISOString(),
       activatedAt: asset.activatedAt?.toISOString() ?? null,
-      errorMessage: asset.errorMessage,
+      errorMessage: asset.errorMessage === null ? null : sanitizeMapProcessingFailureMessage(asset.errorMessage),
     };
   }
 

@@ -54,11 +54,15 @@ export class MapAssetsController {
 
   @Get()
   async list(@Query() query: { keyword?: string; mapType?: string; processStatus?: string; page?: string; pageSize?: string }) {
-    return ok(paged(await this.readRepository.mapAssets({
-      keyword: query.keyword,
-      mapType: query.mapType,
-      processStatus: query.processStatus,
-    }), query));
+    const [items, hasProcessing] = await Promise.all([
+      this.readRepository.mapAssets({
+        keyword: query.keyword,
+        mapType: query.mapType,
+        processStatus: query.processStatus,
+      }),
+      this.readRepository.hasActiveMapProcessing(),
+    ]);
+    return ok({ ...paged(items, query), hasProcessing });
   }
 
   @Post("upload")

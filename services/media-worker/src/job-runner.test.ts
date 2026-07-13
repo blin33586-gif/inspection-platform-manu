@@ -187,9 +187,13 @@ test("successfully extracts a map package and atomically activates it only for i
     assert.deepEqual((findFirstCalls[0].where as Record<string, unknown>).jobType, {
       in: ["tiff_tile", "map_tile_package", "frame_extract", "archive_extract", "image_prepare"],
     });
-    assert.deepEqual(deactivations[0], {
+    assert.deepEqual(deactivations.find((input) => (input.where as Record<string, unknown>).isActive === true), {
       where: { projectId: "jinshan", isActive: true },
       data: { isActive: false },
+    });
+    assert.deepEqual(deactivations.find((input) => (input.data as Record<string, unknown>).processStatus === "running"), {
+      where: { id: "map-new", projectId: "jinshan", processStatus: "queued" },
+      data: { processStatus: "running", errorMessage: null },
     });
     assert.deepEqual(activations[0].where, { id: "map-new", projectId: "jinshan" });
     assert.equal((activations[0].data as Record<string, unknown>).isActive, true);
@@ -296,21 +300,31 @@ test("failed map processing cleans partial outputs, preserves the source and nev
     extractTilePackage: async ({ outputDirectory }) => {
       await mkdir(outputDirectory, { recursive: true });
       await writeFile(join(outputDirectory, "partial.png"), "partial");
-      throw new Error("瓦片包包含无效路径");
+      throw new Error("gdal2tiles.py failed: /Users/worker/private/source.tif\nTraceback: secret");
     },
   });
 
   try {
     assert.equal(await runner.processNext(), true);
     assert.equal(deactivateCalls, 0);
-    assert.deepEqual(mapUpdates[0].where, {
+    const failedUpdate = mapUpdates.find((input) => (
+      (input.data as Record<string, unknown>).processStatus === "failed"
+    ));
+    assert.ok(failedUpdate);
+    assert.deepEqual(failedUpdate.where, {
       id: "map-failed",
       projectId: "jinshan",
-      processStatus: "queued",
+      processStatus: { in: ["queued", "running"] },
     });
-    assert.equal((mapUpdates[0].data as Record<string, unknown>).processStatus, "failed");
-    assert.match(String((mapUpdates[0].data as Record<string, unknown>).errorMessage), /无效路径/);
+    assert.equal(
+      (failedUpdate.data as Record<string, unknown>).errorMessage,
+      "地图处理失败，请重新上传；如仍失败请联系管理员",
+    );
     assert.equal((jobUpdates[0].data as Record<string, unknown>).status, "failed");
+    assert.equal(
+      (jobUpdates[0].data as Record<string, unknown>).errorMessage,
+      "地图处理失败，请重新上传；如仍失败请联系管理员",
+    );
     await assert.rejects(() => stat(join(storageRoot, "map-tiles/.tmp-map-failed")), { code: "ENOENT" });
     await assert.rejects(() => stat(join(storageRoot, "map-tiles/map-failed")), { code: "ENOENT" });
     assert.equal(await readFile(sourcePath, "utf8"), "source-retained");
@@ -598,7 +612,12 @@ test("marks the job failed even when persisting the map asset error fails", asyn
         "jinshan",
         "storage/map-assets/map-asset-update-failed.zip",
       ),
-      updateMany: () => { throw new Error("地图错误状态写入失败"); },
+      updateMany: (input: Record<string, unknown>) => {
+        if ((input.data as Record<string, unknown>).processStatus === "failed") {
+          throw new Error("地图错误状态写入失败");
+        }
+        return input;
+      },
       update: () => { throw new Error("地图错误状态写入失败"); },
     },
     auditLog: { create: async (input: unknown) => input },
