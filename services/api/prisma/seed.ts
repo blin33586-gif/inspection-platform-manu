@@ -10,16 +10,6 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
-  await prisma.auditLog.deleteMany();
-  await prisma.mapHotArea.deleteMany();
-  await prisma.mapAsset.deleteMany();
-  await prisma.inspectionReport.deleteMany();
-  await prisma.issueAttachment.deleteMany();
-  await prisma.issue.deleteMany();
-  await prisma.managedObject.deleteMany();
-  await prisma.issueCategoryStat.deleteMany();
-  await prisma.dashboardMetric.deleteMany();
-
   await prisma.project.upsert({
     where: { id: "quyang" },
     update: {},
@@ -65,7 +55,7 @@ async function main() {
   };
   await prisma.userAccount.upsert({
     where: { id: "platform-admin" },
-    update: administratorData,
+    update: {},
     create: { id: "platform-admin", ...administratorData },
   });
 
@@ -79,7 +69,7 @@ async function main() {
   };
   await prisma.userAccount.upsert({
     where: { id: "legacy-member" },
-    update: memberData,
+    update: {},
     create: { id: "legacy-member", ...memberData },
   });
   await prisma.projectMembership.upsert({
@@ -94,6 +84,7 @@ async function main() {
   });
 
   await prisma.dashboardMetric.createMany({
+    skipDuplicates: true,
     data: [
       { projectId: "quyang", key: "inspectionsThisMonth", label: "本月巡检", value: 18 },
       { projectId: "quyang", key: "issuesThisMonth", label: "本月发现问题", value: 126 },
@@ -105,6 +96,7 @@ async function main() {
   });
 
   await prisma.issueCategoryStat.createMany({
+    skipDuplicates: true,
     data: [
       { projectId: "quyang", id: "stat-flying-wire", category: "飞线整治", value: 32, sort: 1 },
       { projectId: "quyang", id: "stat-occupy-road", category: "占道经营", value: 26, sort: 2 },
@@ -117,6 +109,7 @@ async function main() {
   });
 
   await prisma.managedObject.createMany({
+    skipDuplicates: true,
     data: [
       { id: "c-yutian", name: "玉田新村", objectType: "community", status: "待复查", issueCount: 12, reportCount: 4 },
       { id: "c-chifeng", name: "赤峰小区", objectType: "community", status: "重点", issueCount: 9, reportCount: 3 },
@@ -133,6 +126,7 @@ async function main() {
   });
 
   await prisma.issue.createMany({
+    skipDuplicates: true,
     data: [
       { id: "is-001", title: "3 号楼外立面飞线充电", objectId: "c-yutian", category: "飞线", status: "pending", severity: "medium", foundAt: new Date("2026-06-24") },
       { id: "is-002", title: "沿街门头广告牌松动", objectId: "r-quyang", category: "广告牌", status: "processing", severity: "normal", foundAt: new Date("2026-06-22") },
@@ -142,6 +136,7 @@ async function main() {
   });
 
   await prisma.inspectionReport.createMany({
+    skipDuplicates: true,
     data: [
       { id: "rp-0624", title: "玉田新村飞线与堆物巡检报告", reportDate: new Date("2026-06-24"), reportType: "community", relatedObjectId: "c-yutian", relatedObjectName: "玉田新村", issueCount: 12 },
       { id: "rp-0622", title: "曲阳路沿街广告牌巡检报告", reportDate: new Date("2026-06-22"), reportType: "road", relatedObjectId: "r-quyang", relatedObjectName: "曲阳路", issueCount: 9 },
@@ -150,6 +145,7 @@ async function main() {
   });
 
   await prisma.mapAsset.createMany({
+    skipDuplicates: true,
     data: [
       { id: "map-street-main", name: "曲阳路街道总览图", mapType: "街道总览", sourceType: "image", fileName: "quyang-street-main.png", processStatus: "published", hotAreaCount: 6 },
       { id: "map-yutian", name: "玉田新村小区示意图", mapType: "小区地图", sourceType: "tiff", fileName: "yutian-community.tif", processStatus: "published", hotAreaCount: 3 },
@@ -157,6 +153,7 @@ async function main() {
   });
 
   await prisma.mapHotArea.createMany({
+    skipDuplicates: true,
     data: [
       { id: "ha-yutian", mapAssetId: "map-street-main", label: "玉田新村", objectType: "community", objectId: "c-yutian", x: 18, y: 32, width: 24, height: 18 },
       { id: "ha-quyang", mapAssetId: "map-street-main", label: "曲阳路", objectType: "road", objectId: "r-quyang", x: 46, y: 50, width: 20, height: 8 },
