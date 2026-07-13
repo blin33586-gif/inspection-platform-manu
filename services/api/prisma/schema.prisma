@@ -357,9 +357,13 @@ model AuditLog {
   targetType String
   targetId   String?
   summary    String
+  reviewStatus String?
+  reviewedBy   String?
+  reviewedAt   DateTime?
   createdAt  DateTime @default(now())
 
   @@index([action])
   @@index([targetType])
   @@index([createdAt])
+  @@index([reviewStatus])
 }

@@ -47,7 +47,15 @@ export function Shell() {
                 {item.label}
               </NavLink>
             ))}
-            <div className={`nav-menu ${isProjectActive ? "active" : ""} ${isProjectMenuOpen ? "open" : ""}`}>
+            <div
+              className={`nav-menu ${isProjectActive ? "active" : ""} ${isProjectMenuOpen ? "open" : ""}`}
+              onMouseEnter={() => setIsProjectMenuOpen(true)}
+              onMouseLeave={() => setIsProjectMenuOpen(false)}
+              onFocus={() => setIsProjectMenuOpen(true)}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setIsProjectMenuOpen(false);
+              }}
+            >
               <button
                 aria-expanded={isProjectMenuOpen}
                 aria-haspopup="menu"

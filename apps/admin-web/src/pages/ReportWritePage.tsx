@@ -672,7 +672,7 @@ export function ReportWritePage() {
 
     setSubmitting(true);
     try {
-      await postJsonApi("/reports", {
+      const submitted = await postJsonApi<ReportSummary>("/reports", {
         taskId: selectedTaskId,
         taskPhotoIds: effectiveTaskPhotoIds,
         title: normalizedTitle,
@@ -682,7 +682,7 @@ export function ReportWritePage() {
         contentSummary: Object.values(photoDescriptions).filter(Boolean).join("\n") || restoredContentSummary,
       });
       message.success("综合报告已提交，并同步到报告管理");
-      navigate("/reports");
+      navigate(`/reports/${submitted.id}`);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "报告提交失败");
     } finally {

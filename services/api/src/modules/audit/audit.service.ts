@@ -53,6 +53,9 @@ export class AuditService {
       targetType: log.targetType,
       targetId: log.targetId,
       summary: log.summary,
+      reviewStatus: log.reviewStatus as "pending" | "confirmed" | "canceled" | null,
+      reviewedBy: log.reviewedBy,
+      reviewedAt: log.reviewedAt?.toISOString() ?? null,
       createdAt: log.createdAt.toISOString(),
     }));
   }

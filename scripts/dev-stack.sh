@@ -92,7 +92,20 @@ stop_stack() {
       printf '%s\n' "$name 已停止"
     fi
   done
+  stop_port_listener "$ADMIN_PORT" "前端"
+  stop_port_listener "$API_PORT" "API"
   rm -f "$RUNTIME_DIR"/*.pid
+}
+
+stop_port_listener() {
+  local port="$1"
+  local label="$2"
+  local pids
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "$pids" ]]; then
+    kill $pids 2>/dev/null || true
+    printf '%s\n' "$label 残留端口进程已停止"
+  fi
 }
 
 status_stack() {

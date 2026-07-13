@@ -85,11 +85,14 @@ export class InspectionReadRepository {
     };
   }
 
-  async issues(filters: { objectId?: string; keyword?: string; status?: IssueStatus; category?: string } = {}): Promise<IssueSummary[]> {
+  async issues(filters: { objectId?: string; keyword?: string; status?: IssueStatus; category?: string; cardOnly?: boolean; workflowStatus?: "pending" | "processed" } = {}): Promise<IssueSummary[]> {
     const issues = await this.database.issue.findMany({
       where: {
         ...(filters.objectId ? { objectId: filters.objectId } : {}),
         ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.workflowStatus === "pending" ? { status: "pending" } : {}),
+        ...(filters.workflowStatus === "processed" ? { status: { not: "pending" } } : {}),
+        ...(filters.cardOnly ? { cardStoragePath: { not: null } } : {}),
         ...(filters.category ? { category: { contains: filters.category } } : {}),
         ...(filters.keyword
           ? {
@@ -113,6 +116,9 @@ export class InspectionReadRepository {
       status: issue.status as IssueSummary["status"],
       severity: issue.severity as IssueSummary["severity"],
       foundAt: formatDate(issue.foundAt),
+      description: issue.description,
+      locationName: issue.locationName,
+      cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png` : null,
     }));
   }
 
@@ -132,6 +138,9 @@ export class InspectionReadRepository {
       status: issue.status as IssueSummary["status"],
       severity: issue.severity as IssueSummary["severity"],
       foundAt: formatDate(issue.foundAt),
+      description: issue.description,
+      locationName: issue.locationName,
+      cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png` : null,
     };
   }
 
@@ -153,6 +162,9 @@ export class InspectionReadRepository {
       status: issue.status as IssueSummary["status"],
       severity: issue.severity as IssueSummary["severity"],
       foundAt: formatDate(issue.foundAt),
+      description: issue.description,
+      locationName: issue.locationName,
+      cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png` : null,
     };
   }
 
@@ -193,7 +205,24 @@ export class InspectionReadRepository {
   async report(id: string): Promise<ReportSummary | null> {
     const report = await this.database.inspectionReport.findUnique({
       where: { id },
-      include: { photos: { orderBy: { sortIndex: "asc" } } },
+      include: {
+        photos: {
+          orderBy: { sortIndex: "asc" },
+          include: {
+            taskPhoto: {
+              include: {
+                mediaAsset: true,
+                annotationDocument: true,
+                sourceIssues: {
+                  where: { cardStoragePath: { not: null } },
+                  orderBy: { updatedAt: "desc" },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
     });
     if (!report) return null;
 
@@ -212,6 +241,23 @@ export class InspectionReadRepository {
       mimeType: report.mimeType,
       fileSize: report.fileSize,
       processStatus: report.processStatus,
+      photos: report.photos.map(({ taskPhoto }) => {
+        const issue = taskPhoto.sourceIssues[0];
+        const annotation = taskPhoto.annotationDocument;
+        return {
+          taskPhotoId: taskPhoto.id,
+          mediaAssetId: taskPhoto.mediaAssetId,
+          fileName: taskPhoto.mediaAsset.originalFileName,
+          capturedAt: taskPhoto.capturedAt?.toISOString() ?? null,
+          videoTimestampMs: taskPhoto.videoTimestampMs,
+          issueDescription: annotation?.issueDescription ?? issue?.description ?? null,
+          latitude: annotation?.latitude ?? taskPhoto.latitude,
+          longitude: annotation?.longitude ?? taskPhoto.longitude,
+          issueCardId: issue?.id ?? null,
+          issueTitle: issue?.title ?? null,
+          issueCategory: issue?.category ?? null,
+        };
+      }),
     };
   }
 

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 
 export interface PhotoDistributionInput {
-  action?: "archive" | "ignore";
+  action?: "archive" | "ignore" | "unarchive";
   archiveObjectId?: string;
 }
 
@@ -12,8 +12,8 @@ export class InspectionTaskDistributionService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async update(taskId: string, photoId: string, input: PhotoDistributionInput) {
-    if (!input.action || !new Set(["archive", "ignore"]).has(input.action)) {
-      throw new BadRequestException("请选择归档或忽略操作");
+    if (!input.action || !new Set(["archive", "ignore", "unarchive"]).has(input.action)) {
+      throw new BadRequestException("请选择归档、忽略或解除归档操作");
     }
     if (input.action === "archive" && !input.archiveObjectId) {
       throw new BadRequestException("请选择要关联的对象档案");
@@ -35,8 +35,11 @@ export class InspectionTaskDistributionService {
 
       const photoData = input.action === "archive"
         ? { distributionStatus: "archived", archiveObjectId: archiveObject!.id }
-        : { distributionStatus: "ignored", archiveObjectId: null };
+        : input.action === "unarchive"
+          ? { distributionStatus: "pending", archiveObjectId: null }
+          : { distributionStatus: "ignored", archiveObjectId: null };
       let transitionedFromPending = false;
+      const transitionedToPending = input.action === "unarchive" && photo.distributionStatus !== "pending";
       if (photo.distributionStatus === "pending") {
         const transition = await database.taskPhoto.updateMany({
           where: { id: photoId, taskId, distributionStatus: "pending" },
@@ -58,6 +61,11 @@ export class InspectionTaskDistributionService {
             where: { id: taskId },
             data: { pendingPhotoCount: { decrement: 1 } },
           })
+        : transitionedToPending
+          ? await database.inspectionTask.update({
+              where: { id: taskId },
+              data: { pendingPhotoCount: { increment: 1 } },
+            })
         : await database.inspectionTask.findUnique({ where: { id: taskId } });
       if (!task) throw new NotFoundException("巡检任务不存在");
       const pendingPhotoCount = Math.max(0, task.pendingPhotoCount);
@@ -65,19 +73,21 @@ export class InspectionTaskDistributionService {
         where: { id: taskId },
         data: {
           ...(pendingPhotoCount !== task.pendingPhotoCount ? { pendingPhotoCount } : {}),
-          processStatus: pendingPhotoCount > 0 ? "ready_for_distribution" : "completed",
+          processStatus: transitionedToPending || pendingPhotoCount > 0 ? "ready_for_distribution" : "completed",
         },
       });
       await database.auditLog.create({
         data: {
           id: `audit-${randomUUID()}`,
           actor: "admin",
-          action: input.action === "archive" ? "taskPhoto.archive" : "taskPhoto.ignore",
+          action: input.action === "archive" ? "taskPhoto.archive" : input.action === "unarchive" ? "taskPhoto.unarchive" : "taskPhoto.ignore",
           targetType: "taskPhoto",
           targetId: photoId,
           summary: input.action === "archive"
             ? `照片已归入「${archiveObject!.name}」档案`
-            : "照片已标记为忽略",
+            : input.action === "unarchive"
+              ? "照片已解除档案关联并返回待分发"
+              : "照片已标记为忽略",
         },
       });
       return { photo: updated, pendingPhotoCount, archiveObject };

@@ -7,7 +7,8 @@ import { AuditService } from "../audit/audit.service.js";
 import { ok, paged } from "../../shared/api-response.js";
 import { IssueWriteService } from "./issue-write.service.js";
 import { IssueAttachmentService } from "./issue-attachment.service.js";
-import { sendStoredFile } from "../../shared/file-download.js";
+import { sendInlineStoredFile, sendStoredFile } from "../../shared/file-download.js";
+import { DatabaseService } from "../../database/database.service.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -26,16 +27,33 @@ export class IssuesController {
     @Inject(AuditService) private readonly auditService: AuditService,
     @Inject(IssueWriteService) private readonly issueWriteService: IssueWriteService,
     @Inject(IssueAttachmentService) private readonly attachmentService: IssueAttachmentService,
+    @Inject(DatabaseService) private readonly database: DatabaseService,
   ) {}
 
   @Get()
-  async list(@Query() query: { keyword?: string; status?: IssueStatus; category?: string; page?: string; pageSize?: string }) {
+  async list(@Query() query: { keyword?: string; status?: IssueStatus; category?: string; cardOnly?: string; workflowStatus?: "pending" | "processed"; page?: string; pageSize?: string }) {
     const status = query.status && allowedStatuses.includes(query.status) ? query.status : undefined;
     return ok(paged(await this.readRepository.issues({
       keyword: query.keyword,
       status,
       category: query.category,
+      cardOnly: query.cardOnly === "true",
+      workflowStatus: query.workflowStatus,
     }), query));
+  }
+
+  @Get(":id/card.png")
+  async card(@Param("id") id: string, @Res() response: Response) {
+    const issue = await this.database.issue.findUnique({
+      where: { id },
+      select: { cardStoragePath: true, cardMimeType: true },
+    });
+    return sendInlineStoredFile(response, issue ? {
+      storagePath: issue.cardStoragePath,
+      originalFileName: `${id}.png`,
+      fileName: `${id}.png`,
+      mimeType: issue.cardMimeType ?? "image/png",
+    } : null);
   }
 
   @Get(":id")

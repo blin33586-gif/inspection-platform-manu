@@ -8,7 +8,7 @@ function databaseFixture() {
   const taskUpdates: Array<Record<string, unknown>> = [];
   const database = {
     taskPhoto: {
-      findFirst: async () => ({ id: "photo-1", taskId: "task-1", archiveObjectId: null, distributionStatus: "pending" }),
+      findFirst: async (): Promise<{ id: string; taskId: string; archiveObjectId: string | null; distributionStatus: string }> => ({ id: "photo-1", taskId: "task-1", archiveObjectId: null, distributionStatus: "pending" }),
       update: async (input: Record<string, unknown>) => (updates.push(input), input),
       updateMany: async (input: Record<string, unknown>) => (conditionalUpdates.push(input), { count: 1 }),
       findUnique: async () => ({ id: "photo-1", taskId: "task-1", archiveObjectId: "community-1", distributionStatus: "archived" }),
@@ -57,6 +57,28 @@ test("ignores a photo without linking it to an archive", async () => {
   assert.deepEqual(conditionalUpdates[0], {
     where: { id: "photo-1", taskId: "task-1", distributionStatus: "pending" },
     data: { distributionStatus: "ignored", archiveObjectId: null },
+  });
+});
+
+test("unarchives a photo and restores it to the task pending queue", async () => {
+  const { database, updates, taskUpdates } = databaseFixture();
+  database.taskPhoto.findFirst = async () => ({
+    id: "photo-1",
+    taskId: "task-1",
+    archiveObjectId: "community-1",
+    distributionStatus: "archived",
+  });
+  const service = new InspectionTaskDistributionService(database as never);
+
+  await service.update("task-1", "photo-1", { action: "unarchive" });
+
+  assert.deepEqual(updates[0], {
+    where: { id: "photo-1" },
+    data: { distributionStatus: "pending", archiveObjectId: null },
+  });
+  assert.deepEqual(taskUpdates[0], {
+    where: { id: "task-1" },
+    data: { pendingPhotoCount: { increment: 1 } },
   });
 });
 

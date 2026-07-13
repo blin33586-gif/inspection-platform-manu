@@ -56,6 +56,9 @@ export interface IssueSummary {
   status: IssueStatus;
   severity: Severity;
   foundAt: string;
+  description?: string | null;
+  locationName?: string | null;
+  cardImageUrl?: string | null;
 }
 
 export interface IssueAttachmentSummary {
@@ -85,6 +88,21 @@ export interface ReportSummary {
   mimeType?: string | null;
   fileSize?: number | null;
   processStatus?: string | null;
+  photos?: ReportPhotoSummary[];
+}
+
+export interface ReportPhotoSummary {
+  taskPhotoId: string;
+  mediaAssetId: string;
+  fileName: string;
+  capturedAt?: string | null;
+  videoTimestampMs?: number | null;
+  issueDescription?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  issueCardId?: string | null;
+  issueTitle?: string | null;
+  issueCategory?: string | null;
 }
 
 export interface MapAssetSummary {
@@ -147,5 +165,8 @@ export interface AuditLogSummary {
   targetType: string;
   targetId?: string | null;
   summary: string;
+  reviewStatus?: "pending" | "confirmed" | "canceled" | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
   createdAt: string;
 }

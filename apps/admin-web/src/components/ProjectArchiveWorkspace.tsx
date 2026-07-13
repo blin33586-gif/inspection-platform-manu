@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Input, message, Modal, Spin } from "antd";
-import { Download, Pencil, Printer, Search, Trash2, UploadCloud } from "lucide-react";
+import { Button, Input, message, Spin } from "antd";
+import { Download, Pencil, Printer, Search, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { getApi, getApiUrl, patchJsonApi } from "../api/client";
+import { getApi, getApiUrl, patchJsonApi, postJsonApi } from "../api/client";
 import {
   isArchiveMediaRequestCurrent,
-  isArchiveMediaResponseCurrent,
   toProjectArchiveMediaItem,
   type ArchiveTaskPhotoRecord,
   type ProjectArchiveMediaItem,
@@ -55,7 +54,6 @@ const archiveMeta: Record<ProjectArchiveVariant, {
   owner: string;
   frequency: string;
   range: string;
-  photoTitle: string;
 }> = {
   community: {
     archiveTitle: "小区综合档案",
@@ -65,7 +63,6 @@ const archiveMeta: Record<ProjectArchiveVariant, {
     owner: "曲阳路街道城运中心、居委协同",
     frequency: "每周 2 次",
     range: "小区出入口、楼栋外立面、车棚、公共通道",
-    photoTitle: "小区问题照片墙",
   },
   road: {
     archiveTitle: "道路街面档案",
@@ -75,7 +72,6 @@ const archiveMeta: Record<ProjectArchiveVariant, {
     owner: "曲阳路街道综合行政执法队",
     frequency: "每日 2 次",
     range: "沿街商铺、广告牌、占道经营、非机动车停放",
-    photoTitle: "街面问题照片墙",
   },
   point: {
     archiveTitle: "重点点位档案",
@@ -85,7 +81,6 @@ const archiveMeta: Record<ProjectArchiveVariant, {
     owner: "曲阳路街道巡检专班",
     frequency: "按专项任务复查",
     range: "广告牌、河道绿化、重点设施、反复问题点",
-    photoTitle: "点位问题照片墙",
   },
 };
 
@@ -156,15 +151,12 @@ async function loadArchiveMediaItems(path: string, signal?: AbortSignal) {
 export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, variant }: ProjectArchiveWorkspaceProps) {
   const meta = archiveMeta[variant];
   const [isEditingBasicInfo, setIsEditingBasicInfo] = useState(false);
-  const [mediaModalOpen, setMediaModalOpen] = useState(false);
   const [linkedMediaItems, setLinkedMediaItems] = useState<ProjectArchiveMediaItem[]>([]);
-  const [availableMediaItems, setAvailableMediaItems] = useState<ProjectArchiveMediaItem[]>([]);
   const [mediaLoading, setMediaLoading] = useState(false);
-  const [pendingMediaLoading, setPendingMediaLoading] = useState(false);
-  const [pushingPhotoId, setPushingPhotoId] = useState<string | null>(null);
+  const [unlinkingPhotoId, setUnlinkingPhotoId] = useState<string | null>(null);
+  const [requestingDeleteId, setRequestingDeleteId] = useState<string | null>(null);
   const activeObjectIdRef = useRef<string | null>(activeItem?.id ?? null);
   const linkedMediaRequestRef = useRef(0);
-  const pendingMediaRequestRef = useRef(0);
   activeObjectIdRef.current = activeItem?.id ?? null;
   const [basicInfo, setBasicInfo] = useState<BasicInfoDraft>(() => buildBasicInfo(meta, activeItem));
   const [basicInfoDraft, setBasicInfoDraft] = useState<BasicInfoDraft>(() => buildBasicInfo(meta, activeItem));
@@ -192,31 +184,6 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
     }
   }, []);
 
-  const refreshAvailableMedia = useCallback(async (objectId: string, signal?: AbortSignal) => {
-    const requestId = ++pendingMediaRequestRef.current;
-    setPendingMediaLoading(true);
-    try {
-      const photos = await loadArchiveMediaItems("/task-photos", signal);
-      if (isArchiveMediaRequestCurrent(
-        requestId,
-        pendingMediaRequestRef.current,
-        objectId,
-        activeObjectIdRef.current,
-      )) {
-        setAvailableMediaItems(photos);
-      }
-    } finally {
-      if (isArchiveMediaRequestCurrent(
-        requestId,
-        pendingMediaRequestRef.current,
-        objectId,
-        activeObjectIdRef.current,
-      )) {
-        setPendingMediaLoading(false);
-      }
-    }
-  }, []);
-
   useEffect(() => {
     const nextBasicInfo = buildBasicInfo(meta, activeItem);
     setBasicInfo(nextBasicInfo);
@@ -226,11 +193,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 
   useEffect(() => {
     linkedMediaRequestRef.current += 1;
-    pendingMediaRequestRef.current += 1;
     setLinkedMediaItems([]);
-    setAvailableMediaItems([]);
-    setPendingMediaLoading(false);
-    setMediaModalOpen(false);
     if (!activeItem) {
       return;
     }
@@ -248,41 +211,32 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
     return () => controller.abort();
   }, [activeItem?.id, refreshLinkedMedia]);
 
-  const openMediaModal = async () => {
-    if (!activeItem) return;
-    const objectId = activeItem.id;
-    setMediaModalOpen(true);
-    setAvailableMediaItems([]);
+  const requestArchiveDeletion = async (item: ProjectArchiveItem) => {
+    setRequestingDeleteId(item.id);
     try {
-      await refreshAvailableMedia(objectId);
+      await postJsonApi(`/managed-objects/${encodeURIComponent(item.id)}/deletion-requests`, {});
+      message.success("删除申请已提交，请到操作日志确认");
     } catch (error) {
-      if (isArchiveMediaResponseCurrent(objectId, activeObjectIdRef.current)) {
-        message.error(error instanceof Error ? error.message : "待分发照片读取失败");
-      }
+      message.error(error instanceof Error ? error.message : "删除申请提交失败");
+    } finally {
+      setRequestingDeleteId(null);
     }
   };
 
-  const pushMediaToArchive = async (media: ProjectArchiveMediaItem) => {
+  const unlinkPhoto = async (photo: ProjectArchiveMediaItem) => {
     if (!activeItem) return;
-    const objectId = activeItem.id;
-    const objectName = activeItem.name;
-    setPushingPhotoId(media.taskPhotoId);
+    setUnlinkingPhotoId(photo.taskPhotoId);
     try {
       await patchJsonApi(
-        `/inspection-tasks/${encodeURIComponent(media.taskId)}/photos/${encodeURIComponent(media.taskPhotoId)}/distribution`,
-        { action: "archive", archiveObjectId: objectId },
+        `/inspection-tasks/${encodeURIComponent(photo.taskId)}/photos/${encodeURIComponent(photo.taskPhotoId)}/distribution`,
+        { action: "unarchive" },
       );
-      await Promise.all([
-        refreshLinkedMedia(objectId),
-        refreshAvailableMedia(objectId),
-      ]);
-      if (isArchiveMediaResponseCurrent(objectId, activeObjectIdRef.current)) {
-        message.success(`${media.fileName} 已归档到 ${objectName}`);
-      }
+      await refreshLinkedMedia(activeItem.id);
+      message.success("已解除照片与档案的关联，原始照片保留在任务库");
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "照片推送失败");
+      message.error(error instanceof Error ? error.message : "解除关联失败");
     } finally {
-      setPushingPhotoId(null);
+      setUnlinkingPhotoId(null);
     }
   };
 
@@ -341,10 +295,10 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
                             type="button"
                             onClick={(event) => {
                               event.preventDefault();
-                              message.warning(`删除 ${item.name} 前需要二次确认`);
+                              void requestArchiveDeletion(item);
                             }}
                           >
-                            删除
+                            {requestingDeleteId === item.id ? "提交中" : "删除"}
                           </button>
                         </div>
                       </div>
@@ -377,7 +331,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	            >
 	              编辑档案
 	            </Button>
-            <Button danger icon={<Trash2 size={15} />} onClick={() => message.warning(`删除 ${activeItem.name} 前需要二次确认`)}>删除</Button>
+            <Button danger loading={requestingDeleteId === activeItem.id} icon={<Trash2 size={15} />} onClick={() => void requestArchiveDeletion(activeItem)}>删除</Button>
             <Button icon={<Download size={15} />} onClick={() => message.info("导出档案功能将接入服务器文件生成")}>导出档案</Button>
             <Button icon={<Printer size={15} />} onClick={() => message.info("打印档案功能已预留")}>打印档案</Button>
           </div>
@@ -492,15 +446,9 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	        <section className="archive-photo-wall">
 	          <div className="archive-section-head">
 	            <div>
-	              <h3>{meta.photoTitle}</h3>
-	              <span>来自媒体库推送</span>
+	              <h3>照片墙</h3>
+	              <span>来自任务库归档</span>
 	            </div>
-	            <div className="archive-filter-tabs">
-	              <button className="active" type="button">全部 {linkedMediaItems.length}</button>
-	              <button type="button">待整改 {pendingCount}</button>
-	              <button type="button">已整改 {fixedCount}</button>
-	            </div>
-	            <Button icon={<UploadCloud size={15} />} onClick={() => void openMediaModal()}>从媒体库推送</Button>
 	          </div>
 	          {mediaLoading ? (
 	            <div className="archive-photo-empty">
@@ -515,6 +463,16 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	                    <img className="archive-photo-media-image" src={photo.thumbnailUrl} alt={photo.title} />
 	                    <span className={`photo-status ${statusTone(photo.status)}`}>{photo.status}</span>
 	                    <em>{photo.capturedAt.startsWith("视频 ") ? photo.capturedAt : photo.capturedAt.slice(5, 16)}</em>
+	                    <Button
+	                      className="archive-photo-unlink"
+	                      danger
+	                      size="small"
+	                      loading={unlinkingPhotoId === photo.taskPhotoId}
+	                      icon={<Trash2 size={14} />}
+	                      onClick={() => void unlinkPhoto(photo)}
+	                    >
+	                      解除关联
+	                    </Button>
 	                  </div>
 	                  <strong>{photo.issueTitle}</strong>
 	                  <span className="archive-photo-source">{photo.sourceName} / {photo.fileName}</span>
@@ -524,55 +482,10 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	          ) : (
 	            <div className="archive-photo-empty">
 	              <Search size={20} />
-	              <strong>暂无媒体库照片</strong>
-	              <span>点击“从媒体库推送”，把已经上传的巡检照片关联到当前档案。</span>
+	              <strong>暂无归档照片</strong>
+	              <span>在任务库中分发照片后，会自动显示在当前档案。</span>
 	            </div>
 	          )}
-	          <Button className="archive-more-button" onClick={() => void openMediaModal()}>管理媒体库照片</Button>
-
-	          <Modal
-	            title={`从媒体库推送到 ${activeItem.name}`}
-	            open={mediaModalOpen}
-            onCancel={() => {
-              pendingMediaRequestRef.current += 1;
-              setPendingMediaLoading(false);
-              setMediaModalOpen(false);
-            }}
-	            footer={null}
-	            width={760}
-	          >
-	            {pendingMediaLoading ? (
-	              <div className="archive-photo-empty compact">
-	                <Spin />
-	                <strong>正在读取待分发照片</strong>
-	              </div>
-	            ) : availableMediaItems.length ? (
-	              <div className="media-push-list">
-	                {availableMediaItems.map((media) => (
-	                  <article data-task-photo-id={media.taskPhotoId} key={media.id}>
-	                    <img src={media.thumbnailUrl} alt={media.title} />
-	                    <div>
-	                      <strong>{media.issueTitle}</strong>
-	                      <span>{media.capturedAt} / {media.sourceName}</span>
-	                      <em>{media.fileName}</em>
-	                    </div>
-	                    <Button
-	                      loading={pushingPhotoId === media.taskPhotoId}
-	                      type="primary"
-	                      onClick={() => void pushMediaToArchive(media)}
-	                    >
-	                      推送
-	                    </Button>
-	                  </article>
-	                ))}
-	              </div>
-	            ) : (
-	              <div className="archive-photo-empty compact">
-	                <strong>暂无可推送照片</strong>
-	                <span>当前没有尚未归档的任务照片。</span>
-	              </div>
-	            )}
-	          </Modal>
 	        </section>
       </div>
 

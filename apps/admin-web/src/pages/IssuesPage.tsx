@@ -1,256 +1,116 @@
 import { useState } from "react";
-import { Button, DatePicker, Form, Input, message, Modal, Select, Space, Table, Tag } from "antd";
-import type { ColumnsType } from "antd/es/table";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import type { IssueStatus, IssueSummary, ManagedObjectSummary, PageResult, PointSummary, Severity } from "@xunjianbao/shared";
-import { patchJsonApi, postJsonApi, withQuery } from "../api/client";
-import { communities, issues, points, roads } from "../data";
+import { Button, Input, message, Select, Tag } from "antd";
+import { CheckCircle2, RotateCcw } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import type { IssueSummary, PageResult } from "@xunjianbao/shared";
+import { getApiUrl, patchJsonApi, withQuery } from "../api/client";
 import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
+import { issueLibraryStatus, issueStatusPatch, type IssueLibraryStatus } from "./issue-library-presenter";
 
-const fallbackIssues: PageResult<IssueSummary> = {
-  items: issues,
-  page: 1,
-  pageSize: 20,
-  total: issues.length,
-};
-
-const fallbackCommunities: PageResult<ManagedObjectSummary> = { items: communities, page: 1, pageSize: 20, total: communities.length };
-const fallbackRoads: PageResult<ManagedObjectSummary> = { items: roads, page: 1, pageSize: 20, total: roads.length };
-const fallbackPoints: PageResult<PointSummary> = { items: points, page: 1, pageSize: 20, total: points.length };
-
-function statusLabel(value: IssueStatus) {
-  if (value === "pending") return "待处理";
-  if (value === "processing") return "处理中";
-  if (value === "rectified") return "已整改";
-  if (value === "verified") return "复查通过";
-  if (value === "ignored") return "忽略";
-  return "归档";
-}
+const emptyIssues: PageResult<IssueSummary> = { items: [], page: 1, pageSize: 20, total: 0 };
 
 export function IssuesPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const initialStatus = searchParams.get("status") as IssueStatus | null;
-  const [form] = Form.useForm<{
-    title?: string;
-    category?: string;
-    status?: IssueStatus;
-    severity?: Severity;
-    foundAt?: { format: (format: string) => string };
-    objectId?: string;
-  }>();
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const initialStatus = searchParams.get("status") as IssueLibraryStatus | null;
   const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState<IssueStatus | undefined>(initialStatus ?? undefined);
+  const [workflowStatus, setWorkflowStatus] = useState<IssueLibraryStatus | undefined>(initialStatus ?? undefined);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const issueResource = useApiResource(withQuery("/issues", { keyword, status, page, pageSize }), fallbackIssues);
-  const communityResource = useApiResource("/communities", fallbackCommunities);
-  const roadResource = useApiResource("/roads", fallbackRoads);
-  const pointResource = useApiResource("/points", fallbackPoints);
-  const { data, loading, reload } = issueResource;
-  const { data: communityData } = communityResource;
-  const { data: roadData } = roadResource;
-  const { data: pointData } = pointResource;
-  const resourceError = issueResource.error ?? communityResource.error ?? roadResource.error ?? pointResource.error;
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const resource = useApiResource(withQuery("/issues", {
+    keyword,
+    workflowStatus,
+    cardOnly: "true",
+    page,
+    pageSize: 20,
+  }), emptyIssues);
 
-  const objectOptions = [
-    ...communityData.items.map((item) => ({ label: `小区 / ${item.name}`, value: item.id })),
-    ...roadData.items.map((item) => ({ label: `道路 / ${item.name}`, value: item.id })),
-    ...pointData.items.map((item) => ({ label: `点位 / ${item.name}`, value: item.id })),
-  ];
-
-  const searchKeyword = (value: string) => {
-    setKeyword(value);
-    setPage(1);
-  };
-
-  const reloadAllResources = () => {
-    issueResource.reload();
-    communityResource.reload();
-    roadResource.reload();
-    pointResource.reload();
-  };
-
-  const changeStatus = (value: IssueStatus | undefined) => {
-    setStatus(value);
-    setPage(1);
-  };
-
-  const updateStatus = async (id: string, status: IssueStatus) => {
-    setUpdatingId(id);
+  const updateStatus = async (issue: IssueSummary, next: IssueLibraryStatus) => {
+    setUpdatingId(issue.id);
     try {
-      await patchJsonApi<IssueSummary>(`/issues/${id}/status`, { status });
-      message.success("状态已更新");
-      reload();
+      await patchJsonApi(`/issues/${issue.id}/status`, { status: issueStatusPatch(next) });
+      message.success(next === "processed" ? "问题已标记为已处理" : "问题已恢复为待处理");
+      resource.reload();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "更新失败");
+      message.error(error instanceof Error ? error.message : "状态更新失败");
     } finally {
       setUpdatingId(null);
     }
   };
 
-  const submitIssue = async () => {
-    const values = await form.validateFields();
-    setSubmitting(true);
-    try {
-      await postJsonApi<IssueSummary>("/issues", {
-        title: values.title,
-        category: values.category,
-        status: values.status,
-        severity: values.severity,
-        foundAt: values.foundAt?.format("YYYY-MM-DD"),
-        objectId: values.objectId,
-      });
-      message.success("问题已新增");
-      form.resetFields();
-      setOpen(false);
-      setPage(1);
-      reload();
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : "新增失败");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const columns: ColumnsType<IssueSummary> = [
-    { title: "对象", dataIndex: "objectName" },
-    { title: "问题", dataIndex: "title", render: (value: string, record) => <Link className="text-link compact-link" to={`/issues/${record.id}`}>{value}</Link> },
-    { title: "类型", dataIndex: "category" },
-    {
-      title: "状态",
-      dataIndex: "status",
-      render: (value: IssueStatus) => (
-        <Tag color={value === "pending" ? "orange" : value === "verified" ? "green" : "blue"}>{statusLabel(value)}</Tag>
-      ),
-    },
-    { title: "发现时间", dataIndex: "foundAt" },
-    {
-      title: "操作",
-      render: (_, record) => (
-        <Space>
-          <Button
-            size="small"
-            disabled={record.status === "processing"}
-            loading={updatingId === record.id}
-            onClick={() => updateStatus(record.id, "processing")}
-          >
-            处理中
-          </Button>
-          <Button
-            size="small"
-            type="primary"
-            disabled={record.status === "verified"}
-            loading={updatingId === record.id}
-            onClick={() => updateStatus(record.id, "verified")}
-          >
-            复查通过
-          </Button>
-          <Button size="small" onClick={() => navigate(`/issues/${record.id}`)}>详情</Button>
-        </Space>
-      ),
-    },
-  ];
-
-  if (resourceError) return <ApiResourceError error={resourceError} onRetry={reloadAllResources} />;
+  if (resource.error) return <ApiResourceError error={resource.error} onRetry={resource.reload} />;
 
   return (
     <>
-      <PageHeader eyebrow="FOLLOW-UP LEADS" title="待跟进线索" actions={<Button type="primary" onClick={() => setOpen(true)}>新增线索</Button>} />
-      <section className="content-section">
-        <div className="section-head">
+      <PageHeader title="问题库" />
+      <section className="content-section issue-library-section">
+        <div className="section-head issue-library-head">
           <div>
-            <p className="eyebrow">ALL ISSUES</p>
-            <h3>待跟进线索列表</h3>
+            <h3>问题卡片</h3>
+            <span>按照片查看巡检发现的问题</span>
           </div>
-          <div className="filter-controls">
+          <div className="filter-controls issue-library-filters">
             <Input.Search
-              placeholder="搜索对象、问题、类型"
               allowClear
-              onSearch={searchKeyword}
-              onChange={(event) => !event.target.value && searchKeyword("")}
+              placeholder="搜索照片问题、点位或类型"
+              onSearch={(value) => { setKeyword(value); setPage(1); }}
+              onChange={(event) => { if (!event.target.value) { setKeyword(""); setPage(1); } }}
             />
             <Select
               allowClear
-              placeholder="状态"
-              value={status}
-              onChange={changeStatus}
+              placeholder="全部状态"
+              value={workflowStatus}
+              onChange={(value) => { setWorkflowStatus(value); setPage(1); }}
               options={[
                 { label: "待处理", value: "pending" },
-                { label: "处理中", value: "processing" },
-                { label: "复查通过", value: "verified" },
-                { label: "已整改", value: "rectified" },
+                { label: "已处理", value: "processed" },
               ]}
             />
           </div>
         </div>
-        <Table
-          rowKey="id"
-          columns={columns}
-          dataSource={data.items}
-          loading={loading}
-          pagination={{
-            current: data.page,
-            pageSize: data.pageSize,
-            total: data.total,
-            showSizeChanger: true,
-            onChange: (nextPage, nextPageSize) => {
-              setPage(nextPage);
-              setPageSize(nextPageSize);
-            },
-          }}
-          className="data-table"
-        />
-      </section>
 
-      <Modal
-        title="新增巡检问题"
-        open={open}
-        onCancel={() => setOpen(false)}
-        onOk={submitIssue}
-        confirmLoading={submitting}
-        okText="保存"
-        cancelText="取消"
-      >
-        <Form form={form} layout="vertical" initialValues={{ status: "pending", severity: "normal" }}>
-          <Form.Item name="title" label="问题标题" rules={[{ required: true, message: "请输入问题标题" }]}>
-            <Input placeholder="例如：3 号楼外立面飞线充电" />
-          </Form.Item>
-          <Form.Item name="category" label="问题类型" rules={[{ required: true, message: "请输入问题类型" }]}>
-            <Input placeholder="例如：飞线、广告牌、占道经营、违建" />
-          </Form.Item>
-          <Form.Item name="objectId" label="关联对象">
-            <Select showSearch allowClear placeholder="选择小区、道路或点位" optionFilterProp="label" options={objectOptions} />
-          </Form.Item>
-          <Form.Item name="foundAt" label="发现日期">
-            <DatePicker style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="severity" label="严重程度">
-            <Select
-              options={[
-                { label: "普通", value: "normal" },
-                { label: "中等", value: "medium" },
-                { label: "高", value: "high" },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="status" label="状态">
-            <Select
-              options={[
-                { label: "待处理", value: "pending" },
-                { label: "处理中", value: "processing" },
-                { label: "已整改", value: "rectified" },
-                { label: "复查通过", value: "verified" },
-              ]}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
+        {resource.loading ? <div className="issue-library-empty">正在读取问题卡片...</div> : null}
+        {!resource.loading && resource.data.items.length === 0 ? (
+          <div className="issue-library-empty">暂无符合条件的问题卡片</div>
+        ) : (
+          <div className="issue-card-library-grid">
+            {resource.data.items.map((issue) => {
+              const status = issueLibraryStatus(issue.status);
+              return (
+                <article className="issue-library-card" key={issue.id}>
+                  <button className="issue-library-image" type="button" onClick={() => navigate(`/issues/${issue.id}`)}>
+                    <img src={getApiUrl(`/issues/${issue.id}/card.png`)} alt={issue.title} />
+                    <Tag color={status === "pending" ? "orange" : "green"}>{status === "pending" ? "待处理" : "已处理"}</Tag>
+                  </button>
+                  <div className="issue-library-card-body">
+                    <strong>{issue.title}</strong>
+                    <span>{issue.locationName || issue.objectName} · {issue.category}</span>
+                    <time>{issue.foundAt}</time>
+                    <div>
+                      {status === "pending" ? (
+                        <Button type="primary" icon={<CheckCircle2 size={15} />} loading={updatingId === issue.id} onClick={() => void updateStatus(issue, "processed")}>标记已处理</Button>
+                      ) : (
+                        <Button icon={<RotateCcw size={15} />} loading={updatingId === issue.id} onClick={() => void updateStatus(issue, "pending")}>恢复待处理</Button>
+                      )}
+                      <Button onClick={() => navigate(`/issues/${issue.id}`)}>详情</Button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        {resource.data.total > 20 ? (
+          <div className="issue-library-pagination">
+            <Button disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</Button>
+            <span>第 {page} 页</span>
+            <Button disabled={page * 20 >= resource.data.total} onClick={() => setPage((value) => value + 1)}>下一页</Button>
+          </div>
+        ) : null}
+      </section>
     </>
   );
 }
