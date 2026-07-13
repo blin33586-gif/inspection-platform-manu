@@ -8,6 +8,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { hashPassword } from "../auth/password-hash.js";
+import { requireCurrentIdentity } from "../auth/project-context.js";
 
 export interface PlatformMemberDto {
   id: string;
@@ -68,7 +69,7 @@ export class PlatformMembersService {
     return members.map((member) => this.toDto(member));
   }
 
-  async create(input: CreatePlatformMemberInput, actorId?: string): Promise<PlatformMemberDto> {
+  async create(input: CreatePlatformMemberInput): Promise<PlatformMemberDto> {
     this.assertInputObject(input);
     const name = this.requiredText(input.name, "姓名不能为空");
     const phone = this.validPhone(input.phone);
@@ -118,7 +119,7 @@ export class PlatformMembersService {
       await transaction.platformAuditLog.create({
         data: {
           id: randomUUID(),
-          actorId: await this.auditActorId(transaction, actorId),
+          actorId: requireCurrentIdentity().id,
           action: "member.create",
           targetId: member.id,
           summary: `创建成员“${name}”，分配项目：${projects.map((project) => project.name).join("、")}`,
@@ -132,7 +133,6 @@ export class PlatformMembersService {
   async update(
     id: string,
     input: UpdatePlatformMemberInput,
-    actorId?: string,
   ): Promise<PlatformMemberDto> {
     this.assertInputObject(input);
     const name = input.name === undefined
@@ -210,7 +210,7 @@ export class PlatformMembersService {
       await transaction.platformAuditLog.create({
         data: {
           id: randomUUID(),
-          actorId: await this.auditActorId(transaction, actorId),
+          actorId: requireCurrentIdentity().id,
           action,
           targetId: id,
           summary: `更新成员“${current!.name}”：${summaryParts.join("；")}`,
@@ -224,7 +224,6 @@ export class PlatformMembersService {
   async resetPassword(
     id: string,
     input: { password?: string },
-    actorId?: string,
   ): Promise<PlatformMemberDto> {
     this.assertInputObject(input);
     const password = this.validPassword(input.password);
@@ -245,7 +244,7 @@ export class PlatformMembersService {
       await transaction.platformAuditLog.create({
         data: {
           id: randomUUID(),
-          actorId: await this.auditActorId(transaction, actorId),
+          actorId: requireCurrentIdentity().id,
           action: "member.password.reset",
           targetId: id,
           summary: `已重置成员“${current!.name}”的密码`,
@@ -342,16 +341,4 @@ export class PlatformMembersService {
     if (account.role !== "member") throw new BadRequestException("账号类型不可编辑");
   }
 
-  private async auditActorId(
-    transaction: Pick<DatabaseService, "userAccount">,
-    actorId: string | undefined,
-  ) {
-    if (actorId) return actorId;
-    const administrator = await transaction.userAccount.findFirst({
-      where: { role: "platform_admin" },
-      select: { id: true },
-    });
-    if (!administrator) throw new BadRequestException("平台管理员不存在");
-    return administrator.id;
-  }
 }

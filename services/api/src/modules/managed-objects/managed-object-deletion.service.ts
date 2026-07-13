@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
-import { currentProjectId } from "../auth/project-context.js";
+import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
 
 type DeletionDecision = "confirm" | "cancel";
 
@@ -9,7 +9,8 @@ type DeletionDecision = "confirm" | "cancel";
 export class ManagedObjectDeletionService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  async requestDeletion(objectId: string, actor = "曲阳路街道管理员") {
+  async requestDeletion(objectId: string) {
+    const actor = currentActorUsername();
     const projectId = currentProjectId();
     const object = await this.database.managedObject.findUnique({ where: { id: objectId, projectId } });
     if (!object) throw new NotFoundException("档案不存在");
@@ -39,7 +40,8 @@ export class ManagedObjectDeletionService {
     });
   }
 
-  async reviewDeletion(auditId: string, decision: DeletionDecision, actor = "曲阳路街道管理员") {
+  async reviewDeletion(auditId: string, decision: DeletionDecision) {
+    const actor = currentActorUsername();
     const projectId = currentProjectId();
     if (!new Set<DeletionDecision>(["confirm", "cancel"]).has(decision)) {
       throw new BadRequestException("审批决定无效");

@@ -1,7 +1,5 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Req } from "@nestjs/common";
-import type { Request } from "express";
+import { Body, Controller, Get, Inject, Param, Patch, Post } from "@nestjs/common";
 import { ok } from "../../shared/api-response.js";
-import type { AuthenticatedProjectRequest } from "../auth/auth.guard.js";
 import {
   PlatformMembersService,
   type CreatePlatformMemberInput,
@@ -18,29 +16,23 @@ export class PlatformMembersController {
   }
 
   @Post()
-  async create(@Body() body: CreatePlatformMemberInput, @Req() request: Request) {
-    return ok(await this.members.create(body, this.actorId(request)));
+  async create(@Body() body: CreatePlatformMemberInput) {
+    return ok(await this.members.create(body));
   }
 
   @Patch(":id")
   async update(
     @Param("id") id: string,
     @Body() body: UpdatePlatformMemberInput,
-    @Req() request: Request,
   ) {
-    return ok(await this.members.update(id, body, this.actorId(request)));
+    return ok(await this.members.update(id, body));
   }
 
   @Post(":id/reset-password")
   async resetPassword(
     @Param("id") id: string,
     @Body() body: { password?: string },
-    @Req() request: Request,
   ) {
-    return ok(await this.members.resetPassword(id, body, this.actorId(request)));
-  }
-
-  private actorId(request: Request) {
-    return (request as AuthenticatedProjectRequest).authIdentity?.id;
+    return ok(await this.members.resetPassword(id, body));
   }
 }

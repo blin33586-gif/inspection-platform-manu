@@ -6,5 +6,5 @@ import type { PublishIssueEventInput } from "./issue-event-publish.types.js";
 @Controller("task-photos")
 export class IssueEventController {
   constructor(@Inject(IssueEventPublishService) private readonly publisher: IssueEventPublishService) {}
-  @Post(":photoId/publish-issue") publish(@Param("photoId") photoId: string, @Body() body: PublishIssueEventInput) { return this.publisher.publish(photoId, "admin", body).then(ok); }
+  @Post(":photoId/publish-issue") publish(@Param("photoId") photoId: string, @Body() body: PublishIssueEventInput) { return this.publisher.publish(photoId, body).then(ok); }
 }

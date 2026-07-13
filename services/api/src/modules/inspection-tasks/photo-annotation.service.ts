@@ -6,7 +6,7 @@ import {
   validateAnnotationDocument,
 } from "@xunjianbao/media-contracts";
 import { DatabaseService } from "../../database/database.service.js";
-import { currentProjectId } from "../auth/project-context.js";
+import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
 
 export interface SavePhotoAnnotationInput {
   expectedVersion?: number;
@@ -52,7 +52,8 @@ export class PhotoAnnotationService {
     return presentVersion(snapshot);
   }
 
-  async save(photoId: string, actor: string, input: SavePhotoAnnotationInput) {
+  async save(photoId: string, input: SavePhotoAnnotationInput) {
+    const actor = currentActorUsername();
     const expectedVersion = input.expectedVersion;
     if (!Number.isInteger(expectedVersion) || expectedVersion! < 0) {
       throw new BadRequestException("标注版本号无效");

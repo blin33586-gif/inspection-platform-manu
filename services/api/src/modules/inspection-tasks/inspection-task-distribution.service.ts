@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
-import { currentProjectId } from "../auth/project-context.js";
+import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
 
 export interface PhotoDistributionInput {
   action?: "archive" | "ignore" | "unarchive";
@@ -82,7 +82,7 @@ export class InspectionTaskDistributionService {
         data: {
           id: `audit-${randomUUID()}`,
           projectId,
-          actor: "admin",
+          actor: currentActorUsername(),
           action: input.action === "archive" ? "taskPhoto.archive" : input.action === "unarchive" ? "taskPhoto.unarchive" : "taskPhoto.ignore",
           targetType: "taskPhoto",
           targetId: photoId,

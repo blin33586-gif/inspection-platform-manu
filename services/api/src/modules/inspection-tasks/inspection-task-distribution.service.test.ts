@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { InspectionTaskDistributionService } from "./inspection-task-distribution.service.js";
+import { runWithProjectContext } from "../auth/project-context.js";
+import { runAsMember } from "../../test-support/auth-context.js";
 
 function databaseFixture() {
   const updates: Array<Record<string, unknown>> = [];
   const conditionalUpdates: Array<Record<string, unknown>> = [];
   const taskUpdates: Array<Record<string, unknown>> = [];
+  const audits: Array<Record<string, unknown>> = [];
   const database = {
     taskPhoto: {
       findFirst: async (): Promise<{ id: string; taskId: string; archiveObjectId: string | null; distributionStatus: string }> => ({ id: "photo-1", taskId: "task-1", archiveObjectId: null, distributionStatus: "pending" }),
@@ -22,17 +25,30 @@ function databaseFixture() {
       },
       findUnique: async () => ({ id: "task-1", pendingPhotoCount: 3, processStatus: "ready_for_distribution" }),
     },
-    auditLog: { create: async (input: Record<string, unknown>) => input },
+    auditLog: { create: async (input: Record<string, unknown>) => (audits.push(input), input) },
     $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(database),
   };
-  return { database, updates, conditionalUpdates, taskUpdates };
+  return { database, updates, conditionalUpdates, taskUpdates, audits };
 }
+
+const memberContext = {
+  projectId: "quyang",
+  identity: {
+    id: "member-42",
+    sub: "member-42",
+    username: "member.wu",
+    name: "吴成员",
+    role: "member" as const,
+    tokenVersion: 1,
+    projectIds: ["quyang"],
+  },
+};
 
 test("archives one pending photo and atomically decrements the task pending count", async () => {
   const { database, conditionalUpdates, taskUpdates } = databaseFixture();
   const service = new InspectionTaskDistributionService(database as never);
 
-  await service.update("task-1", "photo-1", { action: "archive", archiveObjectId: "community-1" });
+  await runAsMember(() => service.update("task-1", "photo-1", { action: "archive", archiveObjectId: "community-1" }));
 
   assert.deepEqual(conditionalUpdates[0], {
     where: { id: "photo-1", taskId: "task-1", distributionStatus: "pending" },
@@ -49,15 +65,16 @@ test("archives one pending photo and atomically decrements the task pending coun
 });
 
 test("ignores a photo without linking it to an archive", async () => {
-  const { database, conditionalUpdates } = databaseFixture();
+  const { database, conditionalUpdates, audits } = databaseFixture();
   const service = new InspectionTaskDistributionService(database as never);
 
-  await service.update("task-1", "photo-1", { action: "ignore" });
+  await runWithProjectContext(memberContext, () => service.update("task-1", "photo-1", { action: "ignore" }));
 
   assert.deepEqual(conditionalUpdates[0], {
     where: { id: "photo-1", taskId: "task-1", distributionStatus: "pending" },
     data: { distributionStatus: "ignored", archiveObjectId: null },
   });
+  assert.equal((audits[0].data as Record<string, unknown>).actor, "member.wu");
 });
 
 test("unarchives a photo and restores it to the task pending queue", async () => {
@@ -70,7 +87,7 @@ test("unarchives a photo and restores it to the task pending queue", async () =>
   });
   const service = new InspectionTaskDistributionService(database as never);
 
-  await service.update("task-1", "photo-1", { action: "unarchive" });
+  await runAsMember(() => service.update("task-1", "photo-1", { action: "unarchive" }));
 
   assert.deepEqual(updates[0], {
     where: { id: "photo-1" },

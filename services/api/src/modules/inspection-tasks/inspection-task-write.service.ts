@@ -9,7 +9,7 @@ import {
   type NormalizedTaskInput,
   type TaskUploadFile,
 } from "./inspection-task-input.js";
-import { currentProjectId } from "../auth/project-context.js";
+import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
 
 @Injectable()
 export class InspectionTaskWriteService {
@@ -166,7 +166,7 @@ export class InspectionTaskWriteService {
       data: {
         projectId: currentProjectId(),
         id: `audit-${randomUUID()}`,
-        actor: "admin",
+        actor: currentActorUsername(),
         action: "inspectionTask.create",
         targetType: "inspectionTask",
         targetId: taskId,

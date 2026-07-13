@@ -102,6 +102,7 @@ test("authentication reloads the account and its current memberships", async () 
   assert.deepEqual(await fixture.service.authenticateToken(login.token), {
     id: "member-1",
     sub: "member-1",
+    username: "member",
     name: "项目成员",
     role: "member",
     tokenVersion: 3,
@@ -131,6 +132,7 @@ test("project list follows the database access rules", async (t) => {
     const items = await service.projectsFor({
       id: "member-1",
       sub: "member-1",
+      username: "member",
       name: "项目成员",
       role: "member",
       tokenVersion: 3,
@@ -144,11 +146,72 @@ test("project list follows the database access rules", async (t) => {
     const items = await service.projectsFor({
       id: "platform-admin",
       sub: "platform-admin",
+      username: "admin",
       name: "项目管理员",
       role: "platform_admin",
       tokenVersion: 3,
       projectIds: [],
     });
     assert.deepEqual(items.map((project) => project.id), ["quyang", "jinshan"]);
+  });
+});
+
+test("login performs exactly one password verification for valid and rejected account states", async (t) => {
+  const validHash = await hashPassword("member-password-2026");
+  for (const scenario of [
+    { name: "missing account", account: null },
+    { name: "disabled account", account: { status: "disabled", role: "member", passwordHash: validHash } },
+    { name: "unsupported role", account: { status: "active", role: "unexpected", passwordHash: validHash } },
+    { name: "malformed stored hash", account: { status: "active", role: "member", passwordHash: "broken" } },
+  ] as const) {
+    await t.test(scenario.name, async () => {
+      const calls: Array<{ password: string; encoded: string }> = [];
+      const account = scenario.account && {
+        id: "member-1",
+        username: "member",
+        name: "项目成员",
+        tokenVersion: 1,
+        memberships: [],
+        ...scenario.account,
+      };
+      const database = {
+        userAccount: {
+          findUnique: async () => account,
+          update: async () => account,
+        },
+      };
+      const verifier = {
+        verify: async (password: string, encoded: string) => {
+          calls.push({ password, encoded });
+          return false;
+        },
+      };
+      const service = new AuthService(database as never, verifier as never);
+
+      await assert.rejects(
+        () => service.login({ username: "member", password: "wrong-password" }),
+        (error: unknown) => error instanceof Error && error.message === "Invalid username or password",
+      );
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].password, "wrong-password");
+      assert.match(calls[0].encoded, /^scrypt\$/);
+    });
+  }
+
+  await t.test("valid account", async () => {
+    const fixture = await createFixture();
+    let calls = 0;
+    const verifier = {
+      verify: async () => {
+        calls += 1;
+        return true;
+      },
+    };
+    const service = new AuthService(fixture.database as never, verifier as never);
+
+    const result = await service.login({ username: "member", password: "member-password-2026" });
+
+    assert.equal(result.user.username, "member");
+    assert.equal(calls, 1);
   });
 });

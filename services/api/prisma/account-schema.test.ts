@@ -28,9 +28,11 @@ test("keeps role as a Prisma String and constrains its PostgreSQL values", async
 
 test("seed mirrors the bootstrapped accounts and member projects", async () => {
   const seed = await readFile(new URL("./seed.ts", import.meta.url), "utf8");
-  assert.match(seed, /hashPassword/);
-  assert.match(seed, /id:\s*"platform-admin"/);
-  assert.match(seed, /id:\s*"legacy-member"/);
-  assert.match(seed, /id:\s*"legacy-member-quyang"/);
-  assert.match(seed, /id:\s*"legacy-member-jinshan"/);
+  const accountSeed = await readFile(new URL("./seed-accounts.ts", import.meta.url), "utf8");
+  assert.match(seed, /seedLegacyAccounts\(prisma, process\.env\)/);
+  assert.match(accountSeed, /hashPassword/);
+  assert.match(accountSeed, /id:\s*"platform-admin"/);
+  assert.match(accountSeed, /id:\s*"legacy-member"/);
+  assert.match(accountSeed, /id:\s*"legacy-member-quyang"/);
+  assert.match(accountSeed, /id:\s*"legacy-member-jinshan"/);
 });

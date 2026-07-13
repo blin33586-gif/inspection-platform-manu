@@ -30,10 +30,13 @@ function createDatabase(accounts: StoredAccount[] = [], memberships: StoredMembe
     accounts,
     memberships,
     userAccount: {
-      findFirst: async ({ where }: { where: { role: string } }) =>
-        accounts.find((account) => account.role === where.role) ?? null,
-      findUnique: async ({ where }: { where: { username: string } }) =>
-        accounts.find((account) => account.username === where.username) ?? null,
+      findFirst: async ({ where }: { where: { role?: string; OR?: Array<{ id?: string; username?: string; role?: string }> } }) =>
+        accounts.find((account) => (
+          (where.role !== undefined && account.role === where.role)
+          || where.OR?.some((candidate) => (
+            candidate.id === account.id || candidate.username === account.username || candidate.role === account.role
+          ))
+        )) ?? null,
       create: async ({ data }: {
         data: StoredAccount & {
           memberships?: { create: Array<{ id: string; projectId: string }> };
@@ -77,7 +80,12 @@ test("creates configured legacy accounts once and assigns the member to both pro
 
   try {
     const database = createDatabase();
-    const service = new AccountBootstrapService(database as never);
+    const service = new AccountBootstrapService(database as never, {
+      ADMIN_USERNAME: "configured-admin",
+      ADMIN_PASSWORD: "configured-admin-password",
+      MEMBER_USERNAME: "configured-member",
+      MEMBER_PASSWORD: "configured-member-password",
+    });
 
     await service.onModuleInit();
     await service.onModuleInit();
@@ -112,8 +120,51 @@ test("does not replace an existing administrator or alter an existing legacy mem
   ];
   const database = createDatabase(accounts);
 
-  await new AccountBootstrapService(database as never).onModuleInit();
+  await new AccountBootstrapService(database as never, {
+    NODE_ENV: "production",
+    ADMIN_USERNAME: "new-owner",
+    ADMIN_PASSWORD: "new-owner-password-2026",
+    AUTH_SECRET: "production-secret",
+  }).onModuleInit();
 
   assert.deepEqual(database.accounts, accounts);
+  assert.equal(database.memberships.length, 0);
+});
+
+test("production refuses to create a project-wide legacy member without explicit strong credentials", async () => {
+  const accounts: StoredAccount[] = [
+    { id: "existing-admin", username: "owner", passwordHash: "existing", name: "Owner", phone: "", role: "platform_admin" },
+  ];
+  const database = createDatabase(accounts);
+
+  await assert.rejects(
+    () => new AccountBootstrapService(database as never, {
+      NODE_ENV: "production",
+      ADMIN_USERNAME: "owner",
+      ADMIN_PASSWORD: "owner-password-2026",
+      AUTH_SECRET: "production-secret",
+    }).onModuleInit(),
+    /MEMBER_USERNAME and MEMBER_PASSWORD/,
+  );
+  assert.equal(database.accounts.length, 1);
+  assert.equal(database.memberships.length, 0);
+});
+
+test("production does not require member credentials when the persisted legacy member already exists", async () => {
+  const accounts: StoredAccount[] = [
+    { id: "existing-admin", username: "owner", passwordHash: "admin-existing", name: "Owner", phone: "", role: "platform_admin" },
+    { id: "legacy-member", username: "renamed-member", passwordHash: "member-existing", name: "Member", phone: "", role: "member" },
+  ];
+  const database = createDatabase(accounts);
+
+  await new AccountBootstrapService(database as never, {
+    NODE_ENV: "production",
+    ADMIN_USERNAME: "owner",
+    ADMIN_PASSWORD: "owner-password-2026",
+    AUTH_SECRET: "production-secret",
+  }).onModuleInit();
+
+  assert.equal(database.accounts.length, 2);
+  assert.equal(database.accounts[1].passwordHash, "member-existing");
   assert.equal(database.memberships.length, 0);
 });

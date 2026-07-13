@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlatformMembersService } from "./platform-members.service.js";
+import { runAsPlatformAdmin } from "../../test-support/auth-context.js";
 
 const projects = {
   jinshan: { id: "jinshan", name: "金山项目" },
@@ -130,7 +131,7 @@ const validCreateInput = {
 test("creates a member with at least one project and no password in the response", async () => {
   const { service, fixture } = createFixture();
 
-  const member = await service.create(validCreateInput, "platform-admin");
+  const member = await runAsPlatformAdmin(() => service.create(validCreateInput));
 
   assert.deepEqual(member.projectIds, ["jinshan"]);
   assert.equal("password" in member, false);
@@ -138,6 +139,7 @@ test("creates a member with at least one project and no password in the response
   assert.equal("password" in (fixture.audit ?? {}), false);
   assert.equal("passwordHash" in (fixture.audit ?? {}), false);
   assert.doesNotMatch(JSON.stringify(fixture.audit), /member-password-2026|must-not-leak/);
+  assert.equal(fixture.audit?.actorId, "platform-admin");
 });
 
 test("lists only safe member fields", async () => {
@@ -239,7 +241,7 @@ test("rejects attempts to edit or reset the platform administrator", async () =>
 test("changing projects increments tokenVersion and records platform audit", async () => {
   const { service, fixture } = createFixture();
 
-  const member = await service.update("member-1", { projectIds: ["quyang"] }, "platform-admin");
+  const member = await runAsPlatformAdmin(() => service.update("member-1", { projectIds: ["quyang"] }));
 
   assert.deepEqual(fixture.updatedAccount?.tokenVersion, { increment: 1 });
   assert.equal(fixture.audit?.action, "member.projects.update");
@@ -249,7 +251,7 @@ test("changing projects increments tokenVersion and records platform audit", asy
 test("changing status increments tokenVersion and records platform audit", async () => {
   const { service, fixture } = createFixture();
 
-  await service.update("member-1", { status: "disabled" }, "platform-admin");
+  await runAsPlatformAdmin(() => service.update("member-1", { status: "disabled" }));
 
   assert.deepEqual(fixture.updatedAccount?.tokenVersion, { increment: 1 });
   assert.equal(fixture.audit?.action, "member.status.update");
@@ -267,7 +269,6 @@ test("does not rebuild memberships or invalidate sessions for the same project s
   const member = await service.update(
     "member-1",
     { projectIds: ["quyang", "jinshan"] },
-    "platform-admin",
   );
 
   assert.deepEqual(member.projectIds, ["jinshan", "quyang"]);
@@ -280,7 +281,7 @@ test("does not rebuild memberships or invalidate sessions for the same project s
 test("does not invalidate sessions or audit when status is unchanged", async () => {
   const { service, fixture } = createFixture();
 
-  await service.update("member-1", { status: "active" }, "platform-admin");
+  await service.update("member-1", { status: "active" });
 
   assert.equal(fixture.updateCalls, 0);
   assert.equal(fixture.auditCalls, 0);
@@ -289,11 +290,10 @@ test("does not invalidate sessions or audit when status is unchanged", async () 
 test("audits only the real profile change when status and projects are unchanged", async () => {
   const { service, fixture } = createFixture();
 
-  await service.update(
+  await runAsPlatformAdmin(() => service.update(
     "member-1",
     { name: "李四", status: "active", projectIds: ["jinshan"] },
-    "platform-admin",
-  );
+  ));
 
   assert.equal(fixture.membershipDeleteCalls, 0);
   assert.equal(fixture.membershipCreateCalls, 0);
@@ -305,11 +305,10 @@ test("audits only the real profile change when status and projects are unchanged
 test("resetting a password increments tokenVersion and never writes the password to audit", async () => {
   const { service, fixture } = createFixture();
 
-  const member = await service.resetPassword(
+  const member = await runAsPlatformAdmin(() => service.resetPassword(
     "member-1",
     { password: "new-member-password" },
-    "platform-admin",
-  );
+  ));
 
   assert.deepEqual(fixture.updatedAccount?.tokenVersion, { increment: 1 });
   assert.equal(fixture.audit?.action, "member.password.reset");

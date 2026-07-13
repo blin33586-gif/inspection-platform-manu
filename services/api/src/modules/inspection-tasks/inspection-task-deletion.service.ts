@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
-import { currentProjectId } from "../auth/project-context.js";
+import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
 
 export interface InspectionTaskPurgeResult {
   taskId: string;
@@ -128,7 +128,7 @@ export class InspectionTaskDeletionService {
         data: {
           projectId,
           id: `audit-${randomUUID()}`,
-          actor: "admin",
+          actor: currentActorUsername(),
           action: "inspectionTask.purge",
           targetType: "inspectionTask",
           targetId: taskId,

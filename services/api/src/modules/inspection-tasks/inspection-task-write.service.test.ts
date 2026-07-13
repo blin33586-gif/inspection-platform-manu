@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InspectionTaskWriteService } from "./inspection-task-write.service.js";
 import type { TaskUploadFile } from "./inspection-task-input.js";
+import { runAsMember } from "../../test-support/auth-context.js";
 
 function createDatabase() {
   const calls = {
@@ -43,8 +44,8 @@ test("creates video and archive tasks with mandatory processing jobs", async () 
   const service = new InspectionTaskWriteService(database as never, join(root, "storage"));
 
   try {
-    await service.create({ name: "视频任务", taskDate: "2026-07-11", sourceType: "drone", inputType: "video", intervalSeconds: "2" }, [videoInput]);
-    await service.create({ name: "图片包任务", taskDate: "2026-07-11", sourceType: "manual", inputType: "archive" }, [archiveInput]);
+    await runAsMember(() => service.create({ name: "视频任务", taskDate: "2026-07-11", sourceType: "drone", inputType: "video", intervalSeconds: "2" }, [videoInput]));
+    await runAsMember(() => service.create({ name: "图片包任务", taskDate: "2026-07-11", sourceType: "manual", inputType: "archive" }, [archiveInput]));
 
     assert.deepEqual(calls.tasks.map((item) => item.inputType), ["video", "archive"]);
     assert.deepEqual(calls.jobs.map((item) => item.jobType), ["frame_extract", "archive_extract"]);
@@ -61,7 +62,7 @@ test("queues direct images for header validation and preview preparation", async
   const service = new InspectionTaskWriteService(database as never, join(root, "storage"));
 
   try {
-    const result = await service.create({ name: "图片任务", taskDate: "2026-07-11", sourceType: "glasses", inputType: "images" }, images);
+    const result = await runAsMember(() => service.create({ name: "图片任务", taskDate: "2026-07-11", sourceType: "glasses", inputType: "images" }, images));
 
     assert.equal(result.processStatus, "queued");
     assert.equal(calls.tasks[0].photoCount, 0);

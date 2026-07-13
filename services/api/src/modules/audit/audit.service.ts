@@ -1,10 +1,9 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
-import { currentIdentity, currentProjectId } from "../auth/project-context.js";
+import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
 
 interface RecordAuditInput {
-  actor?: string;
   action: string;
   targetType: string;
   targetId?: string | null;
@@ -20,7 +19,7 @@ export class AuditService {
       data: {
         projectId: currentProjectId(),
         id: `audit-${randomUUID()}`,
-        actor: input.actor ?? currentIdentity()?.name ?? "项目管理员",
+        actor: currentActorUsername(),
         action: input.action,
         targetType: input.targetType,
         targetId: input.targetId,

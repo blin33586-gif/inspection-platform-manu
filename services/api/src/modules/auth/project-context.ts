@@ -19,3 +19,13 @@ export function currentProjectId() {
 export function currentIdentity() {
   return storage.getStore()?.identity ?? null;
 }
+
+export function requireCurrentIdentity() {
+  const identity = currentIdentity();
+  if (!identity) throw new Error("Authenticated identity is required for business writes");
+  return identity;
+}
+
+export function currentActorUsername() {
+  return requireCurrentIdentity().username;
+}

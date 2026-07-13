@@ -9,6 +9,10 @@ import { enrichExtractedFrames, type EnrichedFrame } from "./frame-telemetry-enr
 import { runTiffTileJob } from "./gdal-tile-generator.js";
 import { extractTilePackage, type ExtractTilePackageInput } from "./map-tile-package-extractor.js";
 import {
+  MapJobLeaseCoordinator,
+  type ExpiredMapJob,
+} from "./map-job-lease.js";
+import {
   prepareInspectionImage,
   type PreparedInspectionImage,
   type PrepareInspectionImageInput,
@@ -59,6 +63,8 @@ interface JobRunnerHandlers {
   extractTilePackage?: (input: ExtractTilePackageInput) => Promise<TileMapMetadata>;
   runTiffTileJob?: typeof runTiffTileJob;
   removePath?: typeof rm;
+  mapLeaseCoordinator?: MapJobLeaseCoordinator;
+  heartbeatIntervalMs?: number;
 }
 
 interface MapOutputDirectories {
@@ -75,6 +81,8 @@ export class JobRunner {
   private readonly extractTilePackageHandler: NonNullable<JobRunnerHandlers["extractTilePackage"]>;
   private readonly runTiffTileJobHandler: NonNullable<JobRunnerHandlers["runTiffTileJob"]>;
   private readonly removePathHandler: NonNullable<JobRunnerHandlers["removePath"]>;
+  private readonly mapLeaseCoordinator: MapJobLeaseCoordinator;
+  private readonly heartbeatIntervalMs: number;
   private processing = false;
 
   constructor(
@@ -89,32 +97,43 @@ export class JobRunner {
     this.extractTilePackageHandler = handlers.extractTilePackage ?? extractTilePackage;
     this.runTiffTileJobHandler = handlers.runTiffTileJob ?? runTiffTileJob;
     this.removePathHandler = handlers.removePath ?? rm;
+    this.mapLeaseCoordinator = handlers.mapLeaseCoordinator ?? new MapJobLeaseCoordinator(database);
+    this.heartbeatIntervalMs = handlers.heartbeatIntervalMs ?? Math.max(1_000, Math.floor(this.mapLeaseCoordinator.leaseDurationMs / 3));
   }
 
   async processNext() {
     if (this.processing) return false;
     this.processing = true;
+    let claimedMapLease: { jobId: string; attemptId: string } | null = null;
     try {
       const job = await this.claimOne();
       if (!job) return false;
 
+      const isMapJob = this.isMapJobType(job.jobType);
+      const attemptId = isMapJob && typeof job.attemptId === "string" ? job.attemptId : null;
+      if (isMapJob && attemptId) claimedMapLease = { jobId: job.id, attemptId };
+
       try {
         const projectId = job.projectId || "quyang";
-        if (job.jobType === "tiff_tile" || job.jobType === "map_tile_package") {
+        if (isMapJob) {
           const mapAssetId = this.readMapAssetId(job.inputJson);
           if (mapAssetId) await this.markMapJobRunning(projectId, mapAssetId);
         }
-        if (job.jobType === "tiff_tile") await this.processTiffJob(job.id, projectId, job.inputJson);
-        else if (job.jobType === "map_tile_package") await this.processMapTilePackageJob(job.id, projectId, job.inputJson);
-        else if (job.jobType === "frame_extract") await this.processFrameJob(job.id, projectId, job.inputJson);
-        else if (job.jobType === "archive_extract") await this.processArchiveJob(job.id, projectId, job.inputJson);
-        else if (job.jobType === "image_prepare") await this.processImagePrepareJob(job.id, projectId, job.inputJson);
-        else throw new Error(`不支持的媒体任务类型：${job.jobType}`);
+        const process = async () => {
+          if (job.jobType === "tiff_tile") await this.processTiffJob(job.id, projectId, job.inputJson, attemptId!);
+          else if (job.jobType === "map_tile_package") await this.processMapTilePackageJob(job.id, projectId, job.inputJson, attemptId!);
+          else if (job.jobType === "frame_extract") await this.processFrameJob(job.id, projectId, job.inputJson);
+          else if (job.jobType === "archive_extract") await this.processArchiveJob(job.id, projectId, job.inputJson);
+          else if (job.jobType === "image_prepare") await this.processImagePrepareJob(job.id, projectId, job.inputJson);
+          else throw new Error(`不支持的媒体任务类型：${job.jobType}`);
+        };
+        if (isMapJob && attemptId) await this.withMapHeartbeat(job.id, attemptId, process);
+        else await process();
       } catch (error) {
         const projectId = job.projectId || "quyang";
-        if (job.jobType === "tiff_tile" || job.jobType === "map_tile_package") {
+        if (isMapJob) {
           const mapAssetId = this.readMapAssetId(job.inputJson);
-          if (mapAssetId) await this.failMapJob(job.id, projectId, mapAssetId, error);
+          if (mapAssetId && attemptId) await this.failMapJob(job.id, projectId, mapAssetId, attemptId, error);
           else await this.failJob(job.id, error);
         } else {
           await this.failJob(job.id, error);
@@ -130,7 +149,13 @@ export class JobRunner {
 
       return true;
     } finally {
-      this.processing = false;
+      try {
+        if (claimedMapLease) {
+          await this.mapLeaseCoordinator.releaseJob(claimedMapLease.jobId, claimedMapLease.attemptId);
+        }
+      } finally {
+        this.processing = false;
+      }
     }
   }
 
@@ -144,12 +169,30 @@ export class JobRunner {
     });
   }
 
-  private async failMapJob(jobId: string, projectId: string, mapAssetId: string, error: unknown) {
+  private async failMapJob(
+    jobId: string,
+    projectId: string,
+    mapAssetId: string,
+    attemptId: string,
+    error: unknown,
+  ) {
+    try {
+      await this.mapLeaseCoordinator.heartbeat(jobId, attemptId);
+    } catch {
+      return;
+    }
     const errorMessage = sanitizeMapProcessingFailureMessage(error instanceof Error ? error.message : error);
     await Promise.allSettled([
       Promise.resolve().then(() => this.database.mediaProcessingJob.update({
         where: { id: jobId },
-        data: { status: "failed", errorMessage },
+        data: {
+          status: "failed",
+          errorMessage,
+          leaseOwner: null,
+          attemptId: null,
+          leaseExpiresAt: null,
+          heartbeatAt: null,
+        },
       })),
       Promise.resolve().then(() => this.database.mapAsset.updateMany({
         where: { id: mapAssetId, projectId, processStatus: { in: ["queued", "running"] } },
@@ -172,7 +215,7 @@ export class JobRunner {
   private async claimOne() {
     const skippedCandidateIds: string[] = [];
     for (let attempt = 0; attempt < 10; attempt += 1) {
-      const candidate = await this.database.mediaProcessingJob.findFirst({
+      let candidate = await this.database.mediaProcessingJob.findFirst({
         where: {
           jobType: { in: ["tiff_tile", "map_tile_package", "frame_extract", "archive_extract", "image_prepare"] },
           status: "queued",
@@ -180,24 +223,125 @@ export class JobRunner {
         },
         orderBy: { createdAt: "asc" },
       });
-      if (!candidate) return null;
+      if (!candidate) {
+        if (!await this.mapLeaseCoordinator.acquireGlobal()) return null;
+        await this.recoverExpiredMapJobs();
+        candidate = await this.database.mediaProcessingJob.findFirst({
+          where: {
+            jobType: { in: ["tiff_tile", "map_tile_package"] },
+            status: "queued",
+          },
+          orderBy: { createdAt: "asc" },
+        });
+        if (!candidate) {
+          await this.mapLeaseCoordinator.releaseGlobal();
+          return null;
+        }
+      } else if (this.isMapJobType(candidate.jobType)) {
+        if (!await this.mapLeaseCoordinator.acquireGlobal()) {
+          return this.claimNonMapJob();
+        }
+        if (await this.recoverExpiredMapJobs() > 0) {
+          candidate = await this.database.mediaProcessingJob.findFirst({
+            where: {
+              jobType: { in: ["tiff_tile", "map_tile_package"] },
+              status: "queued",
+            },
+            orderBy: { createdAt: "asc" },
+          });
+          if (!candidate) {
+            await this.mapLeaseCoordinator.releaseGlobal();
+            return this.claimNonMapJob();
+          }
+        }
+      }
 
+      const isMapJob = this.isMapJobType(candidate.jobType);
+      const attemptId = isMapJob ? this.mapLeaseCoordinator.newAttemptId() : null;
       const claim = await this.database.mediaProcessingJob.updateMany({
         where: { id: candidate.id, status: "queued" },
-        data: { status: "running", attempts: { increment: 1 }, startedAt: new Date(), errorMessage: null },
+        data: {
+          status: "running",
+          attempts: { increment: 1 },
+          startedAt: new Date(),
+          errorMessage: null,
+          ...(attemptId ? this.mapLeaseCoordinator.leaseFields(attemptId) : {}),
+        },
       });
       if (claim.count === 1) {
-        return this.database.mediaProcessingJob.findUnique({ where: { id: candidate.id } });
+        const claimed = await this.database.mediaProcessingJob.findUnique({ where: { id: candidate.id } });
+        return claimed && attemptId ? { ...claimed, attemptId } : claimed;
       }
+      if (isMapJob) await this.mapLeaseCoordinator.releaseGlobal();
       skippedCandidateIds.push(candidate.id);
     }
     return null;
   }
 
-  private async processTiffJob(jobId: string, projectId: string, rawInput: string) {
+  private async claimNonMapJob() {
+    const candidate = await this.database.mediaProcessingJob.findFirst({
+      where: {
+        jobType: { in: ["frame_extract", "archive_extract", "image_prepare"] },
+        status: "queued",
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!candidate) return null;
+    const claim = await this.database.mediaProcessingJob.updateMany({
+      where: { id: candidate.id, status: "queued" },
+      data: { status: "running", attempts: { increment: 1 }, startedAt: new Date(), errorMessage: null },
+    });
+    if (claim.count !== 1) return null;
+    return this.database.mediaProcessingJob.findUnique({ where: { id: candidate.id } });
+  }
+
+  private async recoverExpiredMapJobs() {
+    let recoveredCount = 0;
+    for (const expired of await this.mapLeaseCoordinator.expiredMapJobs()) {
+      await this.cleanupExpiredMapAttempt(expired);
+      const requeued = await this.mapLeaseCoordinator.requeueExpiredJob(expired);
+      if (requeued.count !== 1) continue;
+      recoveredCount += 1;
+      const mapAssetId = this.readMapAssetId(expired.inputJson);
+      if (!mapAssetId) continue;
+      await this.database.mapAsset.updateMany({
+        where: { id: mapAssetId, projectId: expired.projectId, processStatus: "running" },
+        data: { processStatus: "queued", errorMessage: null },
+      });
+    }
+    return recoveredCount;
+  }
+
+  private async cleanupExpiredMapAttempt(job: ExpiredMapJob) {
+    const mapAssetId = this.readMapAssetId(job.inputJson);
+    if (!mapAssetId || !job.attemptId) return;
+    const directory = this.mapOutputDirectories(job.id, mapAssetId, job.attemptId).temporaryDirectory;
+    await this.removePathHandler(directory, { recursive: true, force: true });
+  }
+
+  private async withMapHeartbeat(jobId: string, attemptId: string, process: () => Promise<void>) {
+    let heartbeatError: unknown = null;
+    let inFlight = Promise.resolve();
+    const timer = setInterval(() => {
+      inFlight = inFlight
+        .then(() => this.mapLeaseCoordinator.heartbeat(jobId, attemptId))
+        .catch((error) => { heartbeatError = error; });
+    }, this.heartbeatIntervalMs);
+    timer.unref();
+    try {
+      await process();
+      await inFlight;
+      if (heartbeatError) throw heartbeatError;
+    } finally {
+      clearInterval(timer);
+      await inFlight;
+    }
+  }
+
+  private async processTiffJob(jobId: string, projectId: string, rawInput: string, attemptId: string) {
     const input = this.parseTiffInput(rawInput);
     const sourcePath = await this.validateMapJobSource(projectId, "tiff_tile", input);
-    const directories = await this.prepareMapOutput(jobId, input.mapAssetId);
+    const directories = await this.prepareMapOutput(jobId, input.mapAssetId, attemptId);
     try {
       const result = await this.runTiffTileJobHandler({
         sourcePath,
@@ -205,31 +349,31 @@ export class JobRunner {
         minZoom: input.minZoom,
         maxZoom: input.maxZoom,
       });
-      await this.finishMapJob(jobId, projectId, input.mapAssetId, result.metadata, directories);
+      await this.finishMapJob(jobId, projectId, input.mapAssetId, result.metadata, directories, attemptId);
     } catch (error) {
       await this.cleanupOwnedMapOutput(directories);
       throw error;
     }
   }
 
-  private async processMapTilePackageJob(jobId: string, projectId: string, rawInput: string) {
+  private async processMapTilePackageJob(jobId: string, projectId: string, rawInput: string, attemptId: string) {
     const input = this.parseMapTilePackageInput(rawInput);
     const sourcePath = await this.validateMapJobSource(projectId, "map_tile_package", input);
-    const directories = await this.prepareMapOutput(jobId, input.mapAssetId);
+    const directories = await this.prepareMapOutput(jobId, input.mapAssetId, attemptId);
     try {
       const metadata = await this.extractTilePackageHandler({
         sourcePath,
         outputDirectory: directories.temporaryDirectory,
       });
-      await this.finishMapJob(jobId, projectId, input.mapAssetId, metadata, directories);
+      await this.finishMapJob(jobId, projectId, input.mapAssetId, metadata, directories, attemptId);
     } catch (error) {
       await this.cleanupOwnedMapOutput(directories);
       throw error;
     }
   }
 
-  private async prepareMapOutput(jobId: string, mapAssetId: string) {
-    const directories = this.mapOutputDirectories(jobId, mapAssetId);
+  private async prepareMapOutput(jobId: string, mapAssetId: string, attemptId: string) {
+    const directories = this.mapOutputDirectories(jobId, mapAssetId, attemptId);
     await mkdir(resolve(this.storageRoot, "map-tiles"), { recursive: true });
     return directories;
   }
@@ -240,7 +384,9 @@ export class JobRunner {
     mapAssetId: string,
     metadata: TileMapMetadata,
     directories: MapOutputDirectories,
+    attemptId: string,
   ) {
+    await this.mapLeaseCoordinator.heartbeat(jobId, attemptId);
     await this.assertFinalDirectoryAbsent(directories.finalDirectory);
     await rename(directories.temporaryDirectory, directories.finalDirectory);
     directories.promoted = true;
@@ -626,14 +772,19 @@ export class JobRunner {
     return typeof value === "string" && /^[a-zA-Z0-9_-]+$/.test(value);
   }
 
-  private mapOutputDirectories(jobId: string, mapAssetId: string): MapOutputDirectories {
+  private mapOutputDirectories(jobId: string, mapAssetId: string, attemptId: string): MapOutputDirectories {
     if (!this.isSafeMapAssetId(mapAssetId)) throw new Error("地图资产编号无效");
     const safeJobId = jobId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100) || "job";
+    const safeAttemptId = attemptId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100) || "attempt";
     return {
-      temporaryDirectory: resolve(this.storageRoot, "map-tiles", `.tmp-${mapAssetId}-${safeJobId}-${randomUUID()}`),
+      temporaryDirectory: resolve(this.storageRoot, "map-tiles", `.tmp-${mapAssetId}-${safeJobId}-${safeAttemptId}`),
       finalDirectory: resolve(this.storageRoot, "map-tiles", mapAssetId),
       promoted: false,
     };
+  }
+
+  private isMapJobType(jobType: string) {
+    return jobType === "tiff_tile" || jobType === "map_tile_package";
   }
 
   private toStoragePath(storedPath: string) {

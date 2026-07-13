@@ -12,6 +12,7 @@ test("keeps the selected project and identity across async work", async () => {
     identity: {
       id: "member-1",
       sub: "member-1",
+      username: "member",
       name: "项目成员",
       role: "member",
       tokenVersion: 3,

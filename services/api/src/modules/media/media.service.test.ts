@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MediaService } from "./media.service.js";
+import { runAsMember } from "../../test-support/auth-context.js";
 
 function createService() {
   const upsertCalls: Array<Record<string, unknown>> = [];
@@ -86,13 +87,13 @@ test("stores an uploaded MOV video and automatically queues extraction", async (
   const service = new MediaService(database as never);
 
   try {
-    const result = await service.createVideoFromUpload({
+    const result = await runAsMember(() => service.createVideoFromUpload({
       filename: "flight.mov",
       originalname: "DJI_FLIGHT.MOV",
       mimetype: "video/quicktime",
       path: tempPath,
       size: 12,
-    }, 4);
+    }, 4));
 
     assert.equal(result.asset.kind, "video");
     assert.equal(result.asset.originalFileName, "DJI_FLIGHT.MOV");
@@ -154,13 +155,13 @@ test("stores an uploaded ZIP and automatically queues archive extraction", async
   const service = new MediaService(database as never);
 
   try {
-    const result = await service.createMediaFromUpload({
+    const result = await runAsMember(() => service.createMediaFromUpload({
       filename: "photos.zip",
       originalname: "曲阳巡检照片.zip",
       mimetype: "application/zip",
       path: tempPath,
       size: 18,
-    }, 3);
+    }, 3));
 
     assert.equal(result.asset.kind, "image_bundle");
     assert.equal(result.asset.originalFileName, "曲阳巡检照片.zip");

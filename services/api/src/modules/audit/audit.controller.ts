@@ -16,7 +16,7 @@ export class AuditController {
   }
 
   @Patch(":id/review")
-  async review(@Param("id") id: string, @Body() body: { decision?: "confirm" | "cancel"; actor?: string }) {
-    return ok(await this.deletionService.reviewDeletion(id, body.decision ?? "cancel", body.actor));
+  async review(@Param("id") id: string, @Body() body: { decision?: "confirm" | "cancel" }) {
+    return ok(await this.deletionService.reviewDeletion(id, body.decision ?? "cancel"));
   }
 }

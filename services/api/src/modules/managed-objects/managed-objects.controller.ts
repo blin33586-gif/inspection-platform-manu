@@ -16,7 +16,7 @@ export class ManagedObjectsController {
   }
 
   @Post(":id/deletion-requests")
-  async requestDeletion(@Param("id") id: string, @Body() body: { actor?: string }) {
-    return ok(await this.deletionService.requestDeletion(id, body.actor));
+  async requestDeletion(@Param("id") id: string) {
+    return ok(await this.deletionService.requestDeletion(id));
   }
 }

@@ -51,11 +51,11 @@ export class IssueEventPublishService {
     this.cardRenderer = cardRenderer ?? renderIssueCard;
   }
 
-  async publish(photoId: string, actor: string, input: PublishIssueEventInput): Promise<PublishIssueEventResult> {
+  async publish(photoId: string, input: PublishIssueEventInput): Promise<PublishIssueEventResult> {
     this.validate(input);
     const existing = await this.database.issue.findUnique({ where: { publishIdempotencyKey: input.idempotencyKey, projectId: currentProjectId() } });
     if (existing) {
-      await this.ensureCard(existing, actor);
+      await this.ensureCard(existing);
       return this.result(existing.id);
     }
 
@@ -91,18 +91,17 @@ export class IssueEventPublishService {
       },
     });
     await this.audit.record({
-      actor,
       action: "issue.event.publish",
       targetType: "issue",
       targetId: issue.id,
       summary: `推送问题「${issue.title}」`,
     });
 
-    await this.generateCard(issue, photo, photo.annotationDocument.annotationJson, actor);
+    await this.generateCard(issue, photo, photo.annotationDocument.annotationJson);
     return this.result(id);
   }
 
-  private async ensureCard(issue: IssueCardRecord, actor: string) {
+  private async ensureCard(issue: IssueCardRecord) {
     if (issue.cardStoragePath) return;
     if (!issue.sourceTaskPhotoId || !issue.sourceAnnotationVersion) {
       throw new ConflictException("问题缺少原始照片或标注版本，无法生成分享卡");
@@ -110,7 +109,7 @@ export class IssueEventPublishService {
     const photo = await this.requirePhoto(issue.sourceTaskPhotoId);
     if (!photo.annotationDocument) throw new ConflictException("问题的原始标注已不存在");
     const annotationJson = await this.readAnnotationVersion(photo, issue.sourceAnnotationVersion);
-    await this.generateCard(issue, photo, annotationJson, actor);
+    await this.generateCard(issue, photo, annotationJson);
   }
 
   private async requirePhoto(photoId: string) {
@@ -134,7 +133,7 @@ export class IssueEventPublishService {
     return snapshot.annotationJson;
   }
 
-  private async generateCard(issue: IssueCardRecord, photo: IssuePhotoRecord, annotationJson: string, actor: string) {
+  private async generateCard(issue: IssueCardRecord, photo: IssuePhotoRecord, annotationJson: string) {
     const token = this.token(issue.id);
     const finalStoragePath = `storage/issues/cards/${issue.id}.png`;
     const finalPath = this.resolveStoragePath(finalStoragePath);
@@ -161,7 +160,6 @@ export class IssueEventPublishService {
     } catch (error) {
       await rm(tempPath, { force: true }).catch(() => undefined);
       await this.audit.record({
-        actor,
         action: "issue.card.failed",
         targetType: "issue",
         targetId: issue.id,

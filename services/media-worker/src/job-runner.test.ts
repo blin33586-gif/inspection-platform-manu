@@ -5,6 +5,27 @@ import { join } from "node:path";
 import test from "node:test";
 import { JobRunner } from "./job-runner.js";
 
+function testMapLeaseCoordinator(overrides: Record<string, unknown> = {}) {
+  return {
+    ownerId: "test-runner",
+    leaseDurationMs: 30_000,
+    acquireGlobal: async () => true,
+    expiredMapJobs: async () => [],
+    requeueExpiredJob: async () => ({ count: 1 }),
+    newAttemptId: () => "11111111-1111-4111-8111-111111111111",
+    leaseFields: (attemptId: string) => ({
+      leaseOwner: "test-runner",
+      attemptId,
+      leaseExpiresAt: new Date("2026-07-14T00:00:30.000Z"),
+      heartbeatAt: new Date("2026-07-14T00:00:00.000Z"),
+    }),
+    heartbeat: async () => {},
+    releaseJob: async () => {},
+    releaseGlobal: async () => {},
+    ...overrides,
+  };
+}
+
 const mapMetadata = {
   minZoom: 1,
   maxZoom: 1,
@@ -173,6 +194,7 @@ test("successfully extracts a map package and atomically activates it only for i
   };
   const outputDirectories: string[] = [];
   const runner = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async ({ outputDirectory }) => {
       outputDirectories.push(outputDirectory);
       await mkdir(join(outputDirectory, "1/0"), { recursive: true });
@@ -240,6 +262,7 @@ test("keeps map work globally serial within the worker", async () => {
   await mkdir(join(storageRoot, "map-assets"), { recursive: true });
   await writeFile(join(storageRoot, "map-assets/map-serial.zip"), "source");
   const runner = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async ({ outputDirectory }) => {
       notifyStarted();
       await gate;
@@ -251,9 +274,10 @@ test("keeps map work globally serial within the worker", async () => {
   try {
     const first = runner.processNext();
     await started;
+    const callsWhileFirstRunning = findFirstCalls;
     const second = runner.processNext();
     await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(findFirstCalls, 1);
+    assert.equal(findFirstCalls, callsWhileFirstRunning);
     release();
     assert.deepEqual(await Promise.all([first, second]), [true, false]);
   } finally {
@@ -297,6 +321,7 @@ test("failed map processing cleans partial outputs, preserves the source and nev
     $transaction: async (operations: unknown[]) => operations,
   };
   const runner = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async ({ outputDirectory }) => {
       await mkdir(outputDirectory, { recursive: true });
       await writeFile(join(outputDirectory, "partial.png"), "partial");
@@ -372,6 +397,7 @@ test("activation transaction failure rolls back the old map and cleans the renam
     },
   };
   const runner = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async ({ outputDirectory }) => {
       await mkdir(join(outputDirectory, "1/0"), { recursive: true });
       await writeFile(join(outputDirectory, "1/0/0.png"), "tile");
@@ -423,6 +449,7 @@ test("rejects a map asset id that does not belong to the job project before read
     $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
   };
   const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async () => {
       extractorCalled = true;
       throw new Error("handler should not run");
@@ -469,6 +496,7 @@ test("rejects a payload source path that differs from the project map asset stor
     $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
   };
   const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async () => {
       extractorCalled = true;
       throw new Error("handler should not run");
@@ -518,6 +546,7 @@ test("rejects map jobs whose asset source type or process status is not allowed"
       $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
     };
     const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
+      mapLeaseCoordinator: testMapLeaseCoordinator() as never,
       extractTilePackage: async () => {
         extractorCalled = true;
         throw new Error("handler should not run");
@@ -568,6 +597,7 @@ test("preserves the processing error when temporary-output cleanup also fails", 
     $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
   };
   const runner = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async ({ outputDirectory }) => {
       await mkdir(outputDirectory, { recursive: true });
       throw new Error("原始处理错误");
@@ -627,6 +657,7 @@ test("marks the job failed even when persisting the map asset error fails", asyn
     },
   };
   const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async () => { throw new Error("瓦片处理失败"); },
   });
 
@@ -670,6 +701,7 @@ test("never replaces or removes an existing final tile directory", async () => {
     $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
   };
   const runner = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async ({ outputDirectory }) => {
       await mkdir(join(outputDirectory, "1/0"), { recursive: true });
       await writeFile(join(outputDirectory, "1/0/0.png"), "new-tile");
@@ -719,6 +751,7 @@ test("uses different job-scoped staging directories for two jobs targeting the s
     $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
   };
   const runner = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async ({ outputDirectory }) => {
       outputDirectories.push(outputDirectory);
       throw new Error("故意停在 staging 阶段");
@@ -771,6 +804,7 @@ test("continues to the next queued job after a claim compare-and-swap loses a ra
     $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
   };
   const runner = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
     extractTilePackage: async ({ outputDirectory }) => {
       handledJobs.push(outputDirectory);
       await mkdir(join(outputDirectory, "1/0"), { recursive: true });
@@ -783,6 +817,212 @@ test("continues to the next queued job after a claim compare-and-swap loses a ra
     assert.equal(await runner.processNext(), true);
     assert.equal(claimAttempts, 2);
     assert.match(handledJobs[0], /job-claimed/);
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("two independent runners use the database lease to serialize different map jobs", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-two-runners-"));
+  const jobs = ["map-a", "map-b"].map((mapAssetId) => ({
+    id: `job-${mapAssetId}`,
+    projectId: "jinshan",
+    jobType: "map_tile_package",
+    status: "queued",
+    inputJson: JSON.stringify({ mapAssetId, sourcePath: `storage/map-assets/${mapAssetId}.zip` }),
+  }));
+  let leaseOwner: string | null = null;
+  const database = {
+    mediaProcessingJob: {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => jobs.find((job) => {
+        if (job.status !== where.status) return false;
+        const types = ((where.jobType as { in?: string[] } | undefined)?.in ?? []);
+        return types.length === 0 || types.includes(job.jobType);
+      }) ?? null,
+      updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        const job = jobs.find((candidate) => candidate.id === where.id && candidate.status === where.status);
+        if (!job) return { count: 0 };
+        Object.assign(job, data);
+        return { count: 1 };
+      },
+      findUnique: async ({ where }: { where: { id: string } }) => jobs.find((job) => job.id === where.id) ?? null,
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const job = jobs.find((candidate) => candidate.id === where.id)!;
+        Object.assign(job, data);
+        return job;
+      },
+    },
+    mapAsset: {
+      findUnique: async ({ where }: { where: { id: string } }) => queuedMapAsset(
+        where.id,
+        "jinshan",
+        `storage/map-assets/${where.id}.zip`,
+        { processStatus: "running" },
+      ),
+      updateMany: async (input: unknown) => input,
+      update: async (input: unknown) => input,
+    },
+    auditLog: { create: async (input: unknown) => input },
+    $transaction: async (operations: unknown[]) => operations,
+  };
+  const coordinator = (ownerId: string) => testMapLeaseCoordinator({
+    ownerId,
+    acquireGlobal: async () => {
+      if (leaseOwner !== null && leaseOwner !== ownerId) return false;
+      leaseOwner = ownerId;
+      return true;
+    },
+    leaseFields: (attemptId: string) => ({
+      leaseOwner: ownerId,
+      attemptId,
+      leaseExpiresAt: new Date("2026-07-14T00:00:30.000Z"),
+      heartbeatAt: new Date("2026-07-14T00:00:00.000Z"),
+    }),
+    heartbeat: async () => {
+      if (leaseOwner !== ownerId) throw new Error("lease lost");
+    },
+    releaseJob: async () => {
+      if (leaseOwner === ownerId) leaseOwner = null;
+    },
+    releaseGlobal: async () => {
+      if (leaseOwner === ownerId) leaseOwner = null;
+    },
+  });
+  let releaseFirst!: () => void;
+  let firstStarted!: () => void;
+  const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const started = new Promise<void>((resolve) => { firstStarted = resolve; });
+  const processed: string[] = [];
+  const first = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: coordinator("runner-a") as never,
+    extractTilePackage: async ({ outputDirectory }) => {
+      processed.push("runner-a");
+      firstStarted();
+      await gate;
+      await mkdir(outputDirectory, { recursive: true });
+      return mapMetadata;
+    },
+  });
+  const second = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: coordinator("runner-b") as never,
+    extractTilePackage: async ({ outputDirectory }) => {
+      processed.push("runner-b");
+      await mkdir(outputDirectory, { recursive: true });
+      return mapMetadata;
+    },
+  });
+
+  try {
+    const firstRun = first.processNext();
+    await started;
+    assert.equal(await second.processNext(), false);
+    assert.deepEqual(processed, ["runner-a"]);
+    releaseFirst();
+    assert.equal(await firstRun, true);
+    assert.equal(await second.processNext(), true);
+    assert.deepEqual(processed, ["runner-a", "runner-b"]);
+  } finally {
+    releaseFirst();
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("expired map recovery removes only the old attempt staging directory and requeues its asset", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-recovery-"));
+  const oldDirectory = join(storageRoot, "map-tiles/.tmp-map-expired-job-expired-old-attempt");
+  const newDirectory = join(storageRoot, "map-tiles/.tmp-map-expired-job-expired-new-attempt");
+  await mkdir(oldDirectory, { recursive: true });
+  await mkdir(newDirectory, { recursive: true });
+  const requeuedAssets: Array<Record<string, unknown>> = [];
+  let expiredReturned = false;
+  let requeueCalls = 0;
+  const database = {
+    mediaProcessingJob: { findFirst: async () => null },
+    mapAsset: {
+      updateMany: async (input: Record<string, unknown>) => {
+        requeuedAssets.push(input);
+        return { count: 1 };
+      },
+    },
+  };
+  const runner = new JobRunner(database as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator({
+      expiredMapJobs: async () => {
+        if (expiredReturned) return [];
+        expiredReturned = true;
+        return [{
+          id: "job-expired",
+          projectId: "jinshan",
+          inputJson: JSON.stringify({ mapAssetId: "map-expired" }),
+          attemptId: "old-attempt",
+          leaseOwner: "dead-runner",
+          leaseExpiresAt: new Date("2026-07-14T00:00:00.000Z"),
+        }];
+      },
+      requeueExpiredJob: async () => {
+        requeueCalls += 1;
+        return { count: 1 };
+      },
+    }) as never,
+  });
+
+  try {
+    assert.equal(await runner.processNext(), false);
+    await assert.rejects(() => stat(oldDirectory), { code: "ENOENT" });
+    assert.equal((await stat(newDirectory)).isDirectory(), true);
+    assert.equal(requeueCalls, 1);
+    assert.deepEqual(requeuedAssets[0], {
+      where: { id: "map-expired", projectId: "jinshan", processStatus: "running" },
+      data: { processStatus: "queued", errorMessage: null },
+    });
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("map processing heartbeats during work and releases its lease on completion", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-heartbeat-"));
+  const job = {
+    id: "job-heartbeat",
+    projectId: "jinshan",
+    jobType: "map_tile_package",
+    status: "queued",
+    inputJson: JSON.stringify({ mapAssetId: "map-heartbeat", sourcePath: "storage/map-assets/map-heartbeat.zip" }),
+  };
+  let heartbeatObserved!: () => void;
+  const heartbeat = new Promise<void>((resolve) => { heartbeatObserved = resolve; });
+  let releaseCalls = 0;
+  const database = {
+    mediaProcessingJob: {
+      findFirst: async () => job,
+      updateMany: async () => ({ count: 1 }),
+      findUnique: async () => job,
+      update: async (input: unknown) => input,
+    },
+    mapAsset: {
+      findUnique: async () => queuedMapAsset("map-heartbeat", "jinshan", "storage/map-assets/map-heartbeat.zip", { processStatus: "running" }),
+      updateMany: async (input: unknown) => input,
+      update: async (input: unknown) => input,
+    },
+    auditLog: { create: async (input: unknown) => input },
+    $transaction: async (operations: unknown[]) => operations,
+  };
+  const runner = new JobRunner(database as never, storageRoot, {
+    heartbeatIntervalMs: 5,
+    mapLeaseCoordinator: testMapLeaseCoordinator({
+      heartbeat: async () => heartbeatObserved(),
+      releaseJob: async () => { releaseCalls += 1; },
+    }) as never,
+    extractTilePackage: async ({ outputDirectory }) => {
+      await heartbeat;
+      await mkdir(outputDirectory, { recursive: true });
+      return mapMetadata;
+    },
+  });
+
+  try {
+    assert.equal(await runner.processNext(), true);
+    assert.ok(releaseCalls >= 1);
   } finally {
     await rm(storageRoot, { recursive: true, force: true });
   }

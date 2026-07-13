@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
-import { currentProjectId } from "../auth/project-context.js";
+import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -73,7 +73,7 @@ export class MediaService {
         data: {
           projectId: currentProjectId(),
           id: `audit-${randomUUID()}`,
-          actor: "admin",
+          actor: currentActorUsername(),
           action: "media.video.upload",
           targetType: "mediaAsset",
           targetId: asset.id,
@@ -111,7 +111,7 @@ export class MediaService {
         data: {
           projectId: currentProjectId(),
           id: `audit-${randomUUID()}`,
-          actor: "admin",
+          actor: currentActorUsername(),
           action: "media.archive.upload",
           targetType: "mediaAsset",
           targetId: asset.id,

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IssueEventPublishService } from "./issue-event-publish.service.js";
+import { runAsMember } from "../../test-support/auth-context.js";
 
 test("retries a missing share card without creating a duplicate issue", async () => {
   const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-issue-publish-"));
@@ -55,14 +56,14 @@ test("retries a missing share card without creating a duplicate issue", async ()
   };
   const service = new IssueEventPublishService(database as never, audit as never, storageRoot, renderer as never);
 
-  const result = await service.publish("photo-1", "admin", {
+  const result = await runAsMember(() => service.publish("photo-1", {
     idempotencyKey: "retry-key",
     expectedAnnotationVersion: 1,
     locationName: "曲阳路",
     foundAt: "2026-07-13T10:00",
     category: "施工车辆",
     description: "发现施工车辆",
-  });
+  }));
 
   assert.equal(result.issueId, "issue-1");
   assert.equal(createCount, 0);

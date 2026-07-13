@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ManagedObjectDeletionService } from "./managed-object-deletion.service.js";
+import { runAsMember } from "../../test-support/auth-context.js";
 
 function databaseFixture() {
   const calls: string[] = [];
@@ -43,7 +44,7 @@ test("creates one pending deletion request without deleting the archive", async 
   const { database, calls } = databaseFixture();
   const service = new ManagedObjectDeletionService(database as never);
 
-  const request = await service.requestDeletion("community-1", "admin");
+  const request = await runAsMember(() => service.requestDeletion("community-1"));
 
   assert.equal(request.reviewStatus, "pending");
   assert.equal(request.targetId, "community-1");
@@ -54,7 +55,7 @@ test("confirms deletion by unlinking retained records and returning photos to pe
   const { database, calls } = databaseFixture();
   const service = new ManagedObjectDeletionService(database as never);
 
-  await service.reviewDeletion("audit-delete-1", "confirm", "admin");
+  await runAsMember(() => service.reviewDeletion("audit-delete-1", "confirm"));
 
   assert.deepEqual(calls, [
     "taskPhoto.unarchive",
@@ -71,7 +72,7 @@ test("cancels a deletion request without changing archive data", async () => {
   const { database, calls } = databaseFixture();
   const service = new ManagedObjectDeletionService(database as never);
 
-  await service.reviewDeletion("audit-delete-1", "cancel", "admin");
+  await runAsMember(() => service.reviewDeletion("audit-delete-1", "cancel"));
 
   assert.deepEqual(calls, ["audit.canceled"]);
 });

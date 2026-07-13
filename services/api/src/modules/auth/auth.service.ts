@@ -1,7 +1,7 @@
-import { Inject, Injectable, UnauthorizedException } from "@nestjs/common";
+import { Inject, Injectable, Optional, UnauthorizedException } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
-import { verifyPassword } from "./password-hash.js";
+import { DUMMY_PASSWORD_HASH, isScryptPasswordHash, PasswordVerifier } from "./password-hash.js";
 
 interface LoginInput {
   username?: string;
@@ -13,6 +13,7 @@ export type UserRole = "platform_admin" | "member";
 export interface AuthIdentity {
   id: string;
   sub: string;
+  username: string;
   name: string;
   role: UserRole;
   tokenVersion: number;
@@ -39,6 +40,7 @@ interface SignedPayload {
 
 interface AccountIdentitySource {
   id: string;
+  username: string;
   name: string;
   role: string;
   tokenVersion: number;
@@ -50,7 +52,14 @@ export class AuthService {
   private readonly secret = process.env.AUTH_SECRET ?? "xunjianbao-local-secret";
   private readonly tokenLifetimeMs = 12 * 60 * 60 * 1000;
 
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  private readonly passwordVerifier: PasswordVerifier;
+
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Optional() @Inject(PasswordVerifier) passwordVerifier?: PasswordVerifier,
+  ) {
+    this.passwordVerifier = passwordVerifier ?? new PasswordVerifier();
+  }
 
   async login(input: LoginInput) {
     const account = input.username
@@ -60,12 +69,12 @@ export class AuthService {
       })
       : null;
 
-    if (
-      !account
-      || account.status !== "active"
-      || !this.isUserRole(account.role)
-      || !await verifyPassword(input.password ?? "", account.passwordHash)
-    ) {
+    const verificationHash = account && isScryptPasswordHash(account.passwordHash)
+      ? account.passwordHash
+      : DUMMY_PASSWORD_HASH;
+    const passwordMatches = await this.passwordVerifier.verify(input.password ?? "", verificationHash);
+
+    if (!account || account.status !== "active" || !this.isUserRole(account.role) || !passwordMatches) {
       throw new UnauthorizedException("Invalid username or password");
     }
 
@@ -135,6 +144,7 @@ export class AuthService {
     return {
       id: account.id,
       sub: account.id,
+      username: account.username,
       name: account.name,
       role: account.role,
       tokenVersion: account.tokenVersion,

@@ -257,6 +257,10 @@ model MediaProcessingJob {
   attempts     Int      @default(0)
   startedAt    DateTime?
   completedAt  DateTime?
+  leaseOwner    String?
+  attemptId     String?
+  leaseExpiresAt DateTime?
+  heartbeatAt   DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -265,8 +269,18 @@ model MediaProcessingJob {
 
   @@index([projectId, status])
   @@index([jobType, status])
+  @@index([status, leaseExpiresAt])
   @@index([mediaId])
   @@index([createdAt])
+}
+
+model MapWorkerLease {
+  id          String   @id
+  ownerId     String?
+  expiresAt   DateTime
+  heartbeatAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model MediaAsset {

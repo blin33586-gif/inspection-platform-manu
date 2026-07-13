@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PhotoAnnotationService } from "./photo-annotation.service.js";
+import { runAsMember } from "../../test-support/auth-context.js";
 
 const annotationJson = JSON.stringify({
   canvasVersion: 1,
@@ -102,7 +103,7 @@ test("creates the first current annotation document at version one", async () =>
   const { database, documents, audit } = databaseFixture();
   const service = new PhotoAnnotationService(database as never);
 
-  const result = await service.save("photo-1", "admin", {
+  const result = await runAsMember(() => service.save("photo-1", {
     expectedVersion: 0,
     annotationJson: JSON.parse(annotationJson),
     issueDescription: "楼顶堆料",
@@ -110,10 +111,11 @@ test("creates the first current annotation document at version one", async () =>
     latitude: 31.286,
     altitude: 86.5,
     source: "manual",
-  });
+  }));
 
   assert.equal(result.currentVersion, 1);
   assert.equal((documents[0].data as { currentVersion: number }).currentVersion, 1);
+  assert.equal((documents[0].data as { createdBy: string }).createdBy, "member.wu");
   assert.equal(audit.length, 1);
 });
 
@@ -121,12 +123,12 @@ test("snapshots the prior document when saving the next annotation version", asy
   const { database, documents, versions } = databaseFixture({ currentVersion: 1 });
   const service = new PhotoAnnotationService(database as never);
 
-  const result = await service.save("photo-1", "admin", {
+  const result = await runAsMember(() => service.save("photo-1", {
     expectedVersion: 1,
     annotationJson: JSON.parse(annotationJson),
     issueDescription: "更新后的问题说明",
     source: "manual",
-  });
+  }));
 
   assert.equal(result.currentVersion, 2);
   assert.equal((versions[0].data as { version: number }).version, 1);
@@ -138,11 +140,11 @@ test("rejects a stale writer without changing the current annotation", async () 
   const service = new PhotoAnnotationService(database as never);
 
   await assert.rejects(
-    () => service.save("photo-1", "admin", {
+    () => runAsMember(() => service.save("photo-1", {
       expectedVersion: 1,
       annotationJson: JSON.parse(annotationJson),
       source: "manual",
-    }),
+    })),
     /标注已被其他用户更新/,
   );
 

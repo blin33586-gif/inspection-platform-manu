@@ -98,6 +98,7 @@ async function runUpload(fileName: string, options: {
       identity: {
         id: options.role === "platform_admin" ? "account-admin" : "account-member",
         sub: options.role === "platform_admin" ? "account-admin" : "account-member",
+        username: options.role === "platform_admin" ? "admin" : "member",
         name: options.role === "platform_admin" ? "平台管理员" : "项目成员",
         role: options.role ?? "member",
         tokenVersion: 1,
@@ -271,7 +272,7 @@ test("removes the durable file when creating upload history fails", async () => 
 
   await assert.rejects(() => runWithProjectContext({
     projectId: "jinshan",
-    identity: { id: "account-member", sub: "account-member", name: "成员", role: "member", tokenVersion: 1, projectIds: ["jinshan"] },
+    identity: { id: "account-member", sub: "account-member", username: "member", name: "成员", role: "member", tokenVersion: 1, projectIds: ["jinshan"] },
   }, () => service.createFromUpload({ filename: "failed.tif", originalname: "failed.tif", mimetype: "image/tiff", path: tempPath, size: 10 }, {})), /database unavailable/);
   await assert.rejects(access(storedPath));
   await assert.rejects(access(tempPath));
@@ -321,7 +322,7 @@ test("atomically rolls back queued history and preserves a failed history when j
 
   await assert.rejects(() => runWithProjectContext({
     projectId: "jinshan",
-    identity: { id: "account-member", sub: "account-member", name: "成员", role: "member", tokenVersion: 1, projectIds: ["jinshan"] },
+    identity: { id: "account-member", sub: "account-member", username: "member", name: "成员", role: "member", tokenVersion: 1, projectIds: ["jinshan"] },
   }, () => service.createFromUpload({ filename: "queue-failed.zip", originalname: "queue-failed.zip", mimetype: "application/zip", path: tempPath, size: 10 }, {})), /queue unavailable/);
   assert.equal(transactionCalls, 1);
   assert.equal(records.size, 1);
@@ -370,7 +371,7 @@ test("never masks the original job error or leaves queued history when failed-hi
 
   await assert.rejects(() => runWithProjectContext({
     projectId: "jinshan",
-    identity: { id: "account-member", sub: "account-member", name: "成员", role: "member", tokenVersion: 1, projectIds: ["jinshan"] },
+    identity: { id: "account-member", sub: "account-member", username: "member", name: "成员", role: "member", tokenVersion: 1, projectIds: ["jinshan"] },
   }, () => service.createFromUpload({ filename: "double-failed.tif", originalname: "double-failed.tif", mimetype: "image/tiff", path: tempPath, size: 10 }, {})), /queue unavailable/);
   assert.equal(standaloneCreateCalls, 1);
   assert.equal(records.size, 0);
@@ -388,7 +389,7 @@ test("refuses to rename or remove a supplied file outside the configured Multer 
   try {
     await assert.rejects(() => runWithProjectContext({
       projectId: "jinshan",
-      identity: { id: "account-member", sub: "account-member", name: "成员", role: "member", tokenVersion: 1, projectIds: ["jinshan"] },
+      identity: { id: "account-member", sub: "account-member", username: "member", name: "成员", role: "member", tokenVersion: 1, projectIds: ["jinshan"] },
     }, () => service.createFromUpload({ filename: "outside.tif", originalname: "outside.tif", mimetype: "image/tiff", path: outsidePath, size: 10 }, {})), /临时目录/);
     assert.equal(await readFile(outsidePath, "utf8"), "must-remain");
   } finally {

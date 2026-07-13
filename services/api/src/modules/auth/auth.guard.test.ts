@@ -20,6 +20,7 @@ function guardFor(identity: AuthIdentity) {
 const member: AuthIdentity = {
   id: "member-1",
   sub: "member-1",
+  username: "member",
   name: "项目成员",
   role: "member",
   tokenVersion: 3,
@@ -29,6 +30,7 @@ const member: AuthIdentity = {
 const administrator: AuthIdentity = {
   id: "platform-admin",
   sub: "platform-admin",
+  username: "admin",
   name: "项目管理员",
   role: "platform_admin",
   tokenVersion: 1,
