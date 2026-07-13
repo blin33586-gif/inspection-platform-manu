@@ -9,13 +9,13 @@ export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
   @Post("login")
-  login(@Body() body: { username?: string; password?: string }) {
-    return ok(this.authService.login(body));
+  async login(@Body() body: { username?: string; password?: string }) {
+    return ok(await this.authService.login(body));
   }
 
   @Get("projects")
-  projects(@Req() request: Request) {
+  async projects(@Req() request: Request) {
     const identity = (request as AuthenticatedProjectRequest).authIdentity;
-    return ok(identity ? this.authService.projectsFor(identity) : []);
+    return ok(identity ? await this.authService.projectsFor(identity) : []);
   }
 }

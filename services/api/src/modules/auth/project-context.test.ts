@@ -10,10 +10,12 @@ test("keeps the selected project and identity across async work", async () => {
   await runWithProjectContext({
     projectId: "jinshan",
     identity: {
-      sub: "member",
+      id: "member-1",
+      sub: "member-1",
       name: "项目成员",
       role: "member",
-      projectIds: ["quyang", "jinshan"],
+      tokenVersion: 3,
+      projectIds: ["jinshan"],
     },
   }, async () => {
     await Promise.resolve();
