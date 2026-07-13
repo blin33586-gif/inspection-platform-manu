@@ -85,9 +85,40 @@ test("platform routes require the platform administrator", async (t) => {
   });
 });
 
+test("platform route authorization follows Express case-insensitive routing", async (t) => {
+  await t.test("mixed-case platform route rejects a member", async () => {
+    await assert.rejects(
+      guardFor(member).canActivate(contextFor(protectedRequest("/api/v1/Platform/members"))),
+      (error: unknown) => error instanceof ForbiddenException
+        && error.message === "Platform administrator required",
+    );
+  });
+
+  await t.test("mixed-case platform route allows an administrator", async () => {
+    assert.equal(
+      await guardFor(administrator).canActivate(contextFor(protectedRequest("/api/v1/Platform/members"))),
+      true,
+    );
+  });
+});
+
+test("platform namespace matching keeps an exact path boundary", async () => {
+  const request = protectedRequest("/api/v1/Platform-foo", "jinshan");
+
+  assert.equal(await guardFor(member).canActivate(contextFor(request)), true);
+  assert.equal((request as { projectId?: string }).projectId, "jinshan");
+});
+
 test("authenticated users can list their projects without selecting one", async () => {
   assert.equal(
     await guardFor(member).canActivate(contextFor(protectedRequest("/api/v1/auth/projects"))),
+    true,
+  );
+});
+
+test("project list exemption follows Express case-insensitive routing", async () => {
+  assert.equal(
+    await guardFor(member).canActivate(contextFor(protectedRequest("/api/v1/Auth/projects"))),
     true,
   );
 });

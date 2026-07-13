@@ -27,9 +27,13 @@ export class AuthGuard implements CanActivate {
     if (!identity) throw new UnauthorizedException("Unauthorized");
     request.authIdentity = identity;
 
-    if (request.path === "/api/v1/auth/projects") return true;
+    const authorizationPath = request.path.toLowerCase();
+    if (authorizationPath === "/api/v1/auth/projects") return true;
 
-    if (request.path.startsWith("/api/v1/platform/")) {
+    if (
+      authorizationPath === "/api/v1/platform"
+      || authorizationPath.startsWith("/api/v1/platform/")
+    ) {
       if (identity.role !== "platform_admin") {
         throw new ForbiddenException("Platform administrator required");
       }
