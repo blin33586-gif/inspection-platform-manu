@@ -1,6 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { resolveDatabaseUrl } from "../src/database/database-url.js";
+import { hashPassword } from "../src/modules/auth/password-hash.js";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
@@ -48,6 +49,48 @@ async function main() {
         { key: "point", label: "河道档案" },
       ],
     },
+  });
+
+  const [administratorPasswordHash, memberPasswordHash] = await Promise.all([
+    hashPassword(process.env.ADMIN_PASSWORD ?? "xunjianbao2026"),
+    hashPassword(process.env.MEMBER_PASSWORD ?? "xunjianbao-member-2026"),
+  ]);
+  const administratorData = {
+    username: process.env.ADMIN_USERNAME ?? "admin",
+    passwordHash: administratorPasswordHash,
+    name: "项目管理员",
+    phone: "",
+    role: "platform_admin",
+    status: "active",
+  };
+  await prisma.userAccount.upsert({
+    where: { id: "platform-admin" },
+    update: administratorData,
+    create: { id: "platform-admin", ...administratorData },
+  });
+
+  const memberData = {
+    username: process.env.MEMBER_USERNAME ?? "member",
+    passwordHash: memberPasswordHash,
+    name: "项目成员",
+    phone: "",
+    role: "member",
+    status: "active",
+  };
+  await prisma.userAccount.upsert({
+    where: { id: "legacy-member" },
+    update: memberData,
+    create: { id: "legacy-member", ...memberData },
+  });
+  await prisma.projectMembership.upsert({
+    where: { userId_projectId: { userId: "legacy-member", projectId: "quyang" } },
+    update: {},
+    create: { id: "legacy-member-quyang", userId: "legacy-member", projectId: "quyang" },
+  });
+  await prisma.projectMembership.upsert({
+    where: { userId_projectId: { userId: "legacy-member", projectId: "jinshan" } },
+    update: {},
+    create: { id: "legacy-member-jinshan", userId: "legacy-member", projectId: "jinshan" },
   });
 
   await prisma.dashboardMetric.createMany({

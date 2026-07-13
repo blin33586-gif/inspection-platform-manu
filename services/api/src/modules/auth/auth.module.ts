@@ -3,11 +3,13 @@ import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { AuthController } from "./auth.controller.js";
 import { AuthGuard } from "./auth.guard.js";
 import { AuthService } from "./auth.service.js";
+import { AccountBootstrapService } from "./account-bootstrap.service.js";
 import { ProjectContextInterceptor } from "./project-context.interceptor.js";
 
 @Module({
   controllers: [AuthController],
   providers: [
+    AccountBootstrapService,
     AuthService,
     {
       provide: APP_GUARD,

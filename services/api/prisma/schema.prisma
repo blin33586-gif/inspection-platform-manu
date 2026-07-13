@@ -25,6 +25,49 @@ model Project {
   mediaAssets         MediaAsset[]
   inspectionTasks     InspectionTask[]
   auditLogs           AuditLog[]
+  memberships         ProjectMembership[]
+}
+
+model UserAccount {
+  id             String   @id
+  username       String   @unique
+  passwordHash   String
+  name           String
+  phone          String
+  role           String
+  status         String   @default("active")
+  tokenVersion   Int      @default(1)
+  lastLoginAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  memberships    ProjectMembership[]
+  platformAudits PlatformAuditLog[] @relation("PlatformAuditActor")
+
+  @@index([role, status])
+}
+
+model ProjectMembership {
+  id        String   @id
+  userId    String
+  projectId String
+  createdAt DateTime @default(now())
+  user      UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@index([projectId])
+}
+
+model PlatformAuditLog {
+  id        String   @id
+  actorId   String
+  action    String
+  targetId  String?
+  summary   String
+  createdAt DateTime @default(now())
+  actor     UserAccount @relation("PlatformAuditActor", fields: [actorId], references: [id])
+
+  @@index([createdAt])
 }
 
 model DashboardMetric {
