@@ -478,6 +478,22 @@ h4 {
   background: #dce8ef;
 }
 
+.dashboard-map-empty {
+  min-height: 420px;
+  height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  color: #6b7a90;
+  background: linear-gradient(145deg, #edf4fb, #f8fbff);
+}
+
+.dashboard-map-empty strong {
+  color: #17375e;
+  font-size: 18px;
+}
+
 .dashboard-map-draw-tools {
   position: absolute;
   top: 18px;
@@ -769,6 +785,122 @@ h4 {
   color: var(--ink);
   font-size: 34px;
   line-height: 1.12;
+}
+
+.project-select-page {
+  min-height: 100vh;
+  padding: 34px;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(0, 113, 227, 0.13), transparent 30%),
+    linear-gradient(180deg, #fbfbfd 0%, #eef6ff 100%);
+}
+
+.project-select-shell {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+}
+
+.project-select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.project-select-header .login-brand {
+  margin: 0;
+}
+
+.project-select-copy {
+  margin: 76px 0 32px;
+}
+
+.project-select-copy h1 {
+  margin: 8px 0;
+  color: var(--blue-950);
+  font-size: clamp(36px, 5vw, 58px);
+  letter-spacing: -0.04em;
+}
+
+.project-select-copy > p:last-child {
+  color: var(--muted);
+}
+
+.project-select-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.project-select-card {
+  display: grid;
+  min-height: 330px;
+  gap: 22px;
+  border: 1px solid rgba(8, 40, 92, 0.1);
+  border-radius: 18px;
+  padding: 30px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 22px 60px rgba(8, 40, 92, 0.1);
+  backdrop-filter: blur(22px);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.project-select-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 30px 76px rgba(8, 40, 92, 0.16);
+}
+
+.project-select-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border-radius: 16px;
+  color: white;
+  background: linear-gradient(145deg, #0071e3, #56b9ff);
+}
+
+.project-select-icon.industry {
+  background: linear-gradient(145deg, #083e8c, #18a7c7);
+}
+
+.project-select-card span,
+.project-select-card p {
+  color: var(--muted);
+}
+
+.project-select-card h2 {
+  margin: 8px 0 12px;
+  color: var(--ink);
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.project-select-access {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #136846;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.project-select-card .ant-btn {
+  align-self: end;
+  border-radius: 10px;
+}
+
+.project-select-loading {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .project-select-page { padding: 22px; }
+  .project-select-copy { margin-top: 48px; }
+  .project-select-grid { grid-template-columns: 1fr; }
 }
 
 .hero-panel {

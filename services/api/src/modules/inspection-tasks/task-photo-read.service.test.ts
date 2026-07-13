@@ -23,7 +23,7 @@ test("lists pending task photos with a deterministic order and browser-safe medi
 
   assert.deepEqual(result, { items: [{ id: "photo-1" }], page: 2, pageSize: 5, total: 6 });
   const listInput = calls.find((call) => call.method === "findMany")?.input;
-  assert.deepEqual(listInput?.where, { distributionStatus: "pending" });
+  assert.deepEqual(listInput?.where, { distributionStatus: "pending", task: { projectId: "quyang" } });
   assert.equal(listInput?.skip, 5);
   assert.equal(listInput?.take, 5);
   assert.deepEqual(listInput?.include, {
@@ -65,6 +65,7 @@ test("lists only photos archived to the requested managed object", async () => {
   assert.deepEqual(calls[0].where, {
     archiveObjectId: "community-1",
     distributionStatus: "archived",
+    task: { projectId: "quyang" },
   });
 });
 

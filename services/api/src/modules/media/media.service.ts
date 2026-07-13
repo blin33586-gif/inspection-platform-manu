@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -32,7 +33,7 @@ export class MediaService {
 
   async createFrameExtractionJob(mediaId: string, intervalSeconds: number) {
     this.validateInterval(intervalSeconds);
-    const media = await this.database.mediaAsset.findUnique({ where: { id: mediaId } });
+    const media = await this.database.mediaAsset.findUnique({ where: { id: mediaId, projectId: currentProjectId() } });
     if (!media) throw new NotFoundException("视频媒体不存在");
     if (media.kind !== "video") throw new BadRequestException("只有视频可以创建抽帧任务");
 
@@ -58,6 +59,7 @@ export class MediaService {
     try {
       const asset = await this.database.mediaAsset.create({
         data: {
+          projectId: currentProjectId(),
           id,
           kind: "video",
           originalFileName: file.originalname,
@@ -69,6 +71,7 @@ export class MediaService {
       const job = await this.queueFrameExtraction(asset, intervalSeconds);
       await this.database.auditLog.create({
         data: {
+          projectId: currentProjectId(),
           id: `audit-${randomUUID()}`,
           actor: "admin",
           action: "media.video.upload",
@@ -94,6 +97,7 @@ export class MediaService {
     try {
       const asset = await this.database.mediaAsset.create({
         data: {
+          projectId: currentProjectId(),
           id,
           kind: "image_bundle",
           originalFileName: file.originalname,
@@ -105,6 +109,7 @@ export class MediaService {
       const job = await this.queueArchiveExtraction(asset);
       await this.database.auditLog.create({
         data: {
+          projectId: currentProjectId(),
           id: `audit-${randomUUID()}`,
           actor: "admin",
           action: "media.archive.upload",
@@ -122,7 +127,7 @@ export class MediaService {
 
   async listTasks() {
     return this.database.mediaAsset.findMany({
-      where: { parentMediaId: null, kind: { in: ["video", "image_bundle"] } },
+      where: { projectId: currentProjectId(), parentMediaId: null, kind: { in: ["video", "image_bundle"] } },
       include: {
         jobs: { orderBy: { createdAt: "desc" }, take: 1 },
         frames: { orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }], take: 1 },
@@ -132,18 +137,19 @@ export class MediaService {
   }
 
   async listChildren(parentId: string) {
-    const parent = await this.database.mediaAsset.findUnique({ where: { id: parentId } });
+    const projectId = currentProjectId();
+    const parent = await this.database.mediaAsset.findUnique({ where: { id: parentId, projectId } });
     if (!parent || parent.parentMediaId) throw new NotFoundException("媒体任务不存在");
 
     return this.database.mediaAsset.findMany({
-      where: { parentMediaId: parentId, kind: { in: ["frame", "image"] } },
+      where: { projectId, parentMediaId: parentId, kind: { in: ["frame", "image"] } },
       orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }],
     });
   }
 
   async getAsset(id: string) {
     const asset = await this.database.mediaAsset.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       include: {
         jobs: { orderBy: { createdAt: "desc" }, take: 1 },
         frames: { orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }], take: 1 },
@@ -155,20 +161,21 @@ export class MediaService {
 
   async listVideos() {
     return this.database.mediaAsset.findMany({
-      where: { kind: "video" },
+      where: { projectId: currentProjectId(), kind: "video" },
       include: { jobs: { orderBy: { createdAt: "desc" }, take: 1 } },
       orderBy: { createdAt: "desc" },
     });
   }
 
   async jobDetail(id: string) {
-    const job = await this.database.mediaProcessingJob.findUnique({ where: { id }, include: { media: true } });
+    const job = await this.database.mediaProcessingJob.findUnique({ where: { id, projectId: currentProjectId() }, include: { media: true } });
     if (!job) throw new NotFoundException("媒体处理任务不存在");
     return job;
   }
 
   async retryJob(id: string) {
-    const job = await this.database.mediaProcessingJob.findUnique({ where: { id } });
+    const projectId = currentProjectId();
+    const job = await this.database.mediaProcessingJob.findUnique({ where: { id, projectId } });
     if (!job) throw new NotFoundException("媒体处理任务不存在");
     if (!new Set(["frame_extract", "archive_extract", "image_prepare"]).has(job.jobType)) {
       throw new BadRequestException("该媒体处理任务不支持重试");
@@ -176,7 +183,7 @@ export class MediaService {
     if (job.status !== "failed") throw new BadRequestException("只有失败的任务可以重试");
 
     return this.database.mediaProcessingJob.update({
-      where: { id },
+      where: { id, projectId },
       data: { status: "queued", progress: 0, errorMessage: null, startedAt: null, completedAt: null },
     });
   }
@@ -187,6 +194,7 @@ export class MediaService {
     return this.database.mediaProcessingJob.upsert({
       where: { dedupeKey },
       create: {
+        projectId: currentProjectId(),
         id: `job-frame-${media.id}-${intervalSeconds}`,
         jobType: "frame_extract",
         status: "queued",
@@ -207,6 +215,7 @@ export class MediaService {
     return this.database.mediaProcessingJob.upsert({
       where: { dedupeKey },
       create: {
+        projectId: currentProjectId(),
         id: `job-archive-${media.id}`,
         jobType: "archive_extract",
         status: "queued",

@@ -9,6 +9,7 @@ import {
   type NormalizedTaskInput,
   type TaskUploadFile,
 } from "./inspection-task-input.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 @Injectable()
 export class InspectionTaskWriteService {
@@ -28,6 +29,7 @@ export class InspectionTaskWriteService {
   }
 
   private async createProcessedTask(input: NormalizedTaskInput) {
+    const projectId = currentProjectId();
     const taskId = `task-${randomUUID()}`;
     const mediaId = `media-${randomUUID()}`;
     const source = input.files[0];
@@ -43,6 +45,7 @@ export class InspectionTaskWriteService {
         const database = transaction as DatabaseService;
         await database.mediaAsset.create({
           data: {
+            projectId,
             id: mediaId,
             kind: input.inputType === "video" ? "video" : "image_bundle",
             originalFileName: source.originalname,
@@ -53,6 +56,7 @@ export class InspectionTaskWriteService {
         });
         const task = await database.inspectionTask.create({
           data: {
+            projectId,
             id: taskId,
             name: input.name,
             taskDate: input.taskDate,
@@ -67,6 +71,7 @@ export class InspectionTaskWriteService {
         const jobType = input.inputType === "video" ? "frame_extract" : "archive_extract";
         await database.mediaProcessingJob.create({
           data: {
+            projectId,
             id: `job-${randomUUID()}`,
             jobType,
             status: "queued",
@@ -90,6 +95,7 @@ export class InspectionTaskWriteService {
   }
 
   private async createImageTask(input: NormalizedTaskInput) {
+    const projectId = currentProjectId();
     const taskId = `task-${randomUUID()}`;
     const directory = join(this.storageRoot, "media", "task-images", taskId);
     await mkdir(directory, { recursive: true });
@@ -114,6 +120,7 @@ export class InspectionTaskWriteService {
         const database = transaction as DatabaseService;
         await database.mediaAsset.createMany({
           data: movedFiles.map(({ file, mediaId, relativePath }) => ({
+            projectId,
             id: mediaId,
             kind: "image",
             originalFileName: file.originalname,
@@ -124,6 +131,7 @@ export class InspectionTaskWriteService {
         });
         const task = await database.inspectionTask.create({
           data: {
+            projectId,
             id: taskId,
             name: input.name,
             taskDate: input.taskDate,
@@ -136,6 +144,7 @@ export class InspectionTaskWriteService {
         });
         await database.mediaProcessingJob.create({
           data: {
+            projectId,
             id: `job-${randomUUID()}`,
             jobType: "image_prepare",
             status: "queued",
@@ -155,6 +164,7 @@ export class InspectionTaskWriteService {
   private writeAudit(database: DatabaseService, taskId: string, summary: string) {
     return database.auditLog.create({
       data: {
+        projectId: currentProjectId(),
         id: `audit-${randomUUID()}`,
         actor: "admin",
         action: "inspectionTask.create",

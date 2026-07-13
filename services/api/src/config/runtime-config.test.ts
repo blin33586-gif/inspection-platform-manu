@@ -5,7 +5,7 @@ import { resolveRuntimeConfig } from "./runtime-config.js";
 test("production requires explicit credentials and signing secret", () => {
   assert.throws(
     () => resolveRuntimeConfig({ NODE_ENV: "production" }),
-    /ADMIN_USERNAME, ADMIN_PASSWORD and AUTH_SECRET/,
+    /ADMIN_USERNAME, ADMIN_PASSWORD, MEMBER_USERNAME, MEMBER_PASSWORD and AUTH_SECRET/,
   );
 });
 
@@ -21,11 +21,15 @@ test("runtime configuration exposes configured credentials", () => {
   const config = resolveRuntimeConfig({
     ADMIN_USERNAME: "operator",
     ADMIN_PASSWORD: "password",
+    MEMBER_USERNAME: "reader",
+    MEMBER_PASSWORD: "reader-password",
     AUTH_SECRET: "secret",
   });
 
   assert.equal(config.adminUsername, "operator");
   assert.equal(config.adminPassword, "password");
+  assert.equal(config.memberUsername, "reader");
+  assert.equal(config.memberPassword, "reader-password");
   assert.equal(config.authSecret, "secret");
 });
 

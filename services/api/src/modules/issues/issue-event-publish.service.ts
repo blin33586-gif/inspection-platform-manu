@@ -15,6 +15,7 @@ import { AuditService } from "../audit/audit.service.js";
 import { renderIssueCard } from "./issue-card-renderer.js";
 import type { PublishIssueEventInput, PublishIssueEventResult } from "./issue-event-publish.types.js";
 import { deriveIssueShareToken, hashShareToken } from "./issue-share-token.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 type CardRenderer = typeof renderIssueCard;
 
@@ -52,7 +53,7 @@ export class IssueEventPublishService {
 
   async publish(photoId: string, actor: string, input: PublishIssueEventInput): Promise<PublishIssueEventResult> {
     this.validate(input);
-    const existing = await this.database.issue.findUnique({ where: { publishIdempotencyKey: input.idempotencyKey } });
+    const existing = await this.database.issue.findUnique({ where: { publishIdempotencyKey: input.idempotencyKey, projectId: currentProjectId() } });
     if (existing) {
       await this.ensureCard(existing, actor);
       return this.result(existing.id);
@@ -70,6 +71,7 @@ export class IssueEventPublishService {
     const token = this.token(id);
     const issue = await this.database.issue.create({
       data: {
+        projectId: currentProjectId(),
         id,
         title: input.description.slice(0, 60),
         category: input.category.trim(),
@@ -113,7 +115,7 @@ export class IssueEventPublishService {
 
   private async requirePhoto(photoId: string) {
     const photo = await this.database.taskPhoto.findUnique({
-      where: { id: photoId },
+      where: { id: photoId, task: { projectId: currentProjectId() } },
       include: { mediaAsset: true, annotationDocument: true },
     });
     if (!photo) throw new NotFoundException("任务照片不存在");
@@ -153,7 +155,7 @@ export class IssueEventPublishService {
       await writeFile(tempPath, png);
       await rename(tempPath, finalPath);
       await this.database.issue.update({
-        where: { id: issue.id },
+        where: { id: issue.id, projectId: currentProjectId() },
         data: { cardStoragePath: finalStoragePath, cardMimeType: "image/png", cardFileSize: png.length },
       });
     } catch (error) {

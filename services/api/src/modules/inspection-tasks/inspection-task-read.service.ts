@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { DatabaseService } from "../../database/database.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 export interface InspectionTaskQuery {
   keyword?: string;
@@ -39,7 +40,10 @@ export class InspectionTaskReadService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async list(query: InspectionTaskQuery) {
-    const where = buildInspectionTaskWhere(query);
+    const where: Prisma.InspectionTaskWhereInput = {
+      projectId: currentProjectId(),
+      ...buildInspectionTaskWhere(query),
+    };
     const page = positiveInt(query.page, 1);
     const pageSize = Math.min(positiveInt(query.pageSize, 20), 100);
     const [items, total, processingTaskCount, pendingPhotoCount, generatedReportCount] = await Promise.all([
@@ -83,7 +87,7 @@ export class InspectionTaskReadService {
 
   async detail(id: string) {
     const task = await this.database.inspectionTask.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       include: {
         sourceMedia: {
           include: { jobs: { orderBy: { createdAt: "desc" }, take: 1 } },
@@ -96,7 +100,7 @@ export class InspectionTaskReadService {
   }
 
   async photos(id: string, query: { status?: string; page?: string; pageSize?: string }) {
-    const task = await this.database.inspectionTask.findUnique({ where: { id }, select: { id: true } });
+    const task = await this.database.inspectionTask.findUnique({ where: { id, projectId: currentProjectId() }, select: { id: true } });
     if (!task) throw new NotFoundException("任务不存在");
 
     const page = positiveInt(query.page, 1);

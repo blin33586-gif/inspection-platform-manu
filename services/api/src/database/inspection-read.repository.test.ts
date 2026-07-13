@@ -62,7 +62,7 @@ test("returns task and ordered photo ids in report detail", async () => {
 
   const result = await repository.report("report-1");
 
-  assert.deepEqual(query?.where, { id: "report-1" });
+  assert.deepEqual(query?.where, { id: "report-1", projectId: "quyang" });
   assert.equal((query?.include as { photos: { orderBy: { sortIndex: string } } }).photos.orderBy.sortIndex, "asc");
   assert.equal(result?.taskId, "task-1");
   assert.deepEqual(result?.taskPhotoIds, ["photo-2", "photo-1"]);

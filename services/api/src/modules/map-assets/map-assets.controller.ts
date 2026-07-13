@@ -9,6 +9,7 @@ import { ok, page, paged } from "../../shared/api-response.js";
 import { sendInlineStoredFile, sendStoredFile } from "../../shared/file-download.js";
 import { MapAssetUploadService } from "./map-asset-upload.service.js";
 import { MapHotAreaService } from "./map-hot-area.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -70,7 +71,7 @@ export class MapAssetsController {
   @Get(":id/tiles/:z/:x/:y")
   async tile(@Param("id") id: string, @Param("z") z: string, @Param("x") x: string, @Param("y") y: string, @Res() response: Response) {
     if (![z, x, y].every((part) => /^\d+$/.test(part))) throw new BadRequestException("瓦片坐标无效");
-    const item = await this.database.mapAsset.findUnique({ where: { id }, select: { sourceType: true, tilePath: true } });
+    const item = await this.database.mapAsset.findUnique({ where: { id, projectId: currentProjectId() }, select: { sourceType: true, tilePath: true } });
     if (!item || item.sourceType !== "tile" || !item.tilePath) throw new NotFoundException("瓦片底图不存在");
 
     const root = resolve(process.cwd(), item.tilePath);
@@ -95,7 +96,7 @@ export class MapAssetsController {
   @Get(":id/file")
   async file(@Param("id") id: string, @Res() response: Response) {
     const item = await this.database.mapAsset.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       select: { storagePath: true, originalFileName: true, fileName: true },
     });
     return sendStoredFile(response, item);
@@ -104,7 +105,7 @@ export class MapAssetsController {
   @Get(":id/preview")
   async preview(@Param("id") id: string, @Res() response: Response) {
     const item = await this.database.mapAsset.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       select: { storagePath: true, originalFileName: true, fileName: true, mimeType: true, sourceType: true },
     });
     if (!item) throw new NotFoundException("Map asset not found");

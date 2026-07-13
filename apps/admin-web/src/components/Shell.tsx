@@ -1,22 +1,20 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { clearSession, getUser } from "../auth/session";
+import { canModifyProject, projectArchiveNavigation } from "../auth/project-access";
+import { clearSession, getCurrentProject, getUser } from "../auth/session";
 import { ACCOUNT_NAV_ITEMS, PRIMARY_NAV_ITEMS } from "./navigation-config";
 
 const navItems = [
   { to: "/", label: "地图总览" },
 ];
 
-const projectNavItems = [
-  { to: "/communities", label: "小区档案" },
-  { to: "/roads", label: "道路街面" },
-  { to: "/points", label: "重点点位" },
-];
-
 export function Shell() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = getUser();
+  const project = getCurrentProject();
+  const projectNavItems = projectArchiveNavigation(project);
+  const canModify = canModifyProject(user?.role);
   const isHome = location.pathname === "/";
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
@@ -33,7 +31,7 @@ export function Shell() {
   };
 
   return (
-    <div className={`app-shell ${isHome ? "home-shell" : ""}`}>
+    <div className={`app-shell ${isHome ? "home-shell" : ""} ${canModify ? "" : "read-only-shell"}`}>
       <header className="global-nav">
         <div className="global-nav-inner">
           <NavLink className="nav-brand" to="/">
@@ -83,8 +81,8 @@ export function Shell() {
 
           <div className="project-pill">
             <div>
-              <span>Dock 3 / 曲阳路街道</span>
-              <strong>{user?.name ?? "管理员"}</strong>
+              <span>{project?.shortName ?? "未选择项目"}</span>
+              <strong>{user?.name ?? "用户"} · {canModify ? "管理员" : "只读"}</strong>
             </div>
             <div className={`account-menu ${isAccountActive ? "active" : ""} ${isAccountMenuOpen ? "open" : ""}`}>
               <button
@@ -98,6 +96,9 @@ export function Shell() {
                 <span aria-hidden="true">⌄</span>
               </button>
               <div className="nav-dropdown account-dropdown" role="menu">
+                <NavLink role="menuitem" to="/projects" onClick={() => setIsAccountMenuOpen(false)}>
+                  切换项目
+                </NavLink>
                 {ACCOUNT_NAV_ITEMS.map((item) => (
                   <NavLink key={item.to} role="menuitem" to={item.to} onClick={() => setIsAccountMenuOpen(false)}>
                     {item.label}

@@ -24,6 +24,8 @@ import {
   type InspectionTaskRecord,
 } from "./inspection-task-presenter";
 import { describeTaskPurgeImpact } from "./inspection-task-delete-presenter";
+import { getCurrentProject, getUser } from "../auth/session";
+import { canModifyProject } from "../auth/project-access";
 import "./media-library-detail.css";
 
 type TaskSource = "manual" | "drone" | "camera" | "glasses";
@@ -80,6 +82,8 @@ const acceptByInput: Record<TaskInput, string> = {
 
 export function MediaLibraryPage() {
   const navigate = useNavigate();
+  const project = getCurrentProject();
+  const canModify = canModifyProject(getUser()?.role);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [keyword, setKeyword] = useState("");
   const [sourceType, setSourceType] = useState("");
@@ -219,7 +223,7 @@ export function MediaLibraryPage() {
           <div className="media-top-actions">
             <Bell size={18} />
             <span className="media-notice">12</span>
-            <strong>曲阳路街道</strong>
+            <strong>{project?.shortName ?? "当前项目"}</strong>
             <ChevronDown size={16} />
           </div>
         </header>
@@ -253,7 +257,7 @@ export function MediaLibraryPage() {
             onChange={(value) => { setProcessStatus(value); setPage(1); }}
             options={statusOptions}
           />
-          <Button type="primary" icon={<UploadCloud size={16} />} onClick={openCreate}>新建任务</Button>
+          {canModify ? <Button type="primary" icon={<UploadCloud size={16} />} onClick={openCreate}>新建任务</Button> : null}
           <Button icon={<FileText size={16} />} onClick={() => navigate("/reports")}>巡检报告</Button>
         </section>
 
@@ -302,7 +306,7 @@ export function MediaLibraryPage() {
                   <div className="video-task-body">
                     <div className="real-task-title-row">
                       <div><strong>{task.name}</strong><span>{task.originalFileName}</span></div>
-                      <button
+                      {canModify ? <button
                         aria-label={`删除任务 ${task.name}`}
                         className="real-task-delete-button"
                         disabled={deletingTaskId === task.id}
@@ -314,7 +318,7 @@ export function MediaLibraryPage() {
                         onKeyDown={(event) => event.stopPropagation()}
                       >
                         <Trash2 size={17} />
-                      </button>
+                      </button> : null}
                     </div>
                     <p><CalendarDays size={14} />任务日期 {task.taskDateLabel} · 上传 {task.createdAtLabel}</p>
                     <div className="video-task-meta">
@@ -324,7 +328,7 @@ export function MediaLibraryPage() {
                       <span>{task.reportId ? "已生成综合报告" : "综合报告未生成"}</span>
                     </div>
                     <div className="task-progress"><i style={{ width: `${task.progress}%` }} /></div>
-                    {task.statusLabel === "失败" ? <div className="video-task-error">
+                    {canModify && task.statusLabel === "失败" ? <div className="video-task-error">
                       <span>{task.errorMessage || "任务处理失败"}</span>
                       <button type="button" onClick={(event) => { event.stopPropagation(); void retryTask(task.jobId); }}>重新处理</button>
                     </div> : null}
@@ -354,7 +358,7 @@ export function MediaLibraryPage() {
           onOk={() => void createTask()}
         >
           <div className="real-task-create-form">
-            <label><span>任务名称</span><Input value={taskName} placeholder="例如：7月11日曲阳街道巡检" onChange={(event) => setTaskName(event.target.value)} /></label>
+            <label><span>任务名称</span><Input value={taskName} placeholder={`例如：7月11日${project?.shortName ?? "项目"}巡检`} onChange={(event) => setTaskName(event.target.value)} /></label>
             <div>
               <label><span>任务日期</span><Input type="date" value={taskDate} onChange={(event) => setTaskDate(event.target.value)} /></label>
               <label><span>任务来源</span><Select value={taskSource} options={sourceOptions} onChange={setTaskSource} /></label>

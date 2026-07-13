@@ -5,6 +5,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -36,6 +37,7 @@ export class ReportUploadService {
   ) {}
 
   async createFromUpload(file: UploadedFileLike | undefined, input: CreateReportInput) {
+    const projectId = currentProjectId();
     if (!file) throw new BadRequestException("Report file is required");
 
     const extension = extname(file.originalname).toLowerCase();
@@ -52,7 +54,7 @@ export class ReportUploadService {
     await rename(file.path, storagePath);
 
     const relatedObject = input.relatedObjectName
-      ? await this.database.managedObject.findFirst({ where: { name: input.relatedObjectName.trim() } })
+      ? await this.database.managedObject.findFirst({ where: { projectId, name: input.relatedObjectName.trim() } })
       : null;
 
     const reportDate = input.reportDate ? new Date(input.reportDate) : new Date();
@@ -66,6 +68,7 @@ export class ReportUploadService {
 
     const report = await this.database.inspectionReport.create({
       data: {
+        projectId,
         id,
         title: input.title?.trim() || this.titleFromFile(file.originalname),
         reportDate,

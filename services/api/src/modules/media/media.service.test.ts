@@ -33,6 +33,7 @@ test("creates an idempotent frame extraction job", async () => {
   assert.equal(job.id, "job-frame-media-video-1-3");
   assert.deepEqual(upsertCalls[0].where, { dedupeKey: "frame_extract:media-video-1:3" });
   assert.deepEqual(upsertCalls[0].create, {
+    projectId: "quyang",
     id: "job-frame-media-video-1-3",
     jobType: "frame_extract",
     status: "queued",
@@ -187,6 +188,7 @@ test("lists top-level media tasks with their latest processing job", async () =>
   await service.listTasks();
 
   assert.deepEqual(findManyCalls[0].where, {
+    projectId: "quyang",
     parentMediaId: null,
     kind: { in: ["video", "image_bundle"] },
   });
@@ -212,7 +214,7 @@ test("lists task children in preview order", async () => {
   await service.listChildren("media-parent-1");
 
   assert.deepEqual(findManyCalls[0], {
-    where: { parentMediaId: "media-parent-1", kind: { in: ["frame", "image"] } },
+    where: { projectId: "quyang", parentMediaId: "media-parent-1", kind: { in: ["frame", "image"] } },
     orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }],
   });
 });
@@ -233,7 +235,7 @@ test("returns one persisted media asset", async () => {
 
   assert.equal(asset.id, "media-video-1");
   assert.deepEqual(findUniqueCalls[0], {
-    where: { id: "media-video-1" },
+    where: { id: "media-video-1", projectId: "quyang" },
     include: {
       jobs: { orderBy: { createdAt: "desc" }, take: 1 },
       frames: { orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }], take: 1 },

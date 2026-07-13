@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { AuditService } from "../audit/audit.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 interface CreateManagedObjectInput {
   name?: string;
@@ -34,6 +35,7 @@ export class ManagedObjectWriteService {
 
     const object = await this.database.managedObject.create({
       data: {
+        projectId: currentProjectId(),
         id: `${idPrefixes[objectType]}-${randomUUID()}`,
         name: input.name.trim(),
         objectType,

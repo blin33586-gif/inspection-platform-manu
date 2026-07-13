@@ -39,11 +39,11 @@ test("archives one pending photo and atomically decrements the task pending coun
     data: { distributionStatus: "archived", archiveObjectId: "community-1" },
   });
   assert.deepEqual(taskUpdates[0], {
-    where: { id: "task-1" },
+    where: { id: "task-1", projectId: "quyang" },
     data: { pendingPhotoCount: { decrement: 1 } },
   });
   assert.deepEqual(taskUpdates[1], {
-    where: { id: "task-1" },
+    where: { id: "task-1", projectId: "quyang" },
     data: { processStatus: "ready_for_distribution" },
   });
 });
@@ -77,7 +77,7 @@ test("unarchives a photo and restores it to the task pending queue", async () =>
     data: { distributionStatus: "pending", archiveObjectId: null },
   });
   assert.deepEqual(taskUpdates[0], {
-    where: { id: "task-1" },
+    where: { id: "task-1", projectId: "quyang" },
     data: { pendingPhotoCount: { increment: 1 } },
   });
 });

@@ -9,6 +9,7 @@ import { IssueWriteService } from "./issue-write.service.js";
 import { IssueAttachmentService } from "./issue-attachment.service.js";
 import { sendInlineStoredFile, sendStoredFile } from "../../shared/file-download.js";
 import { DatabaseService } from "../../database/database.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -45,7 +46,7 @@ export class IssuesController {
   @Get(":id/card.png")
   async card(@Param("id") id: string, @Res() response: Response) {
     const issue = await this.database.issue.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       select: { cardStoragePath: true, cardMimeType: true },
     });
     return sendInlineStoredFile(response, issue ? {

@@ -16,7 +16,7 @@ export function LoginPage() {
       const result = await postJsonApi<LoginResponse>("/auth/login", values);
       saveSession(result.token, result.user);
       message.success("登录成功");
-      navigate("/", { replace: true });
+      navigate("/projects", { replace: true });
     } catch (error) {
       message.error(error instanceof Error ? error.message : "登录失败");
     }
@@ -33,8 +33,8 @@ export function LoginPage() {
           </div>
         </div>
         <div className="login-copy">
-          <p className="eyebrow">QUYANG ROAD SUBDISTRICT</p>
-          <h1>曲阳路街道巡检管理</h1>
+          <p className="eyebrow">MULTI-PROJECT INSPECTION</p>
+          <h1>巡检项目统一入口</h1>
         </div>
         <Form layout="vertical" onFinish={submit} initialValues={{ username: "admin" }}>
           <Form.Item name="username" label="账号" rules={[{ required: true, message: "请输入账号" }]}>

@@ -38,6 +38,31 @@ export interface ManagedObjectSummary {
   reportCount: number;
 }
 
+export type ArchiveIssueState = "open" | "completed";
+
+export interface ManagedObjectArchiveIssue {
+  id: string;
+  title: string;
+  category: string;
+  severity: Severity;
+  state: ArchiveIssueState;
+  stateLabel: "未闭环" | "已完成";
+  foundAt: string;
+  updatedAt: string;
+  sourceLabel: string;
+}
+
+export interface ManagedObjectArchiveOverview {
+  objectId: string;
+  totalIssues: number;
+  openIssues: number;
+  completedIssues: number;
+  reportCount: number;
+  latestInspectionAt: string | null;
+  latestInspectionSource: string | null;
+  issues: ManagedObjectArchiveIssue[];
+}
+
 export interface PointSummary {
   id: string;
   name: string;

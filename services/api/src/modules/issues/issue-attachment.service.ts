@@ -4,6 +4,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -106,13 +107,13 @@ export class IssueAttachmentService {
 
   async file(id: string) {
     return this.database.issueAttachment.findUnique({
-      where: { id },
+      where: { id, issue: { projectId: currentProjectId() } },
       select: { storagePath: true, originalFileName: true, fileName: true },
     });
   }
 
   private async ensureIssue(issueId: string) {
-    const issue = await this.database.issue.findUnique({ where: { id: issueId } });
+    const issue = await this.database.issue.findUnique({ where: { id: issueId, projectId: currentProjectId() } });
     if (!issue) throw new NotFoundException("Issue not found");
     return issue;
   }

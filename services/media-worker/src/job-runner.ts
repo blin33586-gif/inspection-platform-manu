@@ -72,10 +72,11 @@ export class JobRunner {
     if (!job) return false;
 
     try {
-      if (job.jobType === "tiff_tile") await this.processTiffJob(job.id, job.inputJson);
-      else if (job.jobType === "frame_extract") await this.processFrameJob(job.id, job.inputJson);
-      else if (job.jobType === "archive_extract") await this.processArchiveJob(job.id, job.inputJson);
-      else if (job.jobType === "image_prepare") await this.processImagePrepareJob(job.id, job.inputJson);
+      const projectId = job.projectId || "quyang";
+      if (job.jobType === "tiff_tile") await this.processTiffJob(job.id, projectId, job.inputJson);
+      else if (job.jobType === "frame_extract") await this.processFrameJob(job.id, projectId, job.inputJson);
+      else if (job.jobType === "archive_extract") await this.processArchiveJob(job.id, projectId, job.inputJson);
+      else if (job.jobType === "image_prepare") await this.processImagePrepareJob(job.id, projectId, job.inputJson);
       else throw new Error(`不支持的媒体任务类型：${job.jobType}`);
     } catch (error) {
       await this.database.mediaProcessingJob.update({
@@ -88,7 +89,7 @@ export class JobRunner {
       const inspectionTaskId = this.readInspectionTaskId(job.inputJson);
       if (inspectionTaskId) {
         await this.database.inspectionTask.updateMany({
-          where: { id: inspectionTaskId },
+          where: { id: inspectionTaskId, projectId: job.projectId || "quyang" },
           data: { processStatus: "failed" },
         });
       }
@@ -113,7 +114,7 @@ export class JobRunner {
     return this.database.mediaProcessingJob.findUnique({ where: { id: candidate.id } });
   }
 
-  private async processTiffJob(jobId: string, rawInput: string) {
+  private async processTiffJob(jobId: string, projectId: string, rawInput: string) {
     const input = this.parseTiffInput(rawInput);
     const sourcePath = this.toStoragePath(input.sourcePath);
     const tilePath = resolve(this.storageRoot, "map-tiles", input.mapAssetId);
@@ -137,8 +138,9 @@ export class JobRunner {
         },
       }),
       this.database.mapAsset.update({
-        where: { id: input.mapAssetId },
+        where: { id: input.mapAssetId, projectId },
         data: {
+          projectId,
           sourceType: "tile",
           tilePath: publicTilePath,
           tileMetadata: JSON.stringify(result.metadata),
@@ -147,6 +149,7 @@ export class JobRunner {
       }),
       this.database.auditLog.create({
         data: {
+          projectId,
           id: `audit-${randomUUID()}`,
           actor: "system",
           action: "map.tiles.ready",
@@ -158,9 +161,9 @@ export class JobRunner {
     ]);
   }
 
-  private async processFrameJob(jobId: string, rawInput: string) {
+  private async processFrameJob(jobId: string, projectId: string, rawInput: string) {
     const input = this.parseFrameInput(rawInput);
-    const inspectionTaskId = await this.resolveInspectionTaskId(input.inspectionTaskId, input.mediaId);
+    const inspectionTaskId = await this.resolveInspectionTaskId(input.inspectionTaskId, input.mediaId, projectId);
     const sourcePath = this.toStoragePath(input.sourcePath);
     const outputDirectory = resolve(this.storageRoot, "media", "frames", input.mediaId);
     const extractedFrames = await this.extractVideoFramesHandler(sourcePath, outputDirectory, input.intervalSeconds);
@@ -168,6 +171,7 @@ export class JobRunner {
     const publicDirectory = `storage/media/frames/${input.mediaId}`;
 
     const frameRows = frames.map((frame) => ({
+      projectId,
       id: `frame-${input.mediaId}-${frame.timestampMs}`,
       kind: "frame",
       originalFileName: frame.fileName,
@@ -185,6 +189,7 @@ export class JobRunner {
       this.database.mediaProcessingJob.update({
         where: { id: jobId },
         data: {
+          projectId,
           status: "completed",
           progress: 100,
           completedAt: new Date(),
@@ -194,6 +199,7 @@ export class JobRunner {
       }),
       this.database.auditLog.create({
         data: {
+          projectId,
           id: `audit-${randomUUID()}`,
           actor: "system",
           action: "media.frames.ready",
@@ -222,7 +228,7 @@ export class JobRunner {
           skipDuplicates: true,
         }),
         this.database.inspectionTask.update({
-          where: { id: inspectionTaskId },
+          where: { id: inspectionTaskId, projectId },
           data: {
             processStatus: "ready_for_distribution",
             photoCount: frameRows.length,
@@ -235,15 +241,16 @@ export class JobRunner {
     await this.database.$transaction(operations);
   }
 
-  private async processArchiveJob(jobId: string, rawInput: string) {
+  private async processArchiveJob(jobId: string, projectId: string, rawInput: string) {
     const input = this.parseArchiveInput(rawInput);
-    const inspectionTaskId = await this.resolveInspectionTaskId(input.inspectionTaskId, input.mediaId);
+    const inspectionTaskId = await this.resolveInspectionTaskId(input.inspectionTaskId, input.mediaId, projectId);
     const sourcePath = this.toStoragePath(input.sourcePath);
     const outputDirectory = resolve(this.storageRoot, "media", "images", input.mediaId);
     const images = await this.extractArchiveImagesHandler(sourcePath, outputDirectory);
     const publicDirectory = `storage/media/images/${input.mediaId}`;
 
     const imageRows = images.map((image) => ({
+      projectId,
       id: `image-${input.mediaId}-${image.sortIndex + 1}`,
       kind: "image",
       originalFileName: image.fileName,
@@ -263,6 +270,7 @@ export class JobRunner {
       this.database.mediaProcessingJob.update({
         where: { id: jobId },
         data: {
+          projectId,
           status: "completed",
           progress: 100,
           completedAt: new Date(),
@@ -272,6 +280,7 @@ export class JobRunner {
       }),
       this.database.auditLog.create({
         data: {
+          projectId,
           id: `audit-${randomUUID()}`,
           actor: "system",
           action: "media.archive.ready",
@@ -294,7 +303,7 @@ export class JobRunner {
           skipDuplicates: true,
         }),
         this.database.inspectionTask.update({
-          where: { id: inspectionTaskId },
+          where: { id: inspectionTaskId, projectId },
           data: {
             processStatus: "ready_for_distribution",
             photoCount: imageRows.length,
@@ -306,10 +315,10 @@ export class JobRunner {
     await this.database.$transaction(operations);
   }
 
-  private async processImagePrepareJob(jobId: string, rawInput: string) {
+  private async processImagePrepareJob(jobId: string, projectId: string, rawInput: string) {
     const input = this.parseImagePrepareInput(rawInput);
     const assets = await this.database.mediaAsset.findMany({
-      where: { id: { in: input.mediaIds } },
+      where: { projectId, id: { in: input.mediaIds } },
       select: { id: true, originalFileName: true, storagePath: true },
     });
     const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
@@ -332,7 +341,7 @@ export class JobRunner {
 
     const operations: Prisma.PrismaPromise<unknown>[] = [
       ...prepared.map(({ id, prepared: result }) => this.database.mediaAsset.update({
-        where: { id },
+        where: { id, projectId },
         data: {
           mimeType: result.mimeType,
           previewStoragePath: result.previewStoragePath ? `storage/media/previews/${basename(result.previewStoragePath)}` : null,
@@ -351,12 +360,13 @@ export class JobRunner {
         skipDuplicates: true,
       }),
       this.database.inspectionTask.update({
-        where: { id: input.inspectionTaskId },
+        where: { id: input.inspectionTaskId, projectId },
         data: { processStatus: "ready_for_distribution", photoCount: prepared.length, pendingPhotoCount: prepared.length },
       }),
       this.database.mediaProcessingJob.update({
         where: { id: jobId },
         data: {
+          projectId,
           status: "completed",
           progress: 100,
           completedAt: new Date(),
@@ -366,6 +376,7 @@ export class JobRunner {
       }),
       this.database.auditLog.create({
         data: {
+          projectId,
           id: `audit-${randomUUID()}`,
           actor: "system",
           action: "media.images.ready",
@@ -408,10 +419,10 @@ export class JobRunner {
     return input as ImagePrepareJobInput;
   }
 
-  private async resolveInspectionTaskId(inputTaskId: string | undefined, mediaId: string) {
+  private async resolveInspectionTaskId(inputTaskId: string | undefined, mediaId: string, projectId: string) {
     if (inputTaskId) return inputTaskId;
     const task = await this.database.inspectionTask.findUnique({
-      where: { sourceMediaId: mediaId },
+      where: { sourceMediaId: mediaId, projectId },
       select: { id: true },
     });
     return task?.id ?? null;

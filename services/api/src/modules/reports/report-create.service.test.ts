@@ -36,7 +36,7 @@ test("replaces ordered report photo links in the report transaction", async () =
     taskId: "task-1",
     title: "7月巡检综合报告",
     reportDate: "2026-07-11",
-    relatedObjectName: "曲阳路街道",
+    relatedObjectName: "当前项目",
     issueCount: 3,
     contentSummary: "综合巡检结果",
     taskPhotoIds: ["photo-2", "photo-1"],

@@ -296,7 +296,7 @@ export function MapAssetsPage() {
       >
         <Form form={tileForm} layout="vertical">
           <Form.Item name="name" label="地图版本名称" rules={[{ required: true, message: "请输入版本名称" }]}>
-            <Input placeholder="例如：曲阳街道 2026 年 7 月二维底图" />
+            <Input placeholder="例如：项目 2026 年 7 月二维底图" />
           </Form.Item>
           <Form.Item name="mapType" label="地图类型" initialValue="街道总览">
             <Input placeholder="例如：街道总览" />

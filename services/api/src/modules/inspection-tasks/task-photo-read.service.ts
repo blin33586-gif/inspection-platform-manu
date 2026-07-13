@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { DatabaseService } from "../../database/database.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 export interface TaskPhotoQuery {
   page?: string;
@@ -14,13 +15,14 @@ export class TaskPhotoReadService {
   async list(query: TaskPhotoQuery) {
     const where: Prisma.TaskPhotoWhereInput = {
       distributionStatus: "pending",
+      task: { projectId: currentProjectId() },
     };
     return this.findPage(where, query);
   }
 
   async listForArchive(objectId: string, query: Pick<TaskPhotoQuery, "page" | "pageSize">) {
     const object = await this.database.managedObject.findUnique({
-      where: { id: objectId },
+      where: { id: objectId, projectId: currentProjectId() },
       select: { id: true },
     });
     if (!object) throw new NotFoundException("档案对象不存在");
@@ -28,6 +30,7 @@ export class TaskPhotoReadService {
     return this.findPage({
       archiveObjectId: objectId,
       distributionStatus: "archived",
+      task: { projectId: currentProjectId() },
     }, query);
   }
 

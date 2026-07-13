@@ -99,12 +99,13 @@ test("processes an archive extraction job into child media assets", async () => 
   const assetData = createdAssets[0].data as Array<Record<string, unknown>>;
   assert.equal(assetData[0].kind, "image");
   assert.equal(assetData[0].parentMediaId, "media-1");
+  assert.equal(assetData[0].projectId, "quyang");
   const photoData = createdTaskPhotos[0].data as Array<Record<string, unknown>>;
   assert.equal(photoData[0].taskId, "task-1");
   assert.equal(photoData[0].mediaAssetId, "image-media-1-1");
   assert.equal(photoData[0].distributionStatus, "pending");
   assert.deepEqual(taskUpdates[0], {
-    where: { id: "task-1" },
+    where: { id: "task-1", projectId: "quyang" },
     data: { processStatus: "ready_for_distribution", photoCount: 1, pendingPhotoCount: 1 },
   });
   const completed = completedUpdates.find((input) => (
@@ -178,7 +179,7 @@ test("prepares direct images before they enter the task photo pool", async () =>
   const photoData = createdTaskPhotos[0].data as Array<Record<string, unknown>>;
   assert.equal(photoData[0].mediaAssetId, "media-direct-1");
   assert.deepEqual(taskUpdates[0], {
-    where: { id: "task-direct-1" },
+    where: { id: "task-direct-1", projectId: "quyang" },
     data: { processStatus: "ready_for_distribution", photoCount: 1, pendingPhotoCount: 1 },
   });
   const completed = completedUpdates.find((input) => (input.data as Record<string, unknown>).status === "completed");
@@ -235,7 +236,7 @@ test("writes extracted video frames into the task photo pool", async () => {
   assert.deepEqual(photos.map((photo) => photo.videoTimestampMs), [0, 3000]);
   assert.equal(photos.every((photo) => photo.taskId === "task-2" && photo.distributionStatus === "pending"), true);
   assert.deepEqual(taskUpdates[0], {
-    where: { id: "task-2" },
+    where: { id: "task-2", projectId: "quyang" },
     data: { processStatus: "ready_for_distribution", photoCount: 2, pendingPhotoCount: 2 },
   });
 });

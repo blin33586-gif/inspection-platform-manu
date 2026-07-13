@@ -63,6 +63,7 @@ test("queues a TIF upload once with a durable tile job", async () => {
   assert.equal(upsertCalls.length, 1);
   assert.deepEqual(upsertCalls[0].where, { dedupeKey: `tiff_tile:${createCalls[0].data.id}:v1` });
   assert.deepEqual(upsertCalls[0].create, {
+    projectId: "quyang",
     id: `job-tiff-${createCalls[0].data.id}`,
     jobType: "tiff_tile",
     status: "queued",

@@ -6,22 +6,55 @@ datasource db {
   provider = "postgresql"
 }
 
+model Project {
+  id                String   @id
+  name              String
+  shortName         String
+  customerType      String
+  archiveDimensions Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  dashboardMetrics    DashboardMetric[]
+  issueCategoryStats  IssueCategoryStat[]
+  managedObjects      ManagedObject[]
+  issues              Issue[]
+  reports             InspectionReport[]
+  mapAssets           MapAsset[]
+  mediaProcessingJobs MediaProcessingJob[]
+  mediaAssets         MediaAsset[]
+  inspectionTasks     InspectionTask[]
+  auditLogs           AuditLog[]
+}
+
 model DashboardMetric {
-  key       String   @id
+  projectId String   @default("quyang")
+  key       String
   label     String
   value     Int
   remark    String?
   updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@id([projectId, key])
+  @@index([projectId])
 }
 
 model IssueCategoryStat {
+  projectId String @default("quyang")
   id       String @id
   category String
   value    Int
   sort     Int    @default(0)
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, sort])
 }
 
 model ManagedObject {
+  projectId     String   @default("quyang")
   id            String   @id
   name          String
   objectType    String
@@ -37,12 +70,15 @@ model ManagedObject {
   reports  InspectionReport[]
   hotAreas MapHotArea[]
   taskPhotos TaskPhoto[]
+  project    Project @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, objectType])
   @@index([objectType])
   @@index([status])
 }
 
 model Issue {
+  projectId               String   @default("quyang")
   id                      String   @id
   title                   String
   category                String
@@ -69,7 +105,9 @@ model Issue {
   object          ManagedObject? @relation(fields: [objectId], references: [id])
   sourceTaskPhoto TaskPhoto?     @relation(fields: [sourceTaskPhotoId], references: [id], onDelete: SetNull)
   attachments     IssueAttachment[]
+  project         Project        @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, status])
   @@index([objectId])
   @@index([status])
   @@index([foundAt])
@@ -97,6 +135,7 @@ model IssueAttachment {
 }
 
 model InspectionReport {
+  projectId         String   @default("quyang")
   id                String   @id
   title             String
   reportDate        DateTime
@@ -118,7 +157,9 @@ model InspectionReport {
   relatedObject ManagedObject? @relation(fields: [relatedObjectId], references: [id])
   task          InspectionTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
   photos        ReportPhoto[]
+  project       Project        @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, reportDate])
   @@index([relatedObjectId])
   @@index([reportType])
   @@index([reportDate])
@@ -126,6 +167,7 @@ model InspectionReport {
 }
 
 model MapAsset {
+  projectId        String   @default("quyang")
   id               String   @id
   name             String
   mapType          String
@@ -144,13 +186,16 @@ model MapAsset {
   updatedAt        DateTime @updatedAt
 
   hotAreas MapHotArea[]
+  project  Project      @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, isActive])
   @@index([mapType])
   @@index([processStatus])
   @@index([isActive])
 }
 
 model MediaProcessingJob {
+  projectId    String   @default("quyang")
   id           String   @id
   jobType      String
   status       String   @default("queued")
@@ -166,14 +211,17 @@ model MediaProcessingJob {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  media MediaAsset? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  media   MediaAsset? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  project Project     @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, status])
   @@index([jobType, status])
   @@index([mediaId])
   @@index([createdAt])
 }
 
 model MediaAsset {
+  projectId        String   @default("quyang")
   id               String   @id
   kind             String
   originalFileName String
@@ -192,13 +240,16 @@ model MediaAsset {
   jobs        MediaProcessingJob[]
   inspectionTask InspectionTask? @relation("InspectionTaskSource")
   taskPhoto      TaskPhoto?      @relation("TaskPhotoMedia")
+  project        Project         @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, createdAt])
   @@unique([parentMediaId, videoTimestampMs])
   @@index([kind])
   @@index([createdAt])
 }
 
 model InspectionTask {
+  projectId         String   @default("quyang")
   id                String   @id
   name              String
   taskDate          DateTime
@@ -214,7 +265,9 @@ model InspectionTask {
   sourceMedia MediaAsset?      @relation("InspectionTaskSource", fields: [sourceMediaId], references: [id], onDelete: SetNull)
   photos      TaskPhoto[]
   report      InspectionReport?
+  project     Project           @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, taskDate])
   @@index([taskDate])
   @@index([sourceType])
   @@index([processStatus])
@@ -351,6 +404,7 @@ model MapHotArea {
 }
 
 model AuditLog {
+  projectId   String   @default("quyang")
   id         String   @id
   actor      String
   action     String
@@ -362,6 +416,9 @@ model AuditLog {
   reviewedAt   DateTime?
   createdAt  DateTime @default(now())
 
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, createdAt])
   @@index([action])
   @@index([targetType])
   @@index([createdAt])

@@ -7,6 +7,8 @@ import { ApiResourceError } from "../components/ApiResourceError";
 import { DashboardTileMap, type MapAreaUpdate, type MapDrawingDraft } from "../components/DashboardTileMap";
 import { useApiResource } from "../hooks/useApiResource";
 import { communities, points, roads } from "../data";
+import { getCurrentProject, getUser } from "../auth/session";
+import { canModifyProject } from "../auth/project-access";
 
 interface DashboardMapData {
   mapAssetId: string;
@@ -29,6 +31,8 @@ const fallbackMapData: DashboardMapData = {
 const fallbackCommunities: PageResult<ManagedObjectSummary> = { items: communities, page: 1, pageSize: 20, total: communities.length };
 const fallbackRoads: PageResult<ManagedObjectSummary> = { items: roads, page: 1, pageSize: 20, total: roads.length };
 const fallbackPoints: PageResult<PointSummary> = { items: points, page: 1, pageSize: 20, total: points.length };
+const emptyManagedObjects: PageResult<ManagedObjectSummary> = { items: [], page: 1, pageSize: 20, total: 0 };
+const emptyPoints: PageResult<PointSummary> = { items: [], page: 1, pageSize: 20, total: 0 };
 
 function objectPath(area: MapHotAreaSummary, mapAssetId: string) {
   if (!area.objectId) return `/map-assets/${mapAssetId}`;
@@ -40,14 +44,16 @@ function objectPath(area: MapHotAreaSummary, mapAssetId: string) {
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const project = getCurrentProject();
+  const canModify = canModifyProject(getUser()?.role);
   const [drawingForm] = Form.useForm<{ label?: string; objectType?: ObjectType; objectId?: string }>();
   const [drawing, setDrawing] = useState<MapDrawingDraft | null>(null);
   const [drawingObjectType, setDrawingObjectType] = useState<ObjectType>("community");
   const [savingDrawing, setSavingDrawing] = useState(false);
   const { data: mapData, error, reload } = useApiResource<DashboardMapData>("/dashboard/map", fallbackMapData);
-  const communitiesResource = useApiResource<PageResult<ManagedObjectSummary>>("/communities", fallbackCommunities);
-  const roadsResource = useApiResource<PageResult<ManagedObjectSummary>>("/roads", fallbackRoads);
-  const pointsResource = useApiResource<PageResult<PointSummary>>("/points", fallbackPoints);
+  const communitiesResource = useApiResource<PageResult<ManagedObjectSummary>>("/communities", project?.id === "quyang" ? fallbackCommunities : emptyManagedObjects);
+  const roadsResource = useApiResource<PageResult<ManagedObjectSummary>>("/roads", project?.id === "quyang" ? fallbackRoads : emptyManagedObjects);
+  const pointsResource = useApiResource<PageResult<PointSummary>>("/points", project?.id === "quyang" ? fallbackPoints : emptyPoints);
   const issueCountByObject = mapData.issues.reduce<Record<string, number>>((counts, issue) => {
     counts[issue.objectName] = (counts[issue.objectName] ?? 0) + 1;
     return counts;
@@ -118,17 +124,18 @@ export function DashboardPage() {
 
   return (
     <section className="home-landing">
-      <div className="home-copy"><h1>曲阳街道一览</h1></div>
+      <div className="home-copy"><h1>{project?.shortName ?? "当前项目"}一览</h1></div>
       <div className="tif-map-stage">
         <DashboardTileMap
           activeTileMap={mapData.activeTileMap}
           hotAreas={mapData.hotAreas}
           issueCountByObject={issueCountByObject}
+          fallbackTileUrl={project?.id === "quyang" ? "/maps/quyang-2026-01/{z}/{x}/{y}.png" : undefined}
           onOpenArea={(area) => navigate(objectPath(area, mapData.mapAssetId))}
           onOpenIssues={(status) => navigate(`/issues?status=${status}`)}
-          onCreateDrawing={beginDrawingSave}
-          onDeleteArea={deleteArea}
-          onUpdateArea={updateArea}
+          onCreateDrawing={canModify ? beginDrawingSave : undefined}
+          onDeleteArea={canModify ? deleteArea : undefined}
+          onUpdateArea={canModify ? updateArea : undefined}
         />
       </div>
       <Modal cancelText="取消" confirmLoading={savingDrawing} okText="保存标绘" onCancel={() => setDrawing(null)} onOk={saveDrawing} open={Boolean(drawing)} title={drawingTitle}>

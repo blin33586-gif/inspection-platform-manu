@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { AuditService } from "../audit/audit.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 interface CreateIssueInput {
   title?: string;
@@ -26,6 +27,7 @@ export class IssueWriteService {
   ) {}
 
   async create(input: CreateIssueInput) {
+    const projectId = currentProjectId();
     if (!input.title?.trim()) throw new BadRequestException("Issue title is required");
     if (!input.category?.trim()) throw new BadRequestException("Issue category is required");
 
@@ -36,12 +38,13 @@ export class IssueWriteService {
 
     const objectId = input.objectId?.trim() || null;
     if (objectId) {
-      const object = await this.database.managedObject.findUnique({ where: { id: objectId } });
+      const object = await this.database.managedObject.findUnique({ where: { id: objectId, projectId } });
       if (!object) throw new NotFoundException("Managed object not found");
     }
 
     const issue = await this.database.issue.create({
       data: {
+        projectId,
         id: `is-${randomUUID()}`,
         title: input.title.trim(),
         category: input.category.trim(),
@@ -54,7 +57,7 @@ export class IssueWriteService {
 
     if (objectId) {
       await this.database.managedObject.update({
-        where: { id: objectId },
+        where: { id: objectId, projectId },
         data: { issueCount: { increment: 1 } },
       });
     }

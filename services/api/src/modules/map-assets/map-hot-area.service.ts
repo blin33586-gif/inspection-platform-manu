@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import { parseMapGeometry } from "./map-geometry.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 interface CreateHotAreaInput {
   label?: string;
@@ -34,12 +35,17 @@ export class MapHotAreaService {
   ) {}
 
   async create(mapAssetId: string, input: CreateHotAreaInput) {
-    const mapAsset = await this.database.mapAsset.findUnique({ where: { id: mapAssetId } });
+    const projectId = currentProjectId();
+    const mapAsset = await this.database.mapAsset.findUnique({ where: { id: mapAssetId, projectId } });
     if (!mapAsset) throw new NotFoundException("Map asset not found");
 
     if (!input.label?.trim()) throw new BadRequestException("Hot area label is required");
     if (!input.objectType || !allowedObjectTypes.includes(input.objectType)) {
       throw new BadRequestException("Invalid object type");
+    }
+    if (input.objectId) {
+      const object = await this.database.managedObject.findUnique({ where: { id: input.objectId, projectId } });
+      if (!object) throw new NotFoundException("Managed object not found");
     }
 
     const polygon = input.polygon?.trim()
@@ -64,7 +70,7 @@ export class MapHotAreaService {
     });
 
     await this.database.mapAsset.update({
-      where: { id: mapAssetId },
+      where: { id: mapAssetId, projectId },
       data: {
         hotAreaCount: { increment: 1 },
         ...(mapAsset.processStatus === "uploaded" ? { processStatus: "processed" } : {}),
@@ -83,7 +89,7 @@ export class MapHotAreaService {
 
   async update(mapAssetId: string, hotAreaId: string, input: UpdateHotAreaInput) {
     const existing = await this.database.mapHotArea.findFirst({
-      where: { id: hotAreaId, mapAssetId },
+      where: { id: hotAreaId, mapAssetId, mapAsset: { projectId: currentProjectId() } },
       include: { mapAsset: { select: { name: true } } },
     });
     if (!existing) throw new NotFoundException("Map hot area not found");
@@ -118,7 +124,7 @@ export class MapHotAreaService {
 
   async remove(mapAssetId: string, hotAreaId: string) {
     const existing = await this.database.mapHotArea.findFirst({
-      where: { id: hotAreaId, mapAssetId },
+      where: { id: hotAreaId, mapAssetId, mapAsset: { projectId: currentProjectId() } },
       include: { mapAsset: { select: { name: true } } },
     });
     if (!existing) throw new NotFoundException("Map hot area not found");
@@ -126,7 +132,7 @@ export class MapHotAreaService {
     await this.database.$transaction(async (transaction) => {
       await transaction.mapHotArea.delete({ where: { id: existing.id } });
       await transaction.mapAsset.update({
-        where: { id: mapAssetId },
+        where: { id: mapAssetId, projectId: currentProjectId() },
         data: { hotAreaCount: { decrement: 1 } },
       });
     });

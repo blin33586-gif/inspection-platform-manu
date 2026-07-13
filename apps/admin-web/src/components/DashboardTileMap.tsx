@@ -26,9 +26,10 @@ interface DashboardTileMapProps {
   issueCountByObject: Record<string, number>;
   onOpenArea: (area: MapHotAreaSummary) => void;
   onOpenIssues: (status: "pending" | "processing" | "verified") => void;
-  onCreateDrawing: (drawing: MapDrawingDraft) => void;
-  onDeleteArea: (area: MapHotAreaSummary) => Promise<void>;
-  onUpdateArea: (area: MapHotAreaSummary, update: MapAreaUpdate) => Promise<void>;
+  onCreateDrawing?: (drawing: MapDrawingDraft) => void;
+  onDeleteArea?: (area: MapHotAreaSummary) => Promise<void>;
+  onUpdateArea?: (area: MapHotAreaSummary, update: MapAreaUpdate) => Promise<void>;
+  fallbackTileUrl?: string;
 }
 
 type MapMode = "idle" | "line" | "polygon" | "point" | "edit";
@@ -184,7 +185,7 @@ function MapColorPicker({ color, onChange }: { color: MapHotAreaColor; onChange:
   );
 }
 
-export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, onOpenArea, onOpenIssues, onCreateDrawing, onDeleteArea, onUpdateArea }: DashboardTileMapProps) {
+export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, onOpenArea, onOpenIssues, onCreateDrawing, onDeleteArea, onUpdateArea, fallbackTileUrl }: DashboardTileMapProps) {
   const [mode, setMode] = useState<MapMode>("idle");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [drawingPoints, setDrawingPoints] = useState<LatLngTuple[]>([]);
@@ -197,7 +198,8 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
   const tileMetadata = activeTileMap?.tileMetadata;
   const mapBounds = tileMetadata?.bounds ?? { west: 121.47531509399414, east: 121.49969100952148, north: 31.297621354424027, south: 31.276496883214108 };
   const bounds: LatLngBoundsExpression = tileMetadata ? [[mapBounds.south, mapBounds.west], [mapBounds.north, mapBounds.east]] : fallbackBounds;
-  const tileUrl = activeTileMap?.id ? decodeURIComponent(getApiUrl(`/map-assets/${activeTileMap.id}/tiles/{z}/{x}/{y}`)) : "/maps/quyang-2026-01/{z}/{x}/{y}.png";
+  const tileUrl = activeTileMap?.id ? decodeURIComponent(getApiUrl(`/map-assets/${activeTileMap.id}/tiles/{z}/{x}/{y}`)) : fallbackTileUrl;
+  const canEdit = Boolean(onCreateDrawing && onDeleteArea && onUpdateArea);
   const center = useMemo<LatLngTuple>(() => [(mapBounds.north + mapBounds.south) / 2, (mapBounds.west + mapBounds.east) / 2], [mapBounds.east, mapBounds.north, mapBounds.south, mapBounds.west]);
   const drawingMode = mode === "line" || mode === "polygon" || mode === "point" ? mode : "idle";
   const minimumPoints = drawingMode === "polygon" ? 3 : drawingMode === "line" ? 2 : 1;
@@ -216,7 +218,7 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
 
   const appendDrawingPoint = (point: LatLngTuple) => {
     if (drawingMode === "point") {
-      onCreateDrawing({ shape: "point", coordinates: [point], color: selectedColor });
+      onCreateDrawing?.({ shape: "point", coordinates: [point], color: selectedColor });
       setMode("idle");
       setDrawingPoints([]);
       return;
@@ -226,7 +228,7 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
 
   const finishDrawing = () => {
     if (drawingMode === "idle" || drawingPoints.length < minimumPoints) return;
-    onCreateDrawing({ shape: drawingMode, coordinates: drawingPoints, color: selectedColor });
+    onCreateDrawing?.({ shape: drawingMode, coordinates: drawingPoints, color: selectedColor });
     setMode("idle");
     setDrawingPoints([]);
   };
@@ -259,7 +261,7 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
     if (!selectedArea || !selectedDrawing || !selectedLabel.trim()) return;
     setSavingArea(true);
     try {
-      await onUpdateArea(selectedArea, {
+      await onUpdateArea?.(selectedArea, {
         label: selectedLabel.trim(),
         polygon: JSON.stringify(selectedDrawing),
         color: selectedColor,
@@ -288,7 +290,7 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
       onOk: async () => {
         setSavingArea(true);
         try {
-          await onDeleteArea(selectedArea);
+          await onDeleteArea?.(selectedArea);
           closeTools();
         } finally {
           setSavingArea(false);
@@ -297,9 +299,13 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
     });
   };
 
+  if (!tileUrl) {
+    return <div className="dashboard-map-empty"><Layers3 size={36} /><strong>当前项目暂无底图</strong><span>管理员可在底图管理中上传并发布项目底图</span></div>;
+  }
+
   return (
     <div className="dashboard-tile-map">
-      <div className={`dashboard-map-draw-tools ${toolsOpen ? "is-open" : ""}`} aria-label="地图标绘工具">
+      {canEdit ? <div className={`dashboard-map-draw-tools ${toolsOpen ? "is-open" : ""}`} aria-label="地图标绘工具">
         <Button aria-expanded={toolsOpen} aria-label="打开地图标绘工具" className="map-tools-toggle" icon={<Layers3 size={20} />} onClick={() => setToolsOpen(true)} shape="circle" title="地图标绘工具" />
         <div aria-hidden={!toolsOpen} className="map-draw-tools-panel">
           <Button aria-label="画道路线" className={mode === "line" ? "is-active" : ""} icon={<PencilLine size={16} />} onClick={() => startDrawing("line")} title="画道路线">画道路</Button>
@@ -322,7 +328,7 @@ export function DashboardTileMap({ activeTileMap, hotAreas, issueCountByObject, 
           )}
           <Button aria-label="收起地图标绘工具" icon={<X size={16} />} onClick={closeTools} title="收起地图标绘工具" />
         </div>
-      </div>
+      </div> : null}
       <MapContainer attributionControl={false} bounds={bounds} center={center} key={activeTileMap?.id ?? "quyang-static-map"} maxBounds={bounds} maxBoundsViscosity={1} maxZoom={tileMetadata?.maxZoom ?? 18} minZoom={tileMetadata?.minZoom ?? 16} scrollWheelZoom zoom={Math.min(tileMetadata?.maxZoom ?? 18, Math.max(tileMetadata?.minZoom ?? 16, 17))} zoomControl={false}>
         <ZoomControl position="bottomright" />
         <TileLayer bounds={bounds} keepBuffer={1} maxNativeZoom={tileMetadata?.maxZoom ?? 18} minNativeZoom={tileMetadata?.minZoom ?? 16} noWrap tileSize={256} updateWhenIdle url={tileUrl} />

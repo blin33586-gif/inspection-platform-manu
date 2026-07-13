@@ -9,6 +9,7 @@ import { createReadStream, type ReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 export interface MediaContentResponse {
   statusCode: 200 | 206;
@@ -28,7 +29,7 @@ export class MediaContentService {
   }
 
   async resolveContent(id: string, rangeHeader: string | undefined): Promise<MediaContentResponse> {
-    const asset = await this.database.mediaAsset.findUnique({ where: { id } });
+    const asset = await this.database.mediaAsset.findUnique({ where: { id, projectId: currentProjectId() } });
     if (!asset) throw new NotFoundException("媒体素材不存在");
 
     const servingPreview = Boolean(asset.previewStoragePath && asset.previewMimeType);

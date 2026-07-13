@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { createTiffTileJob } from "@xunjianbao/map-core";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 import { describeTilePackage, normalizeTilePackagePath } from "./tile-package-metadata.js";
 
 interface UploadedFileLike {
@@ -53,6 +54,7 @@ export class MapAssetUploadService {
     const sourceType = extension === ".tif" || extension === ".tiff" ? "tiff" : "image";
     const asset = await this.database.mapAsset.create({
       data: {
+        projectId: currentProjectId(),
         id,
         name: input.name?.trim() || this.nameFromFile(file.originalname),
         mapType: input.mapType?.trim() || "未分类地图",
@@ -84,6 +86,7 @@ export class MapAssetUploadService {
       await this.database.mediaProcessingJob.upsert({
         where: { dedupeKey: job.dedupeKey },
         create: {
+          projectId: currentProjectId(),
           id: `job-tiff-${asset.id}`,
           jobType: job.jobType,
           status: "queued",
@@ -137,6 +140,7 @@ export class MapAssetUploadService {
       await this.extractTiles(storagePath, tilePath, tileEntries);
       const asset = await this.database.mapAsset.create({
         data: {
+          projectId: currentProjectId(),
           id,
           name: input.name?.trim() || this.nameFromFile(file.originalname),
           mapType: input.mapType?.trim() || "街道总览",
@@ -170,18 +174,19 @@ export class MapAssetUploadService {
   }
 
   async publishTileMap(id: string) {
-    const mapAsset = await this.database.mapAsset.findUnique({ where: { id } });
+    const projectId = currentProjectId();
+    const mapAsset = await this.database.mapAsset.findUnique({ where: { id, projectId } });
     if (!mapAsset || mapAsset.sourceType !== "tile" || !mapAsset.tilePath || !mapAsset.tileMetadata) {
       throw new NotFoundException("可发布的瓦片底图不存在");
     }
 
     await this.database.$transaction([
       this.database.mapAsset.updateMany({
-        where: { sourceType: "tile", isActive: true },
+        where: { projectId, sourceType: "tile", isActive: true },
         data: { isActive: false },
       }),
       this.database.mapAsset.update({
-        where: { id },
+        where: { id, projectId },
         data: { isActive: true, processStatus: "published" },
       }),
     ]);

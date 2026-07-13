@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from "@nes
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 export interface SubmitTaskReportInput {
   taskId?: string;
@@ -21,6 +22,7 @@ export class ReportCreateService {
   ) {}
 
   async submit(input: SubmitTaskReportInput) {
+    const projectId = currentProjectId();
     if (!input.taskId) throw new BadRequestException("请选择报告所属任务");
     if (input.taskPhotoIds !== undefined && !Array.isArray(input.taskPhotoIds)) {
       throw new BadRequestException("报告照片格式无效");
@@ -41,14 +43,14 @@ export class ReportCreateService {
       title,
       reportDate,
       reportType: "comprehensive",
-      relatedObjectName: input.relatedObjectName?.trim() || "曲阳路街道",
+      relatedObjectName: input.relatedObjectName?.trim() || "当前项目",
       issueCount,
       contentSummary: input.contentSummary?.trim() || null,
       processStatus: "completed",
     };
 
     const result = await this.database.$transaction(async (transaction) => {
-      const task = await transaction.inspectionTask.findUnique({ where: { id: input.taskId } });
+      const task = await transaction.inspectionTask.findUnique({ where: { id: input.taskId, projectId } });
       if (!task) throw new NotFoundException("巡检任务不存在");
 
       if (taskPhotoIds.length > 0) {
@@ -67,6 +69,7 @@ export class ReportCreateService {
       const report = await transaction.inspectionReport.upsert({
         where: { taskId: input.taskId },
         create: {
+          projectId,
           id: `rp-${randomUUID()}`,
           taskId: input.taskId,
           ...common,

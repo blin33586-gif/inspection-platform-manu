@@ -19,20 +19,57 @@ async function main() {
   await prisma.issueCategoryStat.deleteMany();
   await prisma.dashboardMetric.deleteMany();
 
+  await prisma.project.upsert({
+    where: { id: "quyang" },
+    update: {},
+    create: {
+      id: "quyang",
+      name: "曲阳街道城管巡检项目",
+      shortName: "曲阳街道",
+      customerType: "街道城管",
+      archiveDimensions: [
+        { key: "community", label: "小区档案" },
+        { key: "road", label: "道路街面" },
+        { key: "point", label: "重点点位" },
+      ],
+    },
+  });
+  await prisma.project.upsert({
+    where: { id: "jinshan" },
+    update: {},
+    create: {
+      id: "jinshan",
+      name: "金山化工园区项目",
+      shortName: "金山化工园区",
+      customerType: "化工园区",
+      archiveDimensions: [
+        { key: "community", label: "企业档案" },
+        { key: "road", label: "道路档案" },
+        { key: "point", label: "河道档案" },
+      ],
+    },
+  });
+
   await prisma.dashboardMetric.createMany({
     data: [
-      { key: "inspectionsThisMonth", label: "本月巡检", value: 18 },
-      { key: "issuesThisMonth", label: "本月发现问题", value: 126 },
-      { key: "pendingIssues", label: "待处理", value: 31 },
+      { projectId: "quyang", key: "inspectionsThisMonth", label: "本月巡检", value: 18 },
+      { projectId: "quyang", key: "issuesThisMonth", label: "本月发现问题", value: 126 },
+      { projectId: "quyang", key: "pendingIssues", label: "待处理", value: 31 },
+      { projectId: "jinshan", key: "inspectionsThisMonth", label: "本月巡检", value: 0 },
+      { projectId: "jinshan", key: "issuesThisMonth", label: "本月发现问题", value: 0 },
+      { projectId: "jinshan", key: "pendingIssues", label: "待处理", value: 0 },
     ],
   });
 
   await prisma.issueCategoryStat.createMany({
     data: [
-      { id: "stat-flying-wire", category: "飞线整治", value: 32, sort: 1 },
-      { id: "stat-occupy-road", category: "占道经营", value: 26, sort: 2 },
-      { id: "stat-illegal-build", category: "违建隐患", value: 18, sort: 3 },
-      { id: "stat-green-river", category: "绿化河道", value: 14, sort: 4 },
+      { projectId: "quyang", id: "stat-flying-wire", category: "飞线整治", value: 32, sort: 1 },
+      { projectId: "quyang", id: "stat-occupy-road", category: "占道经营", value: 26, sort: 2 },
+      { projectId: "quyang", id: "stat-illegal-build", category: "违建隐患", value: 18, sort: 3 },
+      { projectId: "quyang", id: "stat-green-river", category: "绿化河道", value: 14, sort: 4 },
+      { projectId: "jinshan", id: "js-stat-enterprise", category: "企业安全", value: 0, sort: 1 },
+      { projectId: "jinshan", id: "js-stat-road", category: "园区道路", value: 0, sort: 2 },
+      { projectId: "jinshan", id: "js-stat-river", category: "河道环境", value: 0, sort: 3 },
     ],
   });
 
@@ -46,6 +83,9 @@ async function main() {
       { id: "r-yutian", name: "玉田路", objectType: "road", status: "稳定", issueCount: 3, reportCount: 1 },
       { id: "p-river-001", name: "河道绿化带", objectType: "point", objectSubtype: "绿化河道", parentName: "曲阳路街道", status: "待完善", issueCount: 2, reportCount: 0 },
       { id: "p-sign-001", name: "曲阳路重点广告牌", objectType: "point", objectSubtype: "广告牌", parentName: "曲阳路", status: "待复查", issueCount: 3, reportCount: 0 },
+      { projectId: "jinshan", id: "js-company-001", name: "上海化工区示例企业", objectType: "community", objectSubtype: "企业", parentName: "金山化工园区", status: "稳定", issueCount: 0, reportCount: 0 },
+      { projectId: "jinshan", id: "js-road-001", name: "园区示例道路", objectType: "road", objectSubtype: "园区道路", parentName: "金山化工园区", status: "稳定", issueCount: 0, reportCount: 0 },
+      { projectId: "jinshan", id: "js-river-001", name: "园区示例河道", objectType: "point", objectSubtype: "河道", parentName: "金山化工园区", status: "稳定", issueCount: 0, reportCount: 0 },
     ],
   });
 
