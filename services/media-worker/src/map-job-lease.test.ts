@@ -49,9 +49,12 @@ function createLeaseDatabase(now: () => Date) {
     mediaProcessingJob: {
       updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
         const job = jobs.find((candidate) => candidate.id === where.id);
+        const statusFilter = where.status as string | { in?: string[] } | undefined;
+        const statusMatches = statusFilter === undefined
+          || (typeof statusFilter === "string" ? job?.status === statusFilter : statusFilter.in?.includes(job?.status ?? "") === true);
         if (
           !job
-          || (where.status !== undefined && job.status !== where.status)
+          || !statusMatches
           || job.attemptId !== where.attemptId
           || job.leaseOwner !== where.leaseOwner
         ) {
@@ -120,10 +123,34 @@ test("heartbeat renews both global and job leases and release relinquishes owner
   assert.equal(database.jobs[0].leaseExpiresAt?.toISOString(), "2026-07-14T00:00:40.000Z");
   assert.equal(database.jobs[0].heartbeatAt?.toISOString(), "2026-07-14T00:00:10.000Z");
 
+  database.jobs[0].status = "completed";
   await coordinator.releaseJob("job-map-1", "attempt-1");
   assert.equal(database.jobs[0].leaseOwner, null);
   assert.equal(database.jobs[0].attemptId, null);
   assert.equal(database.lease()?.ownerId, null);
+});
+
+test("release preserves an expired running attempt so crash recovery can requeue it", async () => {
+  const now = () => new Date("2026-07-14T00:01:00.000Z");
+  const database = createLeaseDatabase(now);
+  database.jobs.push({
+    id: "job-lost-lease",
+    status: "running",
+    jobType: "map_tile_package",
+    attemptId: "attempt-lost",
+    leaseOwner: "runner-a",
+    leaseExpiresAt: new Date("2026-07-14T00:00:30.000Z"),
+    heartbeatAt: new Date("2026-07-14T00:00:00.000Z"),
+    inputJson: JSON.stringify({ mapAssetId: "map-lost-lease" }),
+    projectId: "jinshan",
+  });
+  const coordinator = new MapJobLeaseCoordinator(database as never, { ownerId: "runner-a", now });
+
+  await coordinator.releaseJob("job-lost-lease", "attempt-lost");
+
+  assert.equal(database.jobs[0].attemptId, "attempt-lost");
+  assert.equal(database.jobs[0].leaseOwner, "runner-a");
+  assert.deepEqual((await coordinator.expiredMapJobs()).map((job) => job.id), ["job-lost-lease"]);
 });
 
 test("only expired running map attempts are returned for crash recovery", async () => {

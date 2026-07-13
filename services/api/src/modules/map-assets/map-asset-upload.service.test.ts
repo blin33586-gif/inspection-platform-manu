@@ -227,6 +227,34 @@ test("rejects TIFF through the old tile-package service wrapper", async () => {
   await assert.rejects(() => runUpload("street-base.tif", { method: "compatibility" }), /ZIP/);
 });
 
+test("legacy tile-package upload authenticates before validating or deleting a non-ZIP file", async () => {
+  const tempDirectory = await createUploadTempDirectory("xunjianbao-map-unauthenticated-");
+  const tempPath = join(tempDirectory, "unauthenticated.tif");
+  await writeFile(tempPath, "must-remain");
+  let databaseAccesses = 0;
+  const database = new Proxy({}, {
+    get() {
+      databaseAccesses += 1;
+      throw new Error("database must not be accessed");
+    },
+  });
+  const service = new MapAssetUploadService(database as never, { record: async () => undefined } as never);
+
+  try {
+    await assert.rejects(() => service.createTilePackageFromUpload({
+      filename: "unauthenticated.tif",
+      originalname: "unauthenticated.tif",
+      mimetype: "image/tiff",
+      path: tempPath,
+      size: 11,
+    }, {}), /缺少已认证的上传用户/);
+    assert.equal(await readFile(tempPath, "utf8"), "must-remain");
+    assert.equal(databaseAccesses, 0);
+  } finally {
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
+});
+
 test("accepts both project members and platform administrators without trusting uploader input", async () => {
   const member = await runUpload("member.tiff", { input: { uploadedByAccountId: "spoofed" } });
   const admin = await runUpload("admin.tif", { role: "platform_admin", input: { uploadedByAccountId: "spoofed" } });

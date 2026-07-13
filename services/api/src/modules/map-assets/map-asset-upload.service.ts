@@ -203,6 +203,8 @@ export class MapAssetUploadService {
   }
 
   async createTilePackageFromUpload(file: UploadedFileLike | undefined, input: CreateMapAssetInput) {
+    const identity = currentIdentity();
+    if (!identity) throw new UnauthorizedException("缺少已认证的上传用户");
     if (!file) throw new BadRequestException("瓦片 ZIP 文件不能为空");
     this.assertManagedTempPath(file.path);
     if (extname(file.originalname).toLowerCase() !== ".zip") {

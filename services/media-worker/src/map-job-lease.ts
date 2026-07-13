@@ -146,7 +146,12 @@ export class MapJobLeaseCoordinator {
 
   async releaseJob(jobId: string, attemptId: string) {
     await this.database.mediaProcessingJob.updateMany({
-      where: { id: jobId, leaseOwner: this.ownerId, attemptId },
+      where: {
+        id: jobId,
+        status: { in: ["completed", "failed"] },
+        leaseOwner: this.ownerId,
+        attemptId,
+      },
       data: { leaseOwner: null, attemptId: null, leaseExpiresAt: null, heartbeatAt: null },
     });
     await this.releaseGlobal();

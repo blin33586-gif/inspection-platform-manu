@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { JobRunner } from "./job-runner.js";
+import { MapJobLeaseCoordinator } from "./map-job-lease.js";
 
 function testMapLeaseCoordinator(overrides: Record<string, unknown> = {}) {
   return {
@@ -1056,6 +1057,108 @@ test("map processing heartbeats during work and releases its lease on completion
   try {
     assert.equal(await runner.processNext(), true);
     assert.ok(releaseCalls >= 1);
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("an expired map attempt remains recoverable after fail fencing and finally release", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-expired-failure-"));
+  const sourcePath = join(storageRoot, "map-assets/map-expired-failure.zip");
+  await mkdir(join(storageRoot, "map-assets"), { recursive: true });
+  await writeFile(sourcePath, "source");
+  const job: Record<string, any> = {
+    id: "job-expired-failure",
+    projectId: "jinshan",
+    jobType: "map_tile_package",
+    status: "queued",
+    inputJson: JSON.stringify({ mapAssetId: "map-expired-failure", sourcePath: "storage/map-assets/map-expired-failure.zip" }),
+    attemptId: null,
+    leaseOwner: null,
+    leaseExpiresAt: null,
+    heartbeatAt: null,
+    createdAt: new Date(),
+  };
+  let globalLease: Record<string, any> | null = null;
+  const statusMatches = (filter: unknown) => (
+    filter === undefined
+    || (typeof filter === "string" ? job.status === filter : (filter as { in?: string[] }).in?.includes(job.status) === true)
+  );
+  const jobMatches = (where: Record<string, any>) => (
+    (where.id === undefined || where.id === job.id)
+    && statusMatches(where.status)
+    && (where.leaseOwner === undefined || where.leaseOwner === job.leaseOwner)
+    && (where.attemptId === undefined || where.attemptId === job.attemptId)
+    && (where.leaseExpiresAt === undefined
+      || (where.leaseExpiresAt.gt instanceof Date && job.leaseExpiresAt > where.leaseExpiresAt.gt)
+      || (where.leaseExpiresAt === job.leaseExpiresAt))
+  );
+  const database: any = {
+    mapWorkerLease: {
+      upsert: async ({ create }: any) => (globalLease ??= { ...create }),
+      updateMany: async ({ where, data }: any) => {
+        if (!globalLease || globalLease.id !== where.id) return { count: 0 };
+        const ownerMatches = where.ownerId === undefined || globalLease.ownerId === where.ownerId;
+        const alternatives = where.OR ?? [];
+        const alternativeMatches = alternatives.length === 0 || alternatives.some((condition: any) => (
+          condition.ownerId === globalLease?.ownerId
+          || (condition.expiresAt?.lte instanceof Date && globalLease!.expiresAt <= condition.expiresAt.lte)
+        ));
+        if (!ownerMatches || !alternativeMatches) return { count: 0 };
+        Object.assign(globalLease, data);
+        return { count: 1 };
+      },
+    },
+    mediaProcessingJob: {
+      findFirst: async ({ where }: any) => (job.status === where.status ? job : null),
+      findUnique: async () => job,
+      findMany: async () => (
+        job.status === "running" && job.attemptId && job.leaseExpiresAt <= new Date() ? [{ ...job }] : []
+      ),
+      updateMany: async ({ where, data }: any) => {
+        if (!jobMatches(where)) return { count: 0 };
+        if (data.attempts?.increment) job.attempts = (job.attempts ?? 0) + data.attempts.increment;
+        Object.assign(job, { ...data, attempts: job.attempts });
+        return { count: 1 };
+      },
+    },
+    mapAsset: {
+      findUnique: async () => queuedMapAsset(
+        "map-expired-failure",
+        "jinshan",
+        "storage/map-assets/map-expired-failure.zip",
+        { processStatus: "running" },
+      ),
+      updateMany: async () => ({ count: 1 }),
+    },
+    $transaction: async (operation: any) => operation(database),
+  };
+  let coordinatorNow = new Date(Date.now() - 60_000);
+  const coordinator = new MapJobLeaseCoordinator(database, {
+    ownerId: "runner-expired-failure",
+    leaseDurationMs: 30_000,
+    now: () => coordinatorNow,
+  });
+  const runner = new JobRunner(database, storageRoot, {
+    heartbeatIntervalMs: 60_000,
+    mapLeaseCoordinator: coordinator,
+    extractTilePackage: async () => {
+      coordinatorNow = new Date();
+      throw new Error("processing failed after lease expiry");
+    },
+  });
+
+  try {
+    assert.equal(await runner.processNext(), true);
+    assert.equal(job.status, "running");
+    assert.equal(job.leaseOwner, "runner-expired-failure");
+    assert.equal(typeof job.attemptId, "string");
+
+    const expired = await coordinator.expiredMapJobs();
+    assert.deepEqual(expired.map((candidate) => candidate.id), ["job-expired-failure"]);
+    assert.equal((await coordinator.requeueExpiredJob(expired[0])).count, 1);
+    assert.equal(job.status, "queued");
+    assert.equal(job.attemptId, null);
   } finally {
     await rm(storageRoot, { recursive: true, force: true });
   }
