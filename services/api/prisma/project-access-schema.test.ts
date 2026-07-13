@@ -30,3 +30,14 @@ test("stores project-specific archive dimensions", () => {
   assert.match(project, /archiveDimensions\s+Json/);
   assert.match(project, /customerType\s+String/);
 });
+
+test("stores map upload history and its optional uploader relation", () => {
+  const mapAsset = schema.match(/model MapAsset \{([\s\S]*?)\n\}/)?.[1] ?? "";
+  const userAccount = schema.match(/model UserAccount \{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+  assert.match(mapAsset, /uploadedByAccountId\s+String\?/);
+  assert.match(mapAsset, /errorMessage\s+String\?/);
+  assert.match(mapAsset, /activatedAt\s+DateTime\?/);
+  assert.match(mapAsset, /uploadedBy\s+UserAccount\?\s+@relation\(fields: \[uploadedByAccountId\], references: \[id\], onDelete: SetNull\)/);
+  assert.match(userAccount, /uploadedMaps\s+MapAsset\[\]/);
+});

@@ -1,14 +1,11 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { execFile } from "node:child_process";
+import { BadRequestException, Inject, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, rename, rm } from "node:fs/promises";
-import { dirname, extname, join, resolve, sep } from "node:path";
-import { promisify } from "node:util";
+import { mkdir, rename, rm } from "node:fs/promises";
+import { extname, join } from "node:path";
 import { createTiffTileJob } from "@xunjianbao/map-core";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
-import { currentProjectId } from "../auth/project-context.js";
-import { describeTilePackage, normalizeTilePackagePath } from "./tile-package-metadata.js";
+import { currentIdentity, currentProjectId } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -23,8 +20,24 @@ interface CreateMapAssetInput {
   mapType?: string;
 }
 
-const allowedExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff"]);
-const execFileAsync = promisify(execFile);
+interface CreatedMapAsset {
+  id: string;
+  name: string;
+  mapType: string;
+  sourceType: string;
+  fileName: string | null;
+  originalFileName: string | null;
+  mimeType: string | null;
+  fileSize: number | null;
+  processStatus: string;
+  hotAreaCount: number;
+  createdAt: Date;
+  activatedAt: Date | null;
+  errorMessage: string | null;
+  uploadedBy: { name: string } | null;
+}
+
+const allowedExtensions = new Set([".tif", ".tiff", ".zip"]);
 
 @Injectable()
 export class MapAssetUploadService {
@@ -41,65 +54,110 @@ export class MapAssetUploadService {
     const extension = extname(file.originalname).toLowerCase();
     if (!allowedExtensions.has(extension)) {
       await this.removeTempFile(file.path);
-      throw new BadRequestException("Only image and TIF/TIFF map files are supported");
+      throw new BadRequestException("仅支持 TIF/TIFF 底图或 XYZ ZIP 瓦片包");
     }
 
-    await mkdir(this.finalDir, { recursive: true });
+    const identity = currentIdentity();
+    if (!identity) {
+      await this.removeTempFile(file.path);
+      throw new UnauthorizedException("缺少已认证的上传用户");
+    }
 
     const id = `map-${randomUUID()}`;
     const storedFileName = `${id}${extension}`;
     const storagePath = join(this.finalDir, storedFileName);
-    await rename(file.path, storagePath);
+    const projectId = currentProjectId();
+    const sourceType = extension === ".zip" ? "tile" : "tiff";
+    let asset: CreatedMapAsset;
 
-    const sourceType = extension === ".tif" || extension === ".tiff" ? "tiff" : "image";
-    const asset = await this.database.mapAsset.create({
-      data: {
-        projectId: currentProjectId(),
-        id,
-        name: input.name?.trim() || this.nameFromFile(file.originalname),
-        mapType: input.mapType?.trim() || "未分类地图",
-        sourceType,
-        fileName: storedFileName,
-        originalFileName: file.originalname,
-        storagePath,
-        mimeType: file.mimetype,
-        fileSize: file.size,
-        processStatus: "uploaded",
-        hotAreaCount: 0,
-      },
-      select: {
-        id: true,
-        name: true,
-        mapType: true,
-        sourceType: true,
-        fileName: true,
-        originalFileName: true,
-        mimeType: true,
-        fileSize: true,
-        processStatus: true,
-        hotAreaCount: true,
-      },
-    });
-
-    if (sourceType === "tiff") {
-      const job = createTiffTileJob(asset.id, storagePath);
-      await this.database.mediaProcessingJob.upsert({
-        where: { dedupeKey: job.dedupeKey },
-        create: {
-          projectId: currentProjectId(),
-          id: `job-tiff-${asset.id}`,
-          jobType: job.jobType,
-          status: "queued",
-          dedupeKey: job.dedupeKey,
-          inputJson: JSON.stringify({
-            mapAssetId: job.mapAssetId,
-            sourcePath: job.sourcePath,
-            minZoom: job.minZoom,
-            maxZoom: job.maxZoom,
-          }),
+    try {
+      await mkdir(this.finalDir, { recursive: true });
+      await rename(file.path, storagePath);
+      asset = await this.database.mapAsset.create({
+        data: {
+          projectId,
+          id,
+          name: input.name?.trim() || this.nameFromFile(file.originalname),
+          mapType: input.mapType?.trim() || "未分类地图",
+          sourceType,
+          fileName: storedFileName,
+          originalFileName: file.originalname,
+          storagePath,
+          mimeType: extension === ".zip" ? file.mimetype || "application/zip" : file.mimetype,
+          fileSize: file.size,
+          isActive: false,
+          processStatus: "queued",
+          hotAreaCount: 0,
+          uploadedByAccountId: identity.id,
+          errorMessage: null,
         },
-        update: {},
+        select: {
+          id: true,
+          name: true,
+          mapType: true,
+          sourceType: true,
+          fileName: true,
+          originalFileName: true,
+          mimeType: true,
+          fileSize: true,
+          processStatus: true,
+          hotAreaCount: true,
+          createdAt: true,
+          activatedAt: true,
+          errorMessage: true,
+          uploadedBy: { select: { name: true } },
+        },
       });
+    } catch (error) {
+      await Promise.all([
+        this.removeTempFile(file.path),
+        rm(storagePath, { force: true }),
+      ]);
+      throw error;
+    }
+
+    try {
+      if (sourceType === "tiff") {
+        const job = createTiffTileJob(asset.id, storagePath);
+        await this.database.mediaProcessingJob.upsert({
+          where: { dedupeKey: job.dedupeKey },
+          create: {
+            projectId,
+            id: `job-tiff-${asset.id}`,
+            jobType: job.jobType,
+            status: "queued",
+            dedupeKey: job.dedupeKey,
+            inputJson: JSON.stringify({
+              mapAssetId: job.mapAssetId,
+              sourcePath: job.sourcePath,
+              minZoom: job.minZoom,
+              maxZoom: job.maxZoom,
+            }),
+          },
+          update: {},
+        });
+      } else {
+        const dedupeKey = `map_tile_package:${asset.id}:v1`;
+        await this.database.mediaProcessingJob.upsert({
+          where: { dedupeKey },
+          create: {
+            projectId,
+            id: `job-map-package-${asset.id}`,
+            jobType: "map_tile_package",
+            status: "queued",
+            dedupeKey,
+            inputJson: JSON.stringify({ mapAssetId: asset.id, sourcePath: storagePath }),
+          },
+          update: {},
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "地图处理任务入队失败";
+      await this.database.mapAsset.update({
+        where: { id: asset.id, projectId },
+        data: { processStatus: "failed", errorMessage },
+      });
+      throw error;
     }
 
     await this.auditService.record({
@@ -109,68 +167,17 @@ export class MapAssetUploadService {
       summary: `上传地图资产「${asset.name}」`,
     });
 
-    return asset;
+    const { uploadedBy, ...summary } = asset;
+    return {
+      ...summary,
+      uploadedByName: uploadedBy?.name ?? null,
+      createdAt: summary.createdAt.toISOString(),
+      activatedAt: summary.activatedAt?.toISOString() ?? null,
+    };
   }
 
   async createTilePackageFromUpload(file: UploadedFileLike | undefined, input: CreateMapAssetInput) {
-    if (!file) throw new BadRequestException("瓦片 ZIP 文件不能为空");
-    if (extname(file.originalname).toLowerCase() !== ".zip") {
-      await this.removeTempFile(file.path);
-      throw new BadRequestException("仅支持上传 ZIP 格式瓦片包");
-    }
-
-    const entries = await this.listArchiveEntries(file.path);
-    const tileEntries = entries.filter((entry) => !entry.endsWith("/") && !this.isArchiveMetadata(entry));
-    const metadata = describeTilePackage(tileEntries);
-    const normalizedPaths = tileEntries.map(normalizeTilePackagePath);
-    if (new Set(normalizedPaths).size !== normalizedPaths.length) {
-      await this.removeTempFile(file.path);
-      throw new BadRequestException("瓦片包中存在重复瓦片坐标");
-    }
-
-    const id = `map-${randomUUID()}`;
-    const storedFileName = `${id}.zip`;
-    const storagePath = join(this.finalDir, storedFileName);
-    const tilePath = join("storage/map-tiles", id);
-
-    await mkdir(this.finalDir, { recursive: true });
-    await rename(file.path, storagePath);
-
-    try {
-      await this.extractTiles(storagePath, tilePath, tileEntries);
-      const asset = await this.database.mapAsset.create({
-        data: {
-          projectId: currentProjectId(),
-          id,
-          name: input.name?.trim() || this.nameFromFile(file.originalname),
-          mapType: input.mapType?.trim() || "街道总览",
-          sourceType: "tile",
-          fileName: storedFileName,
-          originalFileName: file.originalname,
-          storagePath,
-          mimeType: file.mimetype || "application/zip",
-          fileSize: file.size,
-          tilePath,
-          tileMetadata: JSON.stringify(metadata),
-          isActive: false,
-          processStatus: "ready",
-          hotAreaCount: 0,
-        },
-      });
-
-      await this.auditService.record({
-        action: "map.tiles.upload",
-        targetType: "mapAsset",
-        targetId: asset.id,
-        summary: `上传离线瓦片底图「${asset.name}」，共 ${metadata.tileCount} 张瓦片`,
-      });
-
-      return asset;
-    } catch (error) {
-      await Promise.all([rm(storagePath, { force: true }), rm(tilePath, { recursive: true, force: true })]);
-      if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException("瓦片包解压失败，请检查 ZIP 文件是否完整");
-    }
+    return this.createFromUpload(file, input);
   }
 
   async publishTileMap(id: string) {
@@ -187,7 +194,7 @@ export class MapAssetUploadService {
       }),
       this.database.mapAsset.update({
         where: { id, projectId },
-        data: { isActive: true, processStatus: "published" },
+        data: { isActive: true, processStatus: "published", activatedAt: new Date() },
       }),
     ]);
 
@@ -197,43 +204,6 @@ export class MapAssetUploadService {
       targetId: id,
       summary: `发布首页离线底图「${mapAsset.name}」`,
     });
-  }
-
-  private async listArchiveEntries(archivePath: string) {
-    try {
-      const { stdout } = await execFileAsync("unzip", ["-Z1", archivePath], { maxBuffer: 32 * 1024 * 1024 });
-      return stdout.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
-    } catch {
-      await this.removeTempFile(archivePath);
-      throw new BadRequestException("无法读取瓦片 ZIP 文件");
-    }
-  }
-
-  private async extractTiles(archivePath: string, tilePath: string, archiveEntries: string[]) {
-    const tileRoot = resolve(process.cwd(), tilePath);
-    const stagingPath = `${tileRoot}-staging-${randomUUID()}`;
-    await mkdir(stagingPath, { recursive: true });
-
-    try {
-      await execFileAsync("unzip", ["-qq", archivePath, "-d", stagingPath], { maxBuffer: 32 * 1024 * 1024 });
-      for (const archiveEntry of archiveEntries) {
-        const destinationPath = resolve(tileRoot, normalizeTilePackagePath(archiveEntry));
-        if (!destinationPath.startsWith(`${tileRoot}${sep}`)) throw new BadRequestException("瓦片路径无效");
-
-        const sourcePath = resolve(stagingPath, archiveEntry);
-        const fileStat = await lstat(sourcePath);
-        if (!fileStat.isFile()) throw new BadRequestException("瓦片包包含非图片文件");
-
-        await mkdir(dirname(destinationPath), { recursive: true });
-        await rename(sourcePath, destinationPath);
-      }
-    } finally {
-      await rm(stagingPath, { recursive: true, force: true });
-    }
-  }
-
-  private isArchiveMetadata(entry: string) {
-    return entry.startsWith("__MACOSX/") || entry.endsWith("/.DS_Store") || entry === ".DS_Store";
   }
 
   private nameFromFile(fileName: string) {

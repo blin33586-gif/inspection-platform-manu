@@ -19,6 +19,11 @@ interface UploadedFileLike {
   size: number;
 }
 
+export const MAP_UPLOAD_OPTIONS = {
+  dest: "storage/map-assets/tmp",
+  limits: { fileSize: 1024 * 1024 * 1024 },
+};
+
 @Controller("map-assets")
 export class MapAssetsController {
   constructor(
@@ -38,19 +43,13 @@ export class MapAssetsController {
   }
 
   @Post("upload")
-  @UseInterceptors(FileInterceptor("file", {
-    dest: "storage/map-assets/tmp",
-    limits: { fileSize: 200 * 1024 * 1024 },
-  }))
+  @UseInterceptors(FileInterceptor("file", MAP_UPLOAD_OPTIONS))
   async upload(@UploadedFile() file: UploadedFileLike | undefined, @Body() body: { name?: string; mapType?: string }) {
     return ok(await this.uploadService.createFromUpload(file, body));
   }
 
   @Post("tile-packages/upload")
-  @UseInterceptors(FileInterceptor("file", {
-    dest: "storage/map-assets/tmp",
-    limits: { fileSize: 1024 * 1024 * 1024 },
-  }))
+  @UseInterceptors(FileInterceptor("file", MAP_UPLOAD_OPTIONS))
   async uploadTilePackage(@UploadedFile() file: UploadedFileLike | undefined, @Body() body: { name?: string; mapType?: string }) {
     return ok(await this.uploadService.createTilePackageFromUpload(file, body));
   }

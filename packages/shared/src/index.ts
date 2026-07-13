@@ -143,6 +143,10 @@ export interface MapAssetSummary {
   isActive?: boolean;
   processStatus: string;
   hotAreaCount: number;
+  uploadedByName?: string | null;
+  createdAt: string;
+  activatedAt?: string | null;
+  errorMessage?: string | null;
 }
 
 export interface TileMapMetadata {

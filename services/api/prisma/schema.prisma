@@ -42,6 +42,7 @@ model UserAccount {
   updatedAt      DateTime @updatedAt
   memberships    ProjectMembership[]
   platformAudits PlatformAuditLog[] @relation("PlatformAuditActor")
+  uploadedMaps   MapAsset[]
 
   @@index([role, status])
 }
@@ -225,13 +226,18 @@ model MapAsset {
   isActive         Boolean  @default(false)
   processStatus    String
   hotAreaCount     Int      @default(0)
+  uploadedByAccountId String?
+  errorMessage        String?
+  activatedAt         DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   hotAreas MapHotArea[]
   project  Project      @relation(fields: [projectId], references: [id])
+  uploadedBy UserAccount? @relation(fields: [uploadedByAccountId], references: [id], onDelete: SetNull)
 
   @@index([projectId, isActive])
+  @@index([uploadedByAccountId])
   @@index([mapType])
   @@index([processStatus])
   @@index([isActive])

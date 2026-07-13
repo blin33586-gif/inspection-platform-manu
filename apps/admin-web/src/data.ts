@@ -44,6 +44,6 @@ export const issueDistribution = [
 ];
 
 export const mapAssets: MapAssetSummary[] = [
-  { id: "map-street-main", name: "曲阳路街道总览图", mapType: "街道总览", sourceType: "image", processStatus: "processed", hotAreaCount: 6 },
-  { id: "map-yutian", name: "玉田新村小区示意图", mapType: "小区地图", sourceType: "tiff", processStatus: "processed", hotAreaCount: 3 },
+  { id: "map-street-main", name: "曲阳路街道总览图", mapType: "街道总览", sourceType: "image", processStatus: "processed", hotAreaCount: 6, createdAt: "2026-06-01T00:00:00.000Z" },
+  { id: "map-yutian", name: "玉田新村小区示意图", mapType: "小区地图", sourceType: "tiff", processStatus: "processed", hotAreaCount: 3, createdAt: "2026-06-02T00:00:00.000Z" },
 ];

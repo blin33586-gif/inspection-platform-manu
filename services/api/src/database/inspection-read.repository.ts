@@ -296,6 +296,10 @@ export class InspectionReadRepository {
         isActive: true,
         processStatus: true,
         hotAreaCount: true,
+        uploadedBy: { select: { name: true } },
+        createdAt: true,
+        activatedAt: true,
+        errorMessage: true,
       },
     });
     return assets.map((asset) => this.toMapAssetSummary(asset));
@@ -317,6 +321,10 @@ export class InspectionReadRepository {
         isActive: true,
         processStatus: true,
         hotAreaCount: true,
+        uploadedBy: { select: { name: true } },
+        createdAt: true,
+        activatedAt: true,
+        errorMessage: true,
       },
     });
     return asset ? this.toMapAssetSummary(asset) : null;
@@ -339,6 +347,10 @@ export class InspectionReadRepository {
         isActive: true,
         processStatus: true,
         hotAreaCount: true,
+        uploadedBy: { select: { name: true } },
+        createdAt: true,
+        activatedAt: true,
+        errorMessage: true,
       },
     });
     return asset ? this.toMapAssetSummary(asset) : null;
@@ -379,6 +391,10 @@ export class InspectionReadRepository {
     isActive: boolean;
     processStatus: string;
     hotAreaCount: number;
+    uploadedBy: { name: string } | null;
+    createdAt: Date;
+    activatedAt: Date | null;
+    errorMessage: string | null;
   }): MapAssetSummary {
     return {
       id: asset.id,
@@ -393,6 +409,10 @@ export class InspectionReadRepository {
       isActive: asset.isActive,
       processStatus: asset.processStatus,
       hotAreaCount: asset.hotAreaCount,
+      uploadedByName: asset.uploadedBy?.name ?? null,
+      createdAt: asset.createdAt.toISOString(),
+      activatedAt: asset.activatedAt?.toISOString() ?? null,
+      errorMessage: asset.errorMessage,
     };
   }
 

@@ -96,3 +96,78 @@ test("includes the task id in report list rows so reports can be edited", async 
 
   assert.equal(report.taskId, "task-1");
 });
+
+const mapRecord = {
+  id: "map-1",
+  name: "金山底图",
+  mapType: "基础底图",
+  sourceType: "tiff",
+  fileName: "map-1.tif",
+  originalFileName: "jinshan.tif",
+  mimeType: "image/tiff",
+  fileSize: 1024,
+  tileMetadata: null,
+  isActive: true,
+  processStatus: "published",
+  hotAreaCount: 0,
+  createdAt: new Date("2026-07-13T12:00:00.000Z"),
+  activatedAt: new Date("2026-07-13T12:05:00.000Z"),
+  errorMessage: null,
+  uploadedBy: { name: "张三" },
+};
+
+test("returns isolated map history with uploader and lifecycle timestamps", async () => {
+  let query: Record<string, unknown> | undefined;
+  const database = {
+    mapAsset: {
+      findMany: async (input: Record<string, unknown>) => {
+        query = input;
+        return [mapRecord];
+      },
+    },
+  };
+  const repository = new InspectionReadRepository(database as never);
+
+  const [asset] = await repository.mapAssets();
+
+  assert.deepEqual(query?.where, { projectId: "quyang" });
+  assert.deepEqual((query?.select as Record<string, unknown>).uploadedBy, { select: { name: true } });
+  assert.deepEqual(asset, {
+    id: "map-1",
+    name: "金山底图",
+    mapType: "基础底图",
+    sourceType: "tiff",
+    fileName: "map-1.tif",
+    originalFileName: "jinshan.tif",
+    mimeType: "image/tiff",
+    fileSize: 1024,
+    tileMetadata: null,
+    isActive: true,
+    processStatus: "published",
+    hotAreaCount: 0,
+    uploadedByName: "张三",
+    createdAt: "2026-07-13T12:00:00.000Z",
+    activatedAt: "2026-07-13T12:05:00.000Z",
+    errorMessage: null,
+  });
+});
+
+test("isolates map detail by the selected project", async () => {
+  let query: Record<string, unknown> | undefined;
+  const database = {
+    mapAsset: {
+      findUnique: async (input: Record<string, unknown>) => {
+        query = input;
+        return { ...mapRecord, uploadedBy: null, activatedAt: null, errorMessage: "瓦片包结构必须为 z/x/y.png" };
+      },
+    },
+  };
+  const repository = new InspectionReadRepository(database as never);
+
+  const asset = await repository.mapAsset("map-1");
+
+  assert.deepEqual(query?.where, { id: "map-1", projectId: "quyang" });
+  assert.equal(asset?.uploadedByName, null);
+  assert.equal(asset?.activatedAt, null);
+  assert.equal(asset?.errorMessage, "瓦片包结构必须为 z/x/y.png");
+});
