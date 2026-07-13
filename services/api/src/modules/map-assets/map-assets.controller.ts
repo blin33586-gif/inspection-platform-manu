@@ -2,12 +2,12 @@ import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundExc
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { access } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { extname, resolve, sep } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { ok, page, paged } from "../../shared/api-response.js";
 import { sendInlineStoredFile, sendStoredFile } from "../../shared/file-download.js";
-import { MapAssetUploadService } from "./map-asset-upload.service.js";
+import { MAP_UPLOAD_TEMP_DIR, MapAssetUploadService } from "./map-asset-upload.service.js";
 import { MapHotAreaService } from "./map-hot-area.service.js";
 import { currentProjectId } from "../auth/project-context.js";
 
@@ -20,8 +20,27 @@ interface UploadedFileLike {
 }
 
 export const MAP_UPLOAD_OPTIONS = {
-  dest: "storage/map-assets/tmp",
+  dest: MAP_UPLOAD_TEMP_DIR,
   limits: { fileSize: 1024 * 1024 * 1024 },
+  fileFilter: (_request: unknown, file: { originalname: string }, callback: (error: Error | null, accepted: boolean) => void) => {
+    if ([".tif", ".tiff", ".zip"].includes(extname(file.originalname).toLowerCase())) {
+      callback(null, true);
+      return;
+    }
+    callback(new BadRequestException("仅支持 TIF/TIFF 底图或 XYZ ZIP 瓦片包"), false);
+  },
+};
+
+export const TILE_PACKAGE_UPLOAD_OPTIONS = {
+  dest: MAP_UPLOAD_TEMP_DIR,
+  limits: { fileSize: 1024 * 1024 * 1024 },
+  fileFilter: (_request: unknown, file: { originalname: string }, callback: (error: Error | null, accepted: boolean) => void) => {
+    if (extname(file.originalname).toLowerCase() === ".zip") {
+      callback(null, true);
+      return;
+    }
+    callback(new BadRequestException("仅支持上传 ZIP 格式瓦片包"), false);
+  },
 };
 
 @Controller("map-assets")
@@ -49,7 +68,7 @@ export class MapAssetsController {
   }
 
   @Post("tile-packages/upload")
-  @UseInterceptors(FileInterceptor("file", MAP_UPLOAD_OPTIONS))
+  @UseInterceptors(FileInterceptor("file", TILE_PACKAGE_UPLOAD_OPTIONS))
   async uploadTilePackage(@UploadedFile() file: UploadedFileLike | undefined, @Body() body: { name?: string; mapType?: string }) {
     return ok(await this.uploadService.createTilePackageFromUpload(file, body));
   }
