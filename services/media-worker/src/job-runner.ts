@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, rename, rm } from "node:fs/promises";
 import { basename, relative, resolve, sep } from "node:path";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { TileMapMetadata } from "@xunjianbao/shared";
@@ -58,6 +58,13 @@ interface JobRunnerHandlers {
   enrichExtractedFrames?: (videoPath:string, frames:ExtractedFrame[]) => Promise<{frames:EnrichedFrame[];stats:Record<string,unknown>}>;
   extractTilePackage?: (input: ExtractTilePackageInput) => Promise<TileMapMetadata>;
   runTiffTileJob?: typeof runTiffTileJob;
+  removePath?: typeof rm;
+}
+
+interface MapOutputDirectories {
+  temporaryDirectory: string;
+  finalDirectory: string;
+  promoted: boolean;
 }
 
 export class JobRunner {
@@ -67,6 +74,7 @@ export class JobRunner {
   private readonly enrichExtractedFramesHandler: NonNullable<JobRunnerHandlers["enrichExtractedFrames"]>;
   private readonly extractTilePackageHandler: NonNullable<JobRunnerHandlers["extractTilePackage"]>;
   private readonly runTiffTileJobHandler: NonNullable<JobRunnerHandlers["runTiffTileJob"]>;
+  private readonly removePathHandler: NonNullable<JobRunnerHandlers["removePath"]>;
   private processing = false;
 
   constructor(
@@ -80,6 +88,7 @@ export class JobRunner {
     this.enrichExtractedFramesHandler = handlers.enrichExtractedFrames ?? enrichExtractedFrames;
     this.extractTilePackageHandler = handlers.extractTilePackage ?? extractTilePackage;
     this.runTiffTileJobHandler = handlers.runTiffTileJob ?? runTiffTileJob;
+    this.removePathHandler = handlers.removePath ?? rm;
   }
 
   async processNext() {
@@ -132,21 +141,16 @@ export class JobRunner {
   }
 
   private async failMapJob(jobId: string, projectId: string, mapAssetId: string, error: unknown) {
-    const { temporaryDirectory, finalDirectory } = this.mapOutputDirectories(mapAssetId);
-    await Promise.all([
-      rm(temporaryDirectory, { recursive: true, force: true }),
-      rm(finalDirectory, { recursive: true, force: true }),
-    ]);
     const errorMessage = this.errorMessage(error);
-    await this.database.$transaction([
-      this.database.mediaProcessingJob.update({
+    await Promise.allSettled([
+      Promise.resolve().then(() => this.database.mediaProcessingJob.update({
         where: { id: jobId },
         data: { status: "failed", errorMessage },
-      }),
-      this.database.mapAsset.update({
-        where: { id: mapAssetId, projectId },
+      })),
+      Promise.resolve().then(() => this.database.mapAsset.updateMany({
+        where: { id: mapAssetId, projectId, processStatus: "queued" },
         data: { processStatus: "failed", errorMessage, isActive: false },
-      }),
+      })),
     ]);
   }
 
@@ -155,53 +159,80 @@ export class JobRunner {
   }
 
   private async claimOne() {
-    const candidate = await this.database.mediaProcessingJob.findFirst({
-      where: { jobType: { in: ["tiff_tile", "map_tile_package", "frame_extract", "archive_extract", "image_prepare"] }, status: "queued" },
-      orderBy: { createdAt: "asc" },
-    });
-    if (!candidate) return null;
+    const skippedCandidateIds: string[] = [];
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const candidate = await this.database.mediaProcessingJob.findFirst({
+        where: {
+          jobType: { in: ["tiff_tile", "map_tile_package", "frame_extract", "archive_extract", "image_prepare"] },
+          status: "queued",
+          ...(skippedCandidateIds.length ? { id: { notIn: skippedCandidateIds } } : {}),
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!candidate) return null;
 
-    const claim = await this.database.mediaProcessingJob.updateMany({
-      where: { id: candidate.id, status: "queued" },
-      data: { status: "running", attempts: { increment: 1 }, startedAt: new Date(), errorMessage: null },
-    });
-    if (claim.count !== 1) return null;
-
-    return this.database.mediaProcessingJob.findUnique({ where: { id: candidate.id } });
+      const claim = await this.database.mediaProcessingJob.updateMany({
+        where: { id: candidate.id, status: "queued" },
+        data: { status: "running", attempts: { increment: 1 }, startedAt: new Date(), errorMessage: null },
+      });
+      if (claim.count === 1) {
+        return this.database.mediaProcessingJob.findUnique({ where: { id: candidate.id } });
+      }
+      skippedCandidateIds.push(candidate.id);
+    }
+    return null;
   }
 
   private async processTiffJob(jobId: string, projectId: string, rawInput: string) {
     const input = this.parseTiffInput(rawInput);
-    const sourcePath = this.toStoragePath(input.sourcePath);
-    const { temporaryDirectory } = await this.prepareMapOutput(input.mapAssetId);
-    const result = await this.runTiffTileJobHandler({
-      sourcePath,
-      outputDirectory: temporaryDirectory,
-      minZoom: input.minZoom,
-      maxZoom: input.maxZoom,
-    });
-    await this.finishMapJob(jobId, projectId, input.mapAssetId, result.metadata);
+    const sourcePath = await this.validateMapJobSource(projectId, "tiff_tile", input);
+    const directories = await this.prepareMapOutput(jobId, input.mapAssetId);
+    try {
+      const result = await this.runTiffTileJobHandler({
+        sourcePath,
+        outputDirectory: directories.temporaryDirectory,
+        minZoom: input.minZoom,
+        maxZoom: input.maxZoom,
+      });
+      await this.finishMapJob(jobId, projectId, input.mapAssetId, result.metadata, directories);
+    } catch (error) {
+      await this.cleanupOwnedMapOutput(directories);
+      throw error;
+    }
   }
 
   private async processMapTilePackageJob(jobId: string, projectId: string, rawInput: string) {
     const input = this.parseMapTilePackageInput(rawInput);
-    const sourcePath = this.toStoragePath(input.sourcePath);
-    const { temporaryDirectory } = await this.prepareMapOutput(input.mapAssetId);
-    const metadata = await this.extractTilePackageHandler({ sourcePath, outputDirectory: temporaryDirectory });
-    await this.finishMapJob(jobId, projectId, input.mapAssetId, metadata);
+    const sourcePath = await this.validateMapJobSource(projectId, "map_tile_package", input);
+    const directories = await this.prepareMapOutput(jobId, input.mapAssetId);
+    try {
+      const metadata = await this.extractTilePackageHandler({
+        sourcePath,
+        outputDirectory: directories.temporaryDirectory,
+      });
+      await this.finishMapJob(jobId, projectId, input.mapAssetId, metadata, directories);
+    } catch (error) {
+      await this.cleanupOwnedMapOutput(directories);
+      throw error;
+    }
   }
 
-  private async prepareMapOutput(mapAssetId: string) {
-    const directories = this.mapOutputDirectories(mapAssetId);
+  private async prepareMapOutput(jobId: string, mapAssetId: string) {
+    const directories = this.mapOutputDirectories(jobId, mapAssetId);
     await mkdir(resolve(this.storageRoot, "map-tiles"), { recursive: true });
-    await rm(directories.temporaryDirectory, { recursive: true, force: true });
     return directories;
   }
 
-  private async finishMapJob(jobId: string, projectId: string, mapAssetId: string, metadata: TileMapMetadata) {
-    const { temporaryDirectory, finalDirectory } = this.mapOutputDirectories(mapAssetId);
-    await rm(finalDirectory, { recursive: true, force: true });
-    await rename(temporaryDirectory, finalDirectory);
+  private async finishMapJob(
+    jobId: string,
+    projectId: string,
+    mapAssetId: string,
+    metadata: TileMapMetadata,
+    directories: MapOutputDirectories,
+  ) {
+    await this.assertFinalDirectoryAbsent(directories.finalDirectory);
+    await rename(directories.temporaryDirectory, directories.finalDirectory);
+    directories.promoted = true;
     const publicTilePath = `storage/map-tiles/${mapAssetId}`;
     const activatedAt = new Date();
     await this.database.$transaction([
@@ -244,6 +275,45 @@ export class JobRunner {
         },
       }),
     ]);
+  }
+
+  private async cleanupOwnedMapOutput(directories: MapOutputDirectories) {
+    const ownedPaths = [directories.temporaryDirectory];
+    if (directories.promoted) ownedPaths.push(directories.finalDirectory);
+    await Promise.allSettled(ownedPaths.map(async (path) => (
+      this.removePathHandler(path, { recursive: true, force: true })
+    )));
+  }
+
+  private async assertFinalDirectoryAbsent(finalDirectory: string) {
+    try {
+      await lstat(finalDirectory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    throw new Error("地图瓦片最终目录已存在，拒绝覆盖");
+  }
+
+  private async validateMapJobSource(
+    projectId: string,
+    jobType: "tiff_tile" | "map_tile_package",
+    input: TiffJobInput | MapTilePackageJobInput,
+  ) {
+    const mapAsset = await this.database.mapAsset.findUnique({
+      where: { id: input.mapAssetId, projectId },
+    });
+    if (!mapAsset) throw new Error("地图资产在当前项目中不存在");
+
+    const expectedSourceType = jobType === "tiff_tile" ? "tiff" : "tile";
+    if (mapAsset.sourceType !== expectedSourceType) throw new Error("地图任务类型与资产源类型不匹配");
+    if (mapAsset.processStatus !== "queued") throw new Error("地图资产当前处理状态不允许执行该任务");
+    if (!mapAsset.storagePath) throw new Error("地图资产源文件路径缺失");
+
+    const payloadSourcePath = this.toStoragePath(input.sourcePath);
+    const storedSourcePath = this.toStoragePath(mapAsset.storagePath);
+    if (payloadSourcePath !== storedSourcePath) throw new Error("地图任务源文件路径与资产记录不匹配");
+    return storedSourcePath;
   }
 
   private async processFrameJob(jobId: string, projectId: string, rawInput: string) {
@@ -543,11 +613,13 @@ export class JobRunner {
     return typeof value === "string" && /^[a-zA-Z0-9_-]+$/.test(value);
   }
 
-  private mapOutputDirectories(mapAssetId: string) {
+  private mapOutputDirectories(jobId: string, mapAssetId: string): MapOutputDirectories {
     if (!this.isSafeMapAssetId(mapAssetId)) throw new Error("地图资产编号无效");
+    const safeJobId = jobId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100) || "job";
     return {
-      temporaryDirectory: resolve(this.storageRoot, "map-tiles", `.tmp-${mapAssetId}`),
+      temporaryDirectory: resolve(this.storageRoot, "map-tiles", `.tmp-${mapAssetId}-${safeJobId}-${randomUUID()}`),
       finalDirectory: resolve(this.storageRoot, "map-tiles", mapAssetId),
+      promoted: false,
     };
   }
 

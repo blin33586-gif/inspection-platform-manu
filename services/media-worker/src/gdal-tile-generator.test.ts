@@ -18,9 +18,11 @@ test("describes generated tiles with a bounded directory walk", async () => {
   try {
     await mkdir(join(directory, "1/0"), { recursive: true });
     await mkdir(join(directory, "2/2"), { recursive: true });
+    await mkdir(join(directory, "1/2"), { recursive: true });
     await writeFile(join(directory, "1/0/0.png"), "tile");
     await writeFile(join(directory, "2/2/1.png"), "tile");
     await writeFile(join(directory, "2/2/notes.txt"), "ignored");
+    await writeFile(join(directory, "1/2/0.png"), "out-of-range-x");
 
     const metadata = await describeGeneratedTiles(directory);
     assert.deepEqual({ minZoom: metadata.minZoom, maxZoom: metadata.maxZoom, tileCount: metadata.tileCount }, {

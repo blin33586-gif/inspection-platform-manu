@@ -61,6 +61,7 @@ export async function describeGeneratedTiles(tileDirectory: string): Promise<Til
     for (const xEntry of await readdir(join(tileDirectory, zoomEntry.name), { withFileTypes: true })) {
       if (!xEntry.isDirectory() || !/^\d+$/.test(xEntry.name)) continue;
       const x = Number(xEntry.name);
+      if (z > 22 || x >= 2 ** z) continue;
       for (const tileEntry of await readdir(join(tileDirectory, zoomEntry.name, xEntry.name), { withFileTypes: true })) {
         const match = tileEntry.isFile() ? tileEntry.name.match(/^(\d+)\.png$/) : null;
         if (!match) continue;

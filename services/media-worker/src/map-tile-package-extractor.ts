@@ -16,18 +16,26 @@ export interface ExtractTilePackageInput {
   outputDirectory: string;
 }
 
+export interface TilePackageFileOperations {
+  removeOutput: (path: string) => unknown;
+}
+
 export const defaultTilePackageLimits: TilePackageLimits = {
   maxEntries: 500_000,
   maxExpandedBytes: 32 * 1024 ** 3,
 };
 
 const tilePathPattern = /^(\d{1,2})\/(\d+)\/(\d+)\.png$/;
-const directoryPathPattern = /^(\d{1,2})\/(?:\d+\/)?$/;
+const directoryPathPattern = /^(\d{1,2})\/(?:(\d+)\/)?$/;
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const defaultFileOperations: TilePackageFileOperations = {
+  removeOutput: (path) => rm(path, { recursive: true, force: true }),
+};
 
 export async function extractTilePackage(
   input: ExtractTilePackageInput,
   limits: TilePackageLimits = defaultTilePackageLimits,
+  fileOperations: TilePackageFileOperations = defaultFileOperations,
 ): Promise<TileMapMetadata> {
   await mkdir(input.outputDirectory, { recursive: true });
   try {
@@ -36,7 +44,9 @@ export async function extractTilePackage(
     await writeFile(join(input.outputDirectory, "tile-metadata.json"), JSON.stringify(metadata));
     return metadata;
   } catch (error) {
-    await rm(input.outputDirectory, { recursive: true, force: true });
+    await Promise.allSettled([
+      Promise.resolve().then(() => fileOperations.removeOutput(input.outputDirectory)),
+    ]);
     throw error;
   }
 }
@@ -47,7 +57,7 @@ function openArchive(sourcePath: string) {
       lazyEntries: true,
       decodeStrings: true,
       validateEntrySizes: true,
-      strictFileNames: false,
+      strictFileNames: true,
     }, (error, archive) => {
       if (error) rejectOpen(error);
       else resolveOpen(archive);
@@ -161,7 +171,10 @@ function validateDirectoryPath(fileName: string) {
   const match = fileName.match(directoryPathPattern);
   if (!match) throw new Error(`瓦片目录结构无效：${fileName}`);
   const z = Number(match[1]);
-  if (z > 22) throw new Error(`瓦片目录结构无效：${fileName}`);
+  const x = match[2] === undefined ? undefined : Number(match[2]);
+  if (z > 22 || (x !== undefined && x >= 2 ** z)) {
+    throw new Error(`瓦片目录结构无效：${fileName}`);
+  }
 }
 
 function parseCoordinate(fileName: string) {

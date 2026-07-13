@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -11,6 +11,22 @@ const mapMetadata = {
   tileCount: 1,
   bounds: { west: -180, east: 0, north: 85.0511287798066, south: 0 },
 };
+
+function queuedMapAsset(
+  id: string,
+  projectId: string,
+  storagePath: string,
+  overrides: Partial<Record<"sourceType" | "processStatus", string>> = {},
+) {
+  return {
+    id,
+    projectId,
+    storagePath,
+    sourceType: "tile",
+    processStatus: "queued",
+    ...overrides,
+  };
+}
 
 test("accepts one-to-five-second frame extraction inputs", () => {
   const runner = new JobRunner({} as never);
@@ -148,6 +164,7 @@ test("successfully extracts a map package and atomically activates it only for i
       update: (input: Record<string, unknown>) => ({ kind: "job", input }),
     },
     mapAsset: {
+      findUnique: async () => queuedMapAsset("map-new", "jinshan", "storage/map-assets/map-new.zip"),
       updateMany: (input: Record<string, unknown>) => { deactivations.push(input); return { kind: "deactivate", input }; },
       update: (input: Record<string, unknown>) => { activations.push(input); return { kind: "activate", input }; },
     },
@@ -166,7 +183,7 @@ test("successfully extracts a map package and atomically activates it only for i
 
   try {
     assert.equal(await runner.processNext(), true);
-    assert.match(outputDirectories[0], /map-tiles\/\.tmp-map-new$/);
+    assert.match(outputDirectories[0], /map-tiles\/\.tmp-map-new-job-map-new-[a-f0-9-]+$/);
     assert.deepEqual((findFirstCalls[0].where as Record<string, unknown>).jobType, {
       in: ["tiff_tile", "map_tile_package", "frame_extract", "archive_extract", "image_prepare"],
     });
@@ -208,6 +225,7 @@ test("keeps map work globally serial within the worker", async () => {
       update: (input: unknown) => input,
     },
     mapAsset: {
+      findUnique: async () => queuedMapAsset("map-serial", "jinshan", "storage/map-assets/map-serial.zip"),
       updateMany: (input: unknown) => input,
       update: (input: unknown) => input,
     },
@@ -262,7 +280,13 @@ test("failed map processing cleans partial outputs, preserves the source and nev
       update: (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
     },
     mapAsset: {
-      updateMany: (input: unknown) => { deactivateCalls += 1; return input; },
+      findUnique: async () => queuedMapAsset("map-failed", "jinshan", "storage/map-assets/map-failed.zip"),
+      updateMany: (input: Record<string, unknown>) => {
+        const where = input.where as Record<string, unknown>;
+        if (where.isActive === true) deactivateCalls += 1;
+        else mapUpdates.push(input);
+        return input;
+      },
       update: (input: Record<string, unknown>) => { mapUpdates.push(input); return input; },
     },
     auditLog: { create: (input: unknown) => input },
@@ -279,7 +303,11 @@ test("failed map processing cleans partial outputs, preserves the source and nev
   try {
     assert.equal(await runner.processNext(), true);
     assert.equal(deactivateCalls, 0);
-    assert.deepEqual(mapUpdates[0].where, { id: "map-failed", projectId: "jinshan" });
+    assert.deepEqual(mapUpdates[0].where, {
+      id: "map-failed",
+      projectId: "jinshan",
+      processStatus: "queued",
+    });
     assert.equal((mapUpdates[0].data as Record<string, unknown>).processStatus, "failed");
     assert.match(String((mapUpdates[0].data as Record<string, unknown>).errorMessage), /无效路径/);
     assert.equal((jobUpdates[0].data as Record<string, unknown>).status, "failed");
@@ -314,7 +342,12 @@ test("activation transaction failure rolls back the old map and cleans the renam
       update: (input: Record<string, unknown>) => input,
     },
     mapAsset: {
-      updateMany: (input: Record<string, unknown>) => input,
+      findUnique: async () => queuedMapAsset(
+        "map-activation-failed",
+        "jinshan",
+        "storage/map-assets/map-activation-failed.zip",
+      ),
+      updateMany: (input: Record<string, unknown>) => { mapUpdates.push(input); return input; },
       update: (input: Record<string, unknown>) => { mapUpdates.push(input); return input; },
     },
     auditLog: { create: (input: unknown) => input },
@@ -334,7 +367,7 @@ test("activation transaction failure rolls back the old map and cleans the renam
 
   try {
     assert.equal(await runner.processNext(), true);
-    assert.equal(transactionCalls, 2);
+    assert.equal(transactionCalls, 1);
     const failedUpdate = mapUpdates.find((input) => (
       (input.data as Record<string, unknown>).processStatus === "failed"
     ));
@@ -342,6 +375,395 @@ test("activation transaction failure rolls back the old map and cleans the renam
     assert.match(String((failedUpdate.data as Record<string, unknown>).errorMessage), /激活事务失败/);
     await assert.rejects(() => stat(join(storageRoot, "map-tiles/map-activation-failed")), { code: "ENOENT" });
     await assert.rejects(() => stat(join(storageRoot, "map-tiles/.tmp-map-activation-failed")), { code: "ENOENT" });
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("rejects a map asset id that does not belong to the job project before reading its source", async () => {
+  const job = {
+    id: "job-cross-project",
+    projectId: "jinshan",
+    jobType: "map_tile_package",
+    inputJson: JSON.stringify({
+      mapAssetId: "map-from-another-project",
+      sourcePath: "storage/map-assets/other.zip",
+    }),
+  };
+  const assetLookups: Array<Record<string, unknown>> = [];
+  const jobUpdates: Array<Record<string, unknown>> = [];
+  let extractorCalled = false;
+  const database = {
+    mediaProcessingJob: {
+      findFirst: async () => job,
+      updateMany: async () => ({ count: 1 }),
+      findUnique: async () => job,
+      update: async (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
+    },
+    mapAsset: {
+      findUnique: async (input: Record<string, unknown>) => { assetLookups.push(input); return null; },
+      updateMany: async (input: Record<string, unknown>) => input,
+      update: async (input: Record<string, unknown>) => input,
+    },
+    auditLog: { create: async (input: unknown) => input },
+    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+  };
+  const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
+    extractTilePackage: async () => {
+      extractorCalled = true;
+      throw new Error("handler should not run");
+    },
+  });
+
+  assert.equal(await runner.processNext(), true);
+  assert.deepEqual(assetLookups[0], {
+    where: { id: "map-from-another-project", projectId: "jinshan" },
+  });
+  assert.equal(extractorCalled, false);
+  assert.match(String((jobUpdates[0].data as Record<string, unknown>).errorMessage), /地图资产.*不存在/);
+});
+
+test("rejects a payload source path that differs from the project map asset storage path", async () => {
+  const job = {
+    id: "job-path-tampered",
+    projectId: "jinshan",
+    jobType: "map_tile_package",
+    inputJson: JSON.stringify({
+      mapAssetId: "map-path-tampered",
+      sourcePath: "storage/map-assets/other-project.zip",
+    }),
+  };
+  const jobUpdates: Array<Record<string, unknown>> = [];
+  let extractorCalled = false;
+  const database = {
+    mediaProcessingJob: {
+      findFirst: async () => job,
+      updateMany: async () => ({ count: 1 }),
+      findUnique: async () => job,
+      update: async (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
+    },
+    mapAsset: {
+      findUnique: async () => queuedMapAsset(
+        "map-path-tampered",
+        "jinshan",
+        "storage/map-assets/map-path-tampered.zip",
+      ),
+      updateMany: async (input: Record<string, unknown>) => input,
+      update: async (input: Record<string, unknown>) => input,
+    },
+    auditLog: { create: async (input: unknown) => input },
+    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+  };
+  const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
+    extractTilePackage: async () => {
+      extractorCalled = true;
+      throw new Error("handler should not run");
+    },
+  });
+
+  assert.equal(await runner.processNext(), true);
+  assert.equal(extractorCalled, false);
+  assert.match(String((jobUpdates[0].data as Record<string, unknown>).errorMessage), /源文件路径.*不匹配/);
+});
+
+test("rejects map jobs whose asset source type or process status is not allowed", async () => {
+  for (const [label, overrides, expected] of [
+    ["源类型", { sourceType: "tiff" }, /任务类型.*不匹配/],
+    ["处理状态", { processStatus: "published" }, /处理状态不允许/],
+  ] as const) {
+    const job = {
+      id: `job-invalid-${label}`,
+      projectId: "jinshan",
+      jobType: "map_tile_package",
+      inputJson: JSON.stringify({
+        mapAssetId: "map-invalid-state",
+        sourcePath: "storage/map-assets/map-invalid-state.zip",
+      }),
+    };
+    const jobUpdates: Array<Record<string, unknown>> = [];
+    const assetFailureWrites: Array<Record<string, unknown>> = [];
+    let extractorCalled = false;
+    const database = {
+      mediaProcessingJob: {
+        findFirst: async () => job,
+        updateMany: async () => ({ count: 1 }),
+        findUnique: async () => job,
+        update: async (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
+      },
+      mapAsset: {
+        findUnique: async () => queuedMapAsset(
+          "map-invalid-state",
+          "jinshan",
+          "storage/map-assets/map-invalid-state.zip",
+          overrides,
+        ),
+        updateMany: async (input: Record<string, unknown>) => { assetFailureWrites.push(input); return input; },
+        update: async (input: Record<string, unknown>) => input,
+      },
+      auditLog: { create: async (input: unknown) => input },
+      $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+    };
+    const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
+      extractTilePackage: async () => {
+        extractorCalled = true;
+        throw new Error("handler should not run");
+      },
+    });
+
+    assert.equal(await runner.processNext(), true);
+    assert.equal(extractorCalled, false);
+    assert.match(String((jobUpdates[0].data as Record<string, unknown>).errorMessage), expected);
+    assert.deepEqual(assetFailureWrites[0].where, {
+      id: "map-invalid-state",
+      projectId: "jinshan",
+      processStatus: "queued",
+    });
+  }
+});
+
+test("preserves the processing error when temporary-output cleanup also fails", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-cleanup-failed-"));
+  const job = {
+    id: "job-cleanup-failed",
+    projectId: "jinshan",
+    jobType: "map_tile_package",
+    inputJson: JSON.stringify({
+      mapAssetId: "map-cleanup-failed",
+      sourcePath: "storage/map-assets/map-cleanup-failed.zip",
+    }),
+  };
+  const jobUpdates: Array<Record<string, unknown>> = [];
+  let cleanupAttempts = 0;
+  const database = {
+    mediaProcessingJob: {
+      findFirst: async () => job,
+      updateMany: async () => ({ count: 1 }),
+      findUnique: async () => job,
+      update: async (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
+    },
+    mapAsset: {
+      findUnique: async () => queuedMapAsset(
+        "map-cleanup-failed",
+        "jinshan",
+        "storage/map-assets/map-cleanup-failed.zip",
+      ),
+      updateMany: async (input: Record<string, unknown>) => input,
+      update: async (input: Record<string, unknown>) => input,
+    },
+    auditLog: { create: async (input: unknown) => input },
+    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+  };
+  const runner = new JobRunner(database as never, storageRoot, {
+    extractTilePackage: async ({ outputDirectory }) => {
+      await mkdir(outputDirectory, { recursive: true });
+      throw new Error("原始处理错误");
+    },
+    removePath: () => {
+      cleanupAttempts += 1;
+      throw new Error("清理失败");
+    },
+  });
+
+  try {
+    assert.equal(await runner.processNext(), true);
+    assert.equal(cleanupAttempts, 1);
+    assert.equal((jobUpdates[0].data as Record<string, unknown>).errorMessage, "原始处理错误");
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("marks the job failed even when persisting the map asset error fails", async () => {
+  const job = {
+    id: "job-asset-update-failed",
+    projectId: "jinshan",
+    jobType: "map_tile_package",
+    inputJson: JSON.stringify({
+      mapAssetId: "map-asset-update-failed",
+      sourcePath: "storage/map-assets/map-asset-update-failed.zip",
+    }),
+  };
+  const jobUpdates: Array<Record<string, unknown>> = [];
+  let failureTransactionCalls = 0;
+  const database = {
+    mediaProcessingJob: {
+      findFirst: async () => job,
+      updateMany: async () => ({ count: 1 }),
+      findUnique: async () => job,
+      update: async (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
+    },
+    mapAsset: {
+      findUnique: async () => queuedMapAsset(
+        "map-asset-update-failed",
+        "jinshan",
+        "storage/map-assets/map-asset-update-failed.zip",
+      ),
+      updateMany: () => { throw new Error("地图错误状态写入失败"); },
+      update: () => { throw new Error("地图错误状态写入失败"); },
+    },
+    auditLog: { create: async (input: unknown) => input },
+    $transaction: async (operations: Promise<unknown>[]) => {
+      failureTransactionCalls += 1;
+      return Promise.all(operations);
+    },
+  };
+  const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
+    extractTilePackage: async () => { throw new Error("瓦片处理失败"); },
+  });
+
+  assert.equal(await runner.processNext(), true);
+  assert.equal(failureTransactionCalls, 0);
+  assert.equal((jobUpdates[0].data as Record<string, unknown>).status, "failed");
+  assert.equal((jobUpdates[0].data as Record<string, unknown>).errorMessage, "瓦片处理失败");
+});
+
+test("never replaces or removes an existing final tile directory", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-final-exists-"));
+  const finalDirectory = join(storageRoot, "map-tiles/map-final-exists");
+  await mkdir(finalDirectory, { recursive: true });
+  await writeFile(join(finalDirectory, "sentinel.txt"), "existing-published-map");
+  const job = {
+    id: "job-final-exists",
+    projectId: "jinshan",
+    jobType: "map_tile_package",
+    inputJson: JSON.stringify({
+      mapAssetId: "map-final-exists",
+      sourcePath: "storage/map-assets/map-final-exists.zip",
+    }),
+  };
+  const database = {
+    mediaProcessingJob: {
+      findFirst: async () => job,
+      updateMany: async () => ({ count: 1 }),
+      findUnique: async () => job,
+      update: async (input: Record<string, unknown>) => input,
+    },
+    mapAsset: {
+      findUnique: async () => queuedMapAsset(
+        "map-final-exists",
+        "jinshan",
+        "storage/map-assets/map-final-exists.zip",
+      ),
+      updateMany: async (input: Record<string, unknown>) => input,
+      update: async (input: Record<string, unknown>) => input,
+    },
+    auditLog: { create: async (input: unknown) => input },
+    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+  };
+  const runner = new JobRunner(database as never, storageRoot, {
+    extractTilePackage: async ({ outputDirectory }) => {
+      await mkdir(join(outputDirectory, "1/0"), { recursive: true });
+      await writeFile(join(outputDirectory, "1/0/0.png"), "new-tile");
+      return mapMetadata;
+    },
+  });
+
+  try {
+    assert.equal(await runner.processNext(), true);
+    assert.equal(await readFile(join(finalDirectory, "sentinel.txt"), "utf8"), "existing-published-map");
+    assert.deepEqual((await readdir(join(storageRoot, "map-tiles"))).filter((name) => name.startsWith(".tmp-")), []);
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("uses different job-scoped staging directories for two jobs targeting the same asset", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-distinct-staging-"));
+  const jobs = ["job-map-a", "job-map-b"].map((id) => ({
+    id,
+    projectId: "jinshan",
+    jobType: "map_tile_package",
+    inputJson: JSON.stringify({
+      mapAssetId: "map-same-asset",
+      sourcePath: "storage/map-assets/map-same-asset.zip",
+    }),
+  }));
+  let nextJob = 0;
+  const outputDirectories: string[] = [];
+  const database = {
+    mediaProcessingJob: {
+      findFirst: async () => jobs[nextJob++] ?? null,
+      updateMany: async () => ({ count: 1 }),
+      findUnique: async ({ where }: { where: { id: string } }) => jobs.find((job) => job.id === where.id) ?? null,
+      update: async (input: Record<string, unknown>) => input,
+    },
+    mapAsset: {
+      findUnique: async () => queuedMapAsset(
+        "map-same-asset",
+        "jinshan",
+        "storage/map-assets/map-same-asset.zip",
+      ),
+      updateMany: async (input: Record<string, unknown>) => input,
+      update: async (input: Record<string, unknown>) => input,
+    },
+    auditLog: { create: async (input: unknown) => input },
+    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+  };
+  const runner = new JobRunner(database as never, storageRoot, {
+    extractTilePackage: async ({ outputDirectory }) => {
+      outputDirectories.push(outputDirectory);
+      throw new Error("故意停在 staging 阶段");
+    },
+  });
+
+  try {
+    assert.equal(await runner.processNext(), true);
+    assert.equal(await runner.processNext(), true);
+    assert.equal(outputDirectories.length, 2);
+    assert.notEqual(outputDirectories[0], outputDirectories[1]);
+    assert.match(outputDirectories[0], /job-map-a/);
+    assert.match(outputDirectories[1], /job-map-b/);
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("continues to the next queued job after a claim compare-and-swap loses a race", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-claim-race-"));
+  const jobs = ["job-lost-race", "job-claimed"].map((id) => ({
+    id,
+    projectId: "jinshan",
+    jobType: "map_tile_package",
+    inputJson: JSON.stringify({
+      mapAssetId: "map-claim-race",
+      sourcePath: "storage/map-assets/map-claim-race.zip",
+    }),
+  }));
+  let candidateIndex = 0;
+  let claimAttempts = 0;
+  const handledJobs: string[] = [];
+  const database = {
+    mediaProcessingJob: {
+      findFirst: async () => jobs[candidateIndex++] ?? null,
+      updateMany: async () => ({ count: ++claimAttempts === 1 ? 0 : 1 }),
+      findUnique: async ({ where }: { where: { id: string } }) => jobs.find((job) => job.id === where.id) ?? null,
+      update: async (input: Record<string, unknown>) => input,
+    },
+    mapAsset: {
+      findUnique: async () => queuedMapAsset(
+        "map-claim-race",
+        "jinshan",
+        "storage/map-assets/map-claim-race.zip",
+      ),
+      updateMany: async (input: Record<string, unknown>) => input,
+      update: async (input: Record<string, unknown>) => input,
+    },
+    auditLog: { create: async (input: unknown) => input },
+    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+  };
+  const runner = new JobRunner(database as never, storageRoot, {
+    extractTilePackage: async ({ outputDirectory }) => {
+      handledJobs.push(outputDirectory);
+      await mkdir(join(outputDirectory, "1/0"), { recursive: true });
+      await writeFile(join(outputDirectory, "1/0/0.png"), "tile");
+      return mapMetadata;
+    },
+  });
+
+  try {
+    assert.equal(await runner.processNext(), true);
+    assert.equal(claimAttempts, 2);
+    assert.match(handledJobs[0], /job-claimed/);
   } finally {
     await rm(storageRoot, { recursive: true, force: true });
   }

@@ -88,12 +88,48 @@ test("rejects traversal, absolute paths, non-PNG files, and invalid directory le
   await withFixture([{ name: "layer/", directory: true }], async (archivePath, outputDirectory) => {
     await assert.rejects(() => extractTilePackage({ sourcePath: archivePath, outputDirectory }), /目录结构无效/);
   });
+
+  await withFixture([{ name: "1/0/0.png" }], async (archivePath, outputDirectory) => {
+    await replaceZipEntryName(archivePath, "1/0/0.png", "1\\0\\0.png");
+    await assert.rejects(() => extractTilePackage({ sourcePath: archivePath, outputDirectory }), /路径无效/);
+    await assert.rejects(() => stat(outputDirectory), { code: "ENOENT" });
+  });
+
+  await withFixture([{ name: "1/2/", directory: true }], async (archivePath, outputDirectory) => {
+    await assert.rejects(() => extractTilePackage({ sourcePath: archivePath, outputDirectory }), /目录结构无效/);
+  });
 });
 
 test("rejects files with a PNG name but non-PNG content", async () => {
   await withFixture([{ name: "1/0/0.png", data: Buffer.from("not-a-png") }], async (archivePath, outputDirectory) => {
     await assert.rejects(() => extractTilePackage({ sourcePath: archivePath, outputDirectory }), /PNG 内容无效/);
     await assert.rejects(() => stat(outputDirectory), { code: "ENOENT" });
+  });
+});
+
+test("preserves the archive error when output cleanup also fails", async () => {
+  await withFixture([{ name: "1/0/0.png", data: Buffer.from("not-a-png") }], async (archivePath, outputDirectory) => {
+    let cleanupAttempts = 0;
+    const extractWithFileOperations = extractTilePackage as unknown as (
+      input: { sourcePath: string; outputDirectory: string },
+      limits: TilePackageLimits,
+      fileOperations: { removeOutput: () => never },
+    ) => Promise<unknown>;
+
+    await assert.rejects(
+      () => extractWithFileOperations(
+        { sourcePath: archivePath, outputDirectory },
+        defaultTilePackageLimits,
+        {
+          removeOutput: () => {
+            cleanupAttempts += 1;
+            throw new Error("清理失败");
+          },
+        },
+      ),
+      /PNG 内容无效/,
+    );
+    assert.equal(cleanupAttempts, 1);
   });
 });
 
