@@ -11,6 +11,21 @@ test("defines database accounts, project memberships, and platform audit", async
   assert.match(schema, /@@unique\(\[userId, projectId\]\)/);
 });
 
+test("keeps role as a Prisma String and constrains its PostgreSQL values", async () => {
+  const schema = await readFile(new URL("./schema.prisma", import.meta.url), "utf8");
+  const migration = await readFile(
+    new URL("./migrations/20260713210000_platform_accounts/migration.sql", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(schema, /role\s+String/);
+  assert.doesNotMatch(schema, /enum\s+(?:UserAccount)?Role\b/);
+  assert.match(
+    migration,
+    /CONSTRAINT "UserAccount_role_check" CHECK \("role" IN \('platform_admin', 'member'\)\)/,
+  );
+});
+
 test("seed mirrors the bootstrapped accounts and member projects", async () => {
   const seed = await readFile(new URL("./seed.ts", import.meta.url), "utf8");
   assert.match(seed, /hashPassword/);

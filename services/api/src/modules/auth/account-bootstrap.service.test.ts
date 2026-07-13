@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Module } from "@nestjs/common";
+import { NestFactory } from "@nestjs/core";
+import { AuthModule } from "./auth.module.js";
 import { AccountBootstrapService } from "./account-bootstrap.service.js";
 import { verifyPassword } from "./password-hash.js";
+
+@Module({ imports: [AuthModule] })
+class MissingDatabaseTestModule {}
 
 interface StoredAccount {
   id: string;
@@ -43,6 +49,19 @@ function createDatabase(accounts: StoredAccount[] = [], memberships: StoredMembe
     },
   };
 }
+
+test("fails module assembly when the database provider is missing", async () => {
+  await assert.rejects(
+    async () => {
+      const app = await NestFactory.createApplicationContext(MissingDatabaseTestModule, {
+        logger: false,
+        abortOnError: false,
+      });
+      await app.close();
+    },
+    /Nest can't resolve dependencies of the AccountBootstrapService/,
+  );
+});
 
 test("creates configured legacy accounts once and assigns the member to both projects", async () => {
   const original = {

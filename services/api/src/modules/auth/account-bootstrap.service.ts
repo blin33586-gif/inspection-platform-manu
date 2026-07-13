@@ -1,16 +1,12 @@
-import { Inject, Injectable, Optional, type OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service.js";
 import { hashPassword } from "./password-hash.js";
 
 @Injectable()
 export class AccountBootstrapService implements OnModuleInit {
-  constructor(
-    @Optional() @Inject(DatabaseService) private readonly database?: DatabaseService,
-  ) {}
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async onModuleInit() {
-    if (!this.database) return;
-
     const administrator = await this.database.userAccount.findFirst({
       where: { role: "platform_admin" },
       select: { id: true },
