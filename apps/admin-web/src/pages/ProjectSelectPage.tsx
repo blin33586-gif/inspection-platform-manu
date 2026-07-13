@@ -1,9 +1,9 @@
 import { Button, Spin, message } from "antd";
-import { Building2, Factory, LogOut, ShieldCheck } from "lucide-react";
+import { Building2, Factory, LogOut, ShieldCheck, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getApi } from "../api/client";
-import { type SessionProject } from "../auth/project-access";
+import { canManagePlatform, type SessionProject } from "../auth/project-access";
 import { clearSession, getUser, saveCurrentProject } from "../auth/session";
 
 export function ProjectSelectPage() {
@@ -43,12 +43,17 @@ export function ProjectSelectPage() {
               <span>多项目巡检管理平台</span>
             </div>
           </div>
-          <Button icon={<LogOut size={15} />} onClick={logout}>退出登录</Button>
+          <div className="project-select-actions">
+            {canManagePlatform(user?.role) ? (
+              <Button icon={<Users size={15} />} onClick={() => navigate("/platform/members")}>平台成员管理</Button>
+            ) : null}
+            <Button icon={<LogOut size={15} />} onClick={logout}>退出登录</Button>
+          </div>
         </header>
         <div className="project-select-copy">
           <p className="eyebrow">PROJECT ACCESS</p>
           <h1>选择要进入的项目</h1>
-          <p>{user?.name ?? "用户"} · {user?.role === "admin" ? "管理员" : "只读成员"}</p>
+          <p>{user?.name ?? "用户"} · {canManagePlatform(user?.role) ? "平台管理员" : "项目成员"}</p>
         </div>
         {loading ? (
           <div className="project-select-loading"><Spin /><span>正在读取可访问项目</span></div>

@@ -1,4 +1,4 @@
-export type ProjectRole = "admin" | "member";
+export type ProjectRole = "platform_admin" | "member";
 
 export interface ProjectArchiveDimension {
   key: "community" | "road" | "point";
@@ -20,7 +20,11 @@ const pathsByDimension: Record<ProjectArchiveDimension["key"], string> = {
 };
 
 export function canModifyProject(role: ProjectRole | string | undefined) {
-  return role === "admin";
+  return role === "platform_admin" || role === "member";
+}
+
+export function canManagePlatform(role: ProjectRole | string | undefined) {
+  return role === "platform_admin";
 }
 
 export function projectArchiveNavigation(project: SessionProject | null) {

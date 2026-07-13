@@ -1,4 +1,4 @@
-import type { ProjectRole, SessionProject } from "./project-access";
+import { canManagePlatform, type ProjectRole, type SessionProject } from "./project-access";
 
 const tokenKey = "xunjianbao_token";
 const userKey = "xunjianbao_user";
@@ -36,14 +36,16 @@ export function getCurrentProject(): SessionProject | null {
   if (!raw) return null;
   try {
     const project = JSON.parse(raw) as SessionProject;
-    return getUser()?.projectIds.includes(project.id) ? project : null;
+    const user = getUser();
+    return user && (canManagePlatform(user.role) || user.projectIds.includes(project.id)) ? project : null;
   } catch {
     return null;
   }
 }
 
 export function saveCurrentProject(project: SessionProject) {
-  if (!getUser()?.projectIds.includes(project.id)) return false;
+  const user = getUser();
+  if (!user || (!canManagePlatform(user.role) && !user.projectIds.includes(project.id))) return false;
   localStorage.setItem(projectKey, JSON.stringify(project));
   return true;
 }

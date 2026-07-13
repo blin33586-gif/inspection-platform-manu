@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canManagePlatform,
   canModifyProject,
   projectArchiveNavigation,
   type SessionProject,
@@ -18,9 +19,14 @@ const jinshan: SessionProject = {
   ],
 };
 
-test("members are read-only and administrators can modify", () => {
-  assert.equal(canModifyProject("admin"), true);
-  assert.equal(canModifyProject("member"), false);
+test("all project members can modify project content", () => {
+  assert.equal(canModifyProject("platform_admin"), true);
+  assert.equal(canModifyProject("member"), true);
+});
+
+test("only the platform administrator can manage members", () => {
+  assert.equal(canManagePlatform("platform_admin"), true);
+  assert.equal(canManagePlatform("member"), false);
 });
 
 test("builds archive navigation from the selected project dimensions", () => {

@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import { getCurrentProject, getToken } from "./auth/session";
+import { canManagePlatform } from "./auth/project-access";
+import { getCurrentProject, getToken, getUser } from "./auth/session";
 import { Shell } from "./components/Shell";
 import { DashboardPage } from "./pages/DashboardPage";
 import { CommunitiesPage } from "./pages/CommunitiesPage";
@@ -20,6 +21,7 @@ import { ReportDetailPage } from "./pages/ReportDetailPage";
 import { ReportWritePage } from "./pages/ReportWritePage";
 import { PublicIssueSharePage } from "./pages/PublicIssueSharePage";
 import { ProjectSelectPage } from "./pages/ProjectSelectPage";
+import { PlatformMembersPage } from "./pages/PlatformMembersPage";
 
 function RequireAuth() {
   return getToken() ? <Outlet /> : <Navigate to="/login" replace />;
@@ -29,6 +31,10 @@ function RequireProject() {
   return getCurrentProject() ? <Outlet /> : <Navigate to="/projects" replace />;
 }
 
+function RequirePlatformAdmin() {
+  return canManagePlatform(getUser()?.role) ? <Outlet /> : <Navigate to="/projects" replace />;
+}
+
 export function App() {
   return (
     <Routes>
@@ -36,6 +42,9 @@ export function App() {
       <Route path="/s/issue/:shareToken" element={<PublicIssueSharePage />} />
       <Route element={<RequireAuth />}>
         <Route path="/projects" element={<ProjectSelectPage />} />
+        <Route element={<RequirePlatformAdmin />}>
+          <Route path="/platform/members" element={<PlatformMembersPage />} />
+        </Route>
         <Route element={<RequireProject />}>
           <Route element={<Shell />}>
           <Route path="/" element={<DashboardPage />} />
