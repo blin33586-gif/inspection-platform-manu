@@ -12,3 +12,4 @@ build/
 services/api/storage/
 backups/
 .worktrees/
+.runtime/

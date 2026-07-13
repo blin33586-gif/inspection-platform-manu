@@ -75,6 +75,16 @@ prisma
 
 当前 `pnpm-workspace.yaml` 已经写了 `allowBuilds`，正常情况下不需要重复处理。
 
+本地长期调试建议使用稳定后台启动方式，避免关闭终端后前端或 API 一并退出：
+
+```bash
+pnpm dev:stable
+pnpm dev:status
+pnpm dev:stop
+```
+
+默认访问地址为 `http://127.0.0.1:5183/`，运行日志保存在项目根目录 `.runtime/`。
+
 ## 4. 环境变量
 
 根目录 `.env.example` 内容如下：
