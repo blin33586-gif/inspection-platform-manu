@@ -715,7 +715,7 @@ git commit -m "feat: simplify project map management"
 - Consumes: all prior tasks.
 - Produces: migrated local database, running local services, and evidence for every acceptance rule.
 
-- [ ] **Step 1: Run all tests fresh**
+- [x] **Step 1: Run all tests fresh**
 
 Run:
 
@@ -727,7 +727,7 @@ rg --files /Users/bolin/Documents/巡检宝/apps/admin-web/src -g '*.test.ts' -0
 
 Expected: zero failures.
 
-- [ ] **Step 2: Run full workspace verification**
+- [x] **Step 2: Run full workspace verification**
 
 Run:
 
@@ -740,13 +740,15 @@ git diff --check
 
 Expected: all commands exit 0; the existing Vite bundle-size warning is acceptable, but TypeScript or build errors are not.
 
-- [ ] **Step 3: Apply migrations and restart stable services**
+- [x] **Step 3: Apply migrations and restart stable services**
+
+Task 9 used isolated ports `5193`/`3011` and an acceptance database copy so the existing `5183`/`3010` stack remained untouched.
 
 Run: `pnpm dev:stop && pnpm db:deploy && pnpm dev:stable && pnpm dev:status`
 
 Expected: both new migrations apply, then frontend, API, and worker report healthy.
 
-- [ ] **Step 4: Verify API authorization and account safety**
+- [x] **Step 4: Verify API authorization and account safety**
 
 Using local requests, verify:
 
@@ -759,13 +761,17 @@ Using local requests, verify:
 
 - [ ] **Step 5: Verify browser flows at desktop and 825 px**
 
+Blocked on 2026-07-14: the required Browser runtime reported `No browser is available`, and `agent.browsers.list()` returned `[]`. HTTP acceptance was completed, but visual browser acceptance and screenshots were not substituted with another tool.
+
 Check login → project selection → platform members → member create/edit/reset/disable. At a viewport around 825 px, verify both roles see “更多”. On the task page verify the fake notification/project block and inert sorting ornament are absent.
 
 - [ ] **Step 6: Verify map success/failure behavior**
 
+Partial on 2026-07-14: real valid and invalid ZIP uploads, history, active-map preservation, tile HTTP response, and process memory were verified. The tiny valid ZIP moved from queued to published too quickly to capture the transient running state, and dashboard network inspection requires the blocked Browser runtime.
+
 Upload a small valid XYZ ZIP and confirm: queued → processing → current; history shows uploader and time; the dashboard loads only tile requests for the current view. Upload an invalid ZIP and confirm it becomes failed while the prior active map still renders. Inspect worker/API process memory during the fixture uploads and confirm it does not grow in proportion to uncompressed map content.
 
-- [ ] **Step 7: Commit any verification-only corrections**
+- [x] **Step 7: Commit any verification-only corrections**
 
 ```bash
 git add -A
