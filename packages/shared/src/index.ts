@@ -177,8 +177,10 @@ export function sanitizeMapProcessingFailureMessage(value: unknown) {
   if (/GDAL 未生成有效/.test(message)) return "TIF 未生成有效地图瓦片，请检查坐标系和图像内容";
   if (
     /gdal|proj(?:ection)?|traceback|stderr|prisma|sql|database|\b(?:select|insert|update|delete)\b/i.test(message)
-    || /(?:^|\s)(?:\/[A-Za-z0-9._-]+){2,}/.test(message)
-    || /[A-Za-z]:\\/.test(message)
+    || /\bfile:(?:\/{2,}|\\{2,})/i.test(message)
+    || /(?<![A-Za-z0-9._~%/\\-])\/[^/\s"'<>()[\]{}，。；：！？、]+(?:\/[^/\s"'<>()[\]{}，。；：！？、]+)*/.test(message)
+    || /[A-Za-z]:[\\/][^\s"'<>()[\]{}，。；：！？、]+/.test(message)
+    || /\\\\[^\\\s"'<>]+\\[^\\\s"'<>]+/.test(message)
     || /\bat\s+\S+\s*\(/.test(message)
   ) {
     return MAP_PROCESSING_FAILURE_FALLBACK;

@@ -163,7 +163,7 @@ test("isolates map detail by the selected project", async () => {
           uploadedBy: null,
           activatedAt: null,
           processStatus: "processed",
-          errorMessage: "gdal2tiles.py failed: /Users/worker/private/source.tif\nTraceback: secret",
+          errorMessage: "读取失败：/srv/private/map/source.tif",
         };
       },
     },

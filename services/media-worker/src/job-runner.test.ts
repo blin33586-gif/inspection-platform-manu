@@ -300,7 +300,7 @@ test("failed map processing cleans partial outputs, preserves the source and nev
     extractTilePackage: async ({ outputDirectory }) => {
       await mkdir(outputDirectory, { recursive: true });
       await writeFile(join(outputDirectory, "partial.png"), "partial");
-      throw new Error("gdal2tiles.py failed: /Users/worker/private/source.tif\nTraceback: secret");
+      throw new Error("转换失败（C:\\srv\\private\\map\\source.tif）");
     },
   });
 

@@ -52,10 +52,23 @@ test("polls from the project-wide processing flag even when the active row is on
 
 test("limits failure reasons and hides technical diagnostics", () => {
   assert.equal(presentMapFailureReason("瓦片包目录不正确\n请使用 z/x/y.png"), "瓦片包目录不正确 请使用 z/x/y.png");
-  assert.equal(
-    presentMapFailureReason("gdal2tiles.py failed: /Users/worker/private/source.tif\nTraceback: secret"),
-    "地图处理失败，请重新上传；如仍失败请联系管理员",
-  );
+  const unsafeFailures = [
+    "gdal2tiles.py failed: /Users/worker/private/source.tif\nTraceback: secret",
+    "处理失败：/srv/private/map/source.tif",
+    "处理失败（/srv/private/map/source.tif）",
+    "处理失败\n/srv/private/map/source.tif",
+    "处理失败：file:///srv/private/map/source.tif",
+    "处理失败：C:\\srv\\private\\map\\source.tif",
+    "处理失败（C:/srv/private/map/source.tif）",
+    "处理失败：\\\\server\\share\\private\\source.tif",
+  ];
+  for (const failure of unsafeFailures) {
+    assert.equal(
+      presentMapFailureReason(failure),
+      "地图处理失败，请重新上传；如仍失败请联系管理员",
+      failure,
+    );
+  }
   assert.equal(presentMapFailureReason("原因".repeat(100)).length <= 120, true);
 });
 
