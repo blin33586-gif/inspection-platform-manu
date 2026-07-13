@@ -24,7 +24,7 @@ import { ProjectSelectPage } from "./pages/ProjectSelectPage";
 import { PlatformMembersPage } from "./pages/PlatformMembersPage";
 
 function RequireAuth() {
-  return getToken() ? <Outlet /> : <Navigate to="/login" replace />;
+  return getToken() && getUser() ? <Outlet /> : <Navigate to="/login" replace />;
 }
 
 function RequireProject() {

@@ -6,6 +6,54 @@ export interface MemberDraft {
   projectIds: string[];
 }
 
+export type MemberMutationKind = "create" | "edit" | "password" | "status";
+
+export interface MemberMutationContext {
+  kind: MemberMutationKind;
+  memberId: string | null;
+  instance: number;
+}
+
+interface ResettableForm {
+  resetFields: () => void;
+}
+
+interface ProjectResourceStatus {
+  loading: boolean;
+  hasLoaded: boolean;
+  error: Error | null;
+}
+
+export function openPasswordDialog<T>(
+  form: ResettableForm,
+  selectMember: (member: T | null) => void,
+  member: T,
+) {
+  form.resetFields();
+  selectMember(member);
+}
+
+export function closePasswordDialog<T>(form: ResettableForm, selectMember: (member: T | null) => void) {
+  form.resetFields();
+  selectMember(null);
+}
+
+export function isProjectSelectionAvailable(status: ProjectResourceStatus) {
+  return !status.loading && status.hasLoaded && !status.error;
+}
+
+export function isCurrentMutationContext(
+  submitted: MemberMutationContext,
+  current: MemberMutationContext | null,
+) {
+  return (
+    current !== null &&
+    submitted.kind === current.kind &&
+    submitted.memberId === current.memberId &&
+    submitted.instance === current.instance
+  );
+}
+
 export function validateMemberDraft(draft: MemberDraft) {
   const errors: string[] = [];
   if (!draft.name.trim()) errors.push("请输入姓名");

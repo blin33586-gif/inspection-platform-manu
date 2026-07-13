@@ -11,19 +11,40 @@ export interface SessionUser {
   projectIds: string[];
 }
 
+function isSessionUser(value: unknown): value is SessionUser {
+  if (!value || typeof value !== "object") return false;
+  const user = value as Record<string, unknown>;
+  return (
+    typeof user.username === "string" &&
+    user.username.length > 0 &&
+    typeof user.name === "string" &&
+    user.name.length > 0 &&
+    (user.role === "platform_admin" || user.role === "member") &&
+    Array.isArray(user.projectIds) &&
+    user.projectIds.every((projectId) => typeof projectId === "string")
+  );
+}
+
 export function getToken() {
   return localStorage.getItem(tokenKey);
 }
 
 export function getUser(): SessionUser | null {
   const raw = localStorage.getItem(userKey);
-  if (!raw) return null;
-
-  try {
-    return JSON.parse(raw) as SessionUser;
-  } catch {
+  if (!raw) {
+    if (getToken() || localStorage.getItem(projectKey)) clearSession();
     return null;
   }
+
+  try {
+    const user: unknown = JSON.parse(raw);
+    if (isSessionUser(user)) return user;
+  } catch {
+    // Invalid persisted sessions are cleared below.
+  }
+
+  clearSession();
+  return null;
 }
 
 export function saveSession(token: string, user: SessionUser) {
