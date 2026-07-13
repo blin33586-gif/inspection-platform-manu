@@ -11,6 +11,23 @@ const responsiveNavigationStyles = globalStyles.slice(
   globalStyles.indexOf(".issue-push-result"),
 );
 
+function cssDeclarations(styles: string, selector: string) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rule = styles.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`));
+  assert.ok(rule, `missing CSS rule: ${selector}`);
+
+  return Object.fromEntries(
+    rule[1]
+      .split(";")
+      .map((declaration) => declaration.trim())
+      .filter(Boolean)
+      .map((declaration) => {
+        const separator = declaration.indexOf(":");
+        return [declaration.slice(0, separator).trim(), declaration.slice(separator + 1).trim()];
+      }),
+  );
+}
+
 test("keeps business modules in the primary navigation", () => {
   assert.deepEqual(PRIMARY_NAV_ITEMS, [
     { to: "/media-library", label: "任务库" },
@@ -27,11 +44,20 @@ test("moves map and operation logs into the account menu", () => {
 });
 
 test("project members retain account menu actions", () => {
-  assert.deepEqual(accountNavigation("member").map((item) => item.label), ["切换项目", "地图", "操作日志"]);
+  assert.deepEqual(accountNavigation("member"), [
+    { to: "/projects", label: "切换项目" },
+    { to: "/map-assets", label: "地图" },
+    { to: "/audit-logs", label: "操作日志" },
+  ]);
 });
 
-test("platform administrator also sees member management", () => {
-  assert.equal(accountNavigation("platform_admin").some((item) => item.label === "人员管理"), true);
+test("platform administrator receives member management after the shared account actions", () => {
+  assert.deepEqual(accountNavigation("platform_admin"), [
+    { to: "/projects", label: "切换项目" },
+    { to: "/map-assets", label: "地图" },
+    { to: "/audit-logs", label: "操作日志" },
+    { to: "/platform/members", label: "人员管理" },
+  ]);
 });
 
 test("shell renders the role-aware account navigation and member label", () => {
@@ -65,4 +91,12 @@ test("825px navigation hides only project details and keeps the account menu vis
   assert.match(responsiveNavigationStyles, /\.project-pill\s*>\s*div:first-child\s*\{\s*display:\s*none;/);
   assert.match(responsiveNavigationStyles, /\.project-pill\s+\.account-menu\s*\{\s*display:\s*block;/);
   assert.doesNotMatch(responsiveNavigationStyles, /\.project-pill\s+div\s*\{\s*display:\s*none;/);
+
+  const accountDropdown = cssDeclarations(responsiveNavigationStyles, ".project-pill .account-dropdown");
+  assert.equal(accountDropdown.left, "auto");
+  assert.equal(accountDropdown.right, "0");
+
+  const projectArchiveDropdown = cssDeclarations(responsiveNavigationStyles, ".nav-dropdown");
+  assert.equal(projectArchiveDropdown.left, "0");
+  assert.equal(projectArchiveDropdown.right, "auto");
 });

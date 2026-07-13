@@ -5215,6 +5215,11 @@ h4 {
     display: block;
   }
 
+  .project-pill .account-dropdown {
+    left: auto;
+    right: 0;
+  }
+
   .video-main-grid,
   .video-workspace-split {
     grid-template-columns: 1fr;
