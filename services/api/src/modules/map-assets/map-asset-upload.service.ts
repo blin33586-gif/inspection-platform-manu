@@ -51,6 +51,9 @@ export class MapAssetUploadService {
   ) {}
 
   async createFromUpload(file: UploadedFileLike | undefined, input: CreateMapAssetInput) {
+    const identity = currentIdentity();
+    if (!identity) throw new UnauthorizedException("缺少已认证的上传用户");
+    const projectId = currentProjectId();
     if (!file) throw new BadRequestException("Map file is required");
     this.assertManagedTempPath(file.path);
 
@@ -60,16 +63,9 @@ export class MapAssetUploadService {
       throw new BadRequestException("仅支持 TIF/TIFF 底图或 XYZ ZIP 瓦片包");
     }
 
-    const identity = currentIdentity();
-    if (!identity) {
-      await this.removeTempFile(file.path);
-      throw new UnauthorizedException("缺少已认证的上传用户");
-    }
-
     const id = `map-${randomUUID()}`;
     const storedFileName = `${id}${extension}`;
     const storagePath = join(this.finalDir, storedFileName);
-    const projectId = currentProjectId();
     const sourceType = extension === ".zip" ? "tile" : "tiff";
     const assetData = {
       projectId,
@@ -114,6 +110,7 @@ export class MapAssetUploadService {
     }
 
     let historyCreatedInTransaction = false;
+    let auditFailed = false;
     let asset: CreatedMapAsset;
     try {
       asset = await this.database.$transaction(async (transaction) => {
@@ -155,9 +152,30 @@ export class MapAssetUploadService {
           });
         }
 
+        try {
+          await transaction.auditLog.create({
+            data: {
+              projectId,
+              id: `audit-${randomUUID()}`,
+              actor: identity.username,
+              action: "map.upload",
+              targetType: "mapAsset",
+              targetId: createdAsset.id,
+              summary: `上传地图资产「${createdAsset.name}」`,
+            },
+          });
+        } catch (error) {
+          auditFailed = true;
+          throw error;
+        }
+
         return createdAsset;
       });
     } catch (error) {
+      if (auditFailed) {
+        await this.cleanupUploadFiles(file.path, storagePath);
+        throw error;
+      }
       if (!historyCreatedInTransaction) {
         await this.cleanupUploadFiles(file.path, storagePath);
         throw error;
@@ -174,13 +192,6 @@ export class MapAssetUploadService {
       }
       throw error;
     }
-
-    await this.auditService.record({
-      action: "map.upload",
-      targetType: "mapAsset",
-      targetId: asset.id,
-      summary: `上传地图资产「${asset.name}」`,
-    });
 
     const { uploadedBy, ...summary } = asset;
     return {
@@ -202,28 +213,30 @@ export class MapAssetUploadService {
   }
 
   async publishTileMap(id: string) {
+    const identity = currentIdentity();
+    if (!identity) throw new UnauthorizedException("缺少已认证的上传用户");
     const projectId = currentProjectId();
     const mapAsset = await this.database.mapAsset.findUnique({ where: { id, projectId } });
     if (!mapAsset || mapAsset.sourceType !== "tile" || !mapAsset.tilePath || !mapAsset.tileMetadata) {
       throw new NotFoundException("可发布的瓦片底图不存在");
     }
 
-    await this.database.$transaction([
-      this.database.mapAsset.updateMany({
+    await this.database.$transaction(async (transaction) => {
+      await transaction.mapAsset.updateMany({
         where: { projectId, sourceType: "tile", isActive: true },
         data: { isActive: false },
-      }),
-      this.database.mapAsset.update({
+      });
+      await transaction.mapAsset.update({
         where: { id, projectId },
         data: { isActive: true, processStatus: "published", activatedAt: new Date() },
-      }),
-    ]);
-
-    await this.auditService.record({
-      action: "map.tiles.publish",
-      targetType: "mapAsset",
-      targetId: id,
-      summary: `发布首页离线底图「${mapAsset.name}」`,
+      });
+      await transaction.auditLog.create({
+        data: {
+          projectId, id: `audit-${randomUUID()}`, actor: identity.username,
+          action: "map.tiles.publish", targetType: "mapAsset", targetId: id,
+          summary: `发布首页离线底图「${mapAsset.name}」`,
+        },
+      });
     });
   }
 

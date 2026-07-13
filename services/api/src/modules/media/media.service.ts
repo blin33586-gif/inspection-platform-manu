@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
-import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -21,6 +21,7 @@ export class MediaService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async createMediaFromUpload(file: UploadedFileLike | undefined, intervalSeconds: number) {
+    requireCurrentIdentity();
     if (!file) throw new BadRequestException("请选择要上传的素材");
 
     const extension = extname(file.originalname).toLowerCase();
@@ -41,6 +42,8 @@ export class MediaService {
   }
 
   async createVideoFromUpload(file: UploadedFileLike | undefined, intervalSeconds: number) {
+    const identity = requireCurrentIdentity();
+    const projectId = currentProjectId();
     if (!file) throw new BadRequestException("请选择要上传的视频");
     this.validateInterval(intervalSeconds);
 
@@ -57,30 +60,32 @@ export class MediaService {
     await rename(file.path, storagePath);
 
     try {
-      const asset = await this.database.mediaAsset.create({
-        data: {
-          projectId: currentProjectId(),
-          id,
-          kind: "video",
-          originalFileName: file.originalname,
-          storagePath,
-          mimeType: file.mimetype || (extension === ".mov" ? "video/quicktime" : "video/mp4"),
-          fileSize: file.size,
-        },
+      return await this.database.$transaction(async (transaction) => {
+        const asset = await transaction.mediaAsset.create({
+          data: {
+            projectId,
+            id,
+            kind: "video",
+            originalFileName: file.originalname,
+            storagePath,
+            mimeType: file.mimetype || (extension === ".mov" ? "video/quicktime" : "video/mp4"),
+            fileSize: file.size,
+          },
+        });
+        const job = await this.queueFrameExtraction(asset, intervalSeconds, transaction, projectId);
+        await transaction.auditLog.create({
+          data: {
+            projectId,
+            id: `audit-${randomUUID()}`,
+            actor: identity.username,
+            action: "media.video.upload",
+            targetType: "mediaAsset",
+            targetId: asset.id,
+            summary: `上传巡检视频「${asset.originalFileName}」并创建抽帧任务`,
+          },
+        });
+        return { asset, job };
       });
-      const job = await this.queueFrameExtraction(asset, intervalSeconds);
-      await this.database.auditLog.create({
-        data: {
-          projectId: currentProjectId(),
-          id: `audit-${randomUUID()}`,
-          actor: currentActorUsername(),
-          action: "media.video.upload",
-          targetType: "mediaAsset",
-          targetId: asset.id,
-          summary: `上传巡检视频「${asset.originalFileName}」并创建抽帧任务`,
-        },
-      });
-      return { asset, job };
     } catch (error) {
       await rm(storagePath, { force: true });
       throw error;
@@ -88,6 +93,8 @@ export class MediaService {
   }
 
   async createArchiveFromUpload(file: UploadedFileLike) {
+    const identity = requireCurrentIdentity();
+    const projectId = currentProjectId();
     const id = `media-${randomUUID()}`;
     const storedFileName = `${id}${archiveExtension}`;
     const storagePath = join("storage/media/archives", storedFileName);
@@ -95,30 +102,32 @@ export class MediaService {
     await rename(file.path, storagePath);
 
     try {
-      const asset = await this.database.mediaAsset.create({
-        data: {
-          projectId: currentProjectId(),
-          id,
-          kind: "image_bundle",
-          originalFileName: file.originalname,
-          storagePath,
-          mimeType: file.mimetype || "application/zip",
-          fileSize: file.size,
-        },
+      return await this.database.$transaction(async (transaction) => {
+        const asset = await transaction.mediaAsset.create({
+          data: {
+            projectId,
+            id,
+            kind: "image_bundle",
+            originalFileName: file.originalname,
+            storagePath,
+            mimeType: file.mimetype || "application/zip",
+            fileSize: file.size,
+          },
+        });
+        const job = await this.queueArchiveExtraction(asset, transaction, projectId);
+        await transaction.auditLog.create({
+          data: {
+            projectId,
+            id: `audit-${randomUUID()}`,
+            actor: identity.username,
+            action: "media.archive.upload",
+            targetType: "mediaAsset",
+            targetId: asset.id,
+            summary: `上传巡检图片包「${asset.originalFileName}」并创建解压任务`,
+          },
+        });
+        return { asset, job };
       });
-      const job = await this.queueArchiveExtraction(asset);
-      await this.database.auditLog.create({
-        data: {
-          projectId: currentProjectId(),
-          id: `audit-${randomUUID()}`,
-          actor: currentActorUsername(),
-          action: "media.archive.upload",
-          targetType: "mediaAsset",
-          targetId: asset.id,
-          summary: `上传巡检图片包「${asset.originalFileName}」并创建解压任务`,
-        },
-      });
-      return { asset, job };
     } catch (error) {
       await rm(storagePath, { force: true });
       throw error;
@@ -188,13 +197,18 @@ export class MediaService {
     });
   }
 
-  private queueFrameExtraction(media: { id: string; storagePath: string }, intervalSeconds: number) {
+  private queueFrameExtraction(
+    media: { id: string; storagePath: string },
+    intervalSeconds: number,
+    database: Pick<DatabaseService, "mediaProcessingJob"> = this.database,
+    projectId = currentProjectId(),
+  ) {
     this.validateInterval(intervalSeconds);
     const dedupeKey = `frame_extract:${media.id}:${intervalSeconds}`;
-    return this.database.mediaProcessingJob.upsert({
+    return database.mediaProcessingJob.upsert({
       where: { dedupeKey },
       create: {
-        projectId: currentProjectId(),
+        projectId,
         id: `job-frame-${media.id}-${intervalSeconds}`,
         jobType: "frame_extract",
         status: "queued",
@@ -210,12 +224,16 @@ export class MediaService {
     });
   }
 
-  private queueArchiveExtraction(media: { id: string; storagePath: string }) {
+  private queueArchiveExtraction(
+    media: { id: string; storagePath: string },
+    database: Pick<DatabaseService, "mediaProcessingJob"> = this.database,
+    projectId = currentProjectId(),
+  ) {
     const dedupeKey = `archive_extract:${media.id}`;
-    return this.database.mediaProcessingJob.upsert({
+    return database.mediaProcessingJob.upsert({
       where: { dedupeKey },
       create: {
-        projectId: currentProjectId(),
+        projectId,
         id: `job-archive-${media.id}`,
         jobType: "archive_extract",
         status: "queued",

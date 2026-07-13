@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { AuditService } from "../audit/audit.service.js";
-import { currentProjectId } from "../auth/project-context.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 interface CreateManagedObjectInput {
   name?: string;
@@ -30,26 +30,31 @@ export class ManagedObjectWriteService {
   ) {}
 
   async create(objectType: ObjectType, input: CreateManagedObjectInput) {
+    const actor = requireCurrentIdentity().username;
+    const projectId = currentProjectId();
     if (!allowedObjectTypes.includes(objectType)) throw new BadRequestException("Invalid object type");
     if (!input.name?.trim()) throw new BadRequestException("Object name is required");
 
-    const object = await this.database.managedObject.create({
-      data: {
-        projectId: currentProjectId(),
-        id: `${idPrefixes[objectType]}-${randomUUID()}`,
-        name: input.name.trim(),
-        objectType,
-        objectSubtype: input.objectSubtype?.trim() || null,
-        parentName: input.parentName?.trim() || null,
-        status: input.status?.trim() || "待完善",
-      },
-    });
-
-    await this.auditService.record({
-      action: "managedObject.create",
-      targetType: objectType,
-      targetId: object.id,
-      summary: `新增${this.objectTypeLabel(objectType)}「${object.name}」`,
+    const object = await this.database.$transaction(async (transaction) => {
+      const created = await transaction.managedObject.create({
+        data: {
+          projectId,
+          id: `${idPrefixes[objectType]}-${randomUUID()}`,
+          name: input.name!.trim(),
+          objectType,
+          objectSubtype: input.objectSubtype?.trim() || null,
+          parentName: input.parentName?.trim() || null,
+          status: input.status?.trim() || "待完善",
+        },
+      });
+      await transaction.auditLog.create({
+        data: {
+          projectId, id: `audit-${randomUUID()}`, actor,
+          action: "managedObject.create", targetType: objectType, targetId: created.id,
+          summary: `新增${this.objectTypeLabel(objectType)}「${created.name}」`,
+        },
+      });
+      return created;
     });
 
     if (objectType === "point") return this.readRepository.point(object.id);

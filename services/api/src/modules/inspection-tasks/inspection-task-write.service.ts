@@ -9,7 +9,7 @@ import {
   type NormalizedTaskInput,
   type TaskUploadFile,
 } from "./inspection-task-input.js";
-import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 @Injectable()
 export class InspectionTaskWriteService {
@@ -23,13 +23,14 @@ export class InspectionTaskWriteService {
   }
 
   async create(body: InspectionTaskInputBody, files: TaskUploadFile[] | undefined) {
+    const actor = requireCurrentIdentity().username;
+    const projectId = currentProjectId();
     const input = validateTaskInput(body, files);
-    if (input.inputType === "images") return this.createImageTask(input);
-    return this.createProcessedTask(input);
+    if (input.inputType === "images") return this.createImageTask(input, projectId, actor);
+    return this.createProcessedTask(input, projectId, actor);
   }
 
-  private async createProcessedTask(input: NormalizedTaskInput) {
-    const projectId = currentProjectId();
+  private async createProcessedTask(input: NormalizedTaskInput, projectId: string, actor: string) {
     const taskId = `task-${randomUUID()}`;
     const mediaId = `media-${randomUUID()}`;
     const source = input.files[0];
@@ -85,7 +86,7 @@ export class InspectionTaskWriteService {
             }),
           },
         });
-        await this.writeAudit(database, taskId, `创建任务「${input.name}」并进入后台处理`);
+        await this.writeAudit(database, projectId, actor, taskId, `创建任务「${input.name}」并进入后台处理`);
         return task;
       });
     } catch (error) {
@@ -94,8 +95,7 @@ export class InspectionTaskWriteService {
     }
   }
 
-  private async createImageTask(input: NormalizedTaskInput) {
-    const projectId = currentProjectId();
+  private async createImageTask(input: NormalizedTaskInput, projectId: string, actor: string) {
     const taskId = `task-${randomUUID()}`;
     const directory = join(this.storageRoot, "media", "task-images", taskId);
     await mkdir(directory, { recursive: true });
@@ -152,7 +152,7 @@ export class InspectionTaskWriteService {
             inputJson: JSON.stringify({ inspectionTaskId: taskId, mediaIds: movedFiles.map((item) => item.mediaId) }),
           },
         });
-        await this.writeAudit(database, taskId, `创建图片任务「${input.name}」，共 ${movedFiles.length} 张，等待后台校验与预览处理`);
+        await this.writeAudit(database, projectId, actor, taskId, `创建图片任务「${input.name}」，共 ${movedFiles.length} 张，等待后台校验与预览处理`);
         return task;
       });
     } catch (error) {
@@ -161,12 +161,12 @@ export class InspectionTaskWriteService {
     }
   }
 
-  private writeAudit(database: DatabaseService, taskId: string, summary: string) {
+  private writeAudit(database: DatabaseService, projectId: string, actor: string, taskId: string, summary: string) {
     return database.auditLog.create({
       data: {
-        projectId: currentProjectId(),
+        projectId,
         id: `audit-${randomUUID()}`,
-        actor: currentActorUsername(),
+        actor,
         action: "inspectionTask.create",
         targetType: "inspectionTask",
         targetId: taskId,

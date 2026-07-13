@@ -17,6 +17,25 @@ CREATE TABLE "MapWorkerLease" (
 CREATE INDEX "MediaProcessingJob_status_leaseExpiresAt_idx"
 ON "MediaProcessingJob"("status", "leaseExpiresAt");
 
+-- Jobs that were already running before lease columns existed have no owner
+-- capable of renewing them. Requeue both sides of that legacy state before
+-- workers start using the new fencing protocol.
+UPDATE "MediaProcessingJob"
+SET
+  "status" = 'queued',
+  "startedAt" = NULL,
+  "leaseOwner" = NULL,
+  "attemptId" = NULL,
+  "leaseExpiresAt" = NULL,
+  "heartbeatAt" = NULL,
+  "errorMessage" = NULL
+WHERE "jobType" IN ('tiff_tile', 'map_tile_package')
+  AND "status" = 'running';
+
+UPDATE "MapAsset"
+SET "processStatus" = 'queued', "errorMessage" = NULL
+WHERE "processStatus" = 'running';
+
 WITH ranked_active_maps AS (
   SELECT
     "id",

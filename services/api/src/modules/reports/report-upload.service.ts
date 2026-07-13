@@ -5,7 +5,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
-import { currentProjectId } from "../auth/project-context.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -37,6 +37,7 @@ export class ReportUploadService {
   ) {}
 
   async createFromUpload(file: UploadedFileLike | undefined, input: CreateReportInput) {
+    const actor = requireCurrentIdentity().username;
     const projectId = currentProjectId();
     if (!file) throw new BadRequestException("Report file is required");
 
@@ -66,45 +67,28 @@ export class ReportUploadService {
       ? input.reportType
       : "comprehensive";
 
-    const report = await this.database.inspectionReport.create({
-      data: {
-        projectId,
-        id,
-        title: input.title?.trim() || this.titleFromFile(file.originalname),
-        reportDate,
-        reportType,
-        relatedObjectId: relatedObject?.id,
-        relatedObjectName: relatedObject?.name ?? input.relatedObjectName?.trim() ?? "未关联对象",
-        issueCount: this.parseIssueCount(input.issueCount),
-        contentSummary: input.contentSummary?.trim(),
-        fileName: storedFileName,
-        originalFileName: file.originalname,
-        storagePath,
-        mimeType: file.mimetype,
-        fileSize: file.size,
-        processStatus: "uploaded",
-      },
-      select: {
-        id: true,
-        title: true,
-        reportDate: true,
-        reportType: true,
-        relatedObjectName: true,
-        issueCount: true,
-        fileName: true,
-        originalFileName: true,
-        mimeType: true,
-        fileSize: true,
-        processStatus: true,
-      },
-    });
-
-    await this.auditService.record({
-      action: "report.upload",
-      targetType: "report",
-      targetId: report.id,
-      summary: `上传巡检报告「${report.title}」`,
-    });
+    let report;
+    try {
+      report = await this.database.$transaction(async (transaction) => {
+        const created = await transaction.inspectionReport.create({
+          data: {
+            projectId, id, title: input.title?.trim() || this.titleFromFile(file.originalname), reportDate, reportType,
+            relatedObjectId: relatedObject?.id, relatedObjectName: relatedObject?.name ?? input.relatedObjectName?.trim() ?? "未关联对象",
+            issueCount: this.parseIssueCount(input.issueCount), contentSummary: input.contentSummary?.trim(),
+            fileName: storedFileName, originalFileName: file.originalname, storagePath, mimeType: file.mimetype,
+            fileSize: file.size, processStatus: "uploaded",
+          },
+          select: { id: true, title: true, reportDate: true, reportType: true, relatedObjectName: true, issueCount: true, fileName: true, originalFileName: true, mimeType: true, fileSize: true, processStatus: true },
+        });
+        await transaction.auditLog.create({
+          data: { projectId, id: `audit-${randomUUID()}`, actor, action: "report.upload", targetType: "report", targetId: created.id, summary: `上传巡检报告「${created.title}」` },
+        });
+        return created;
+      });
+    } catch (error) {
+      await rm(storagePath, { force: true });
+      throw error;
+    }
 
     return {
       ...report,

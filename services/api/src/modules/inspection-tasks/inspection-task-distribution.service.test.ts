@@ -105,7 +105,7 @@ test("rejects a stale concurrent distribution without decrementing or writing a 
   const service = new InspectionTaskDistributionService(database as never);
 
   await assert.rejects(
-    service.update("task-1", "photo-1", { action: "archive", archiveObjectId: "community-1" }),
+    runAsMember(() => service.update("task-1", "photo-1", { action: "archive", archiveObjectId: "community-1" })),
     /照片已由其他操作完成分发，请刷新后重试/,
   );
 

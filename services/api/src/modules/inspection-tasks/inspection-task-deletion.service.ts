@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
-import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 export interface InspectionTaskPurgeResult {
   taskId: string;
@@ -26,6 +26,7 @@ export class InspectionTaskDeletionService {
   }
 
   async purge(taskId: string): Promise<InspectionTaskPurgeResult> {
+    const actor = requireCurrentIdentity().username;
     const projectId = currentProjectId();
     const storagePaths = new Set<string>();
     const result = await this.database.$transaction(async (transaction) => {
@@ -128,7 +129,7 @@ export class InspectionTaskDeletionService {
         data: {
           projectId,
           id: `audit-${randomUUID()}`,
-          actor: currentActorUsername(),
+          actor,
           action: "inspectionTask.purge",
           targetType: "inspectionTask",
           targetId: taskId,

@@ -72,6 +72,7 @@ async function runUpload(fileName: string, options: {
         if (options.jobError) throw options.jobError;
       },
     },
+    auditLog: { create: async () => undefined },
     $transaction: async (operation: (transaction: Record<string, unknown>) => Promise<unknown>) => operation(database as unknown as Record<string, unknown>),
   };
   const auditService = { record: async () => undefined };
@@ -241,7 +242,10 @@ test("rejects PNG/JPEG uploads and removes their temporary files", async () => {
     await writeFile(tempPath, "not-allowed");
     const service = new MapAssetUploadService({} as never, { record: async () => undefined } as never);
 
-    await assert.rejects(() => service.createFromUpload({ filename: fileName, originalname: fileName, mimetype: "image/png", path: tempPath, size: 11 }, {}), /TIF\/TIFF.*XYZ ZIP/);
+    await assert.rejects(() => runWithProjectContext({
+      projectId: "jinshan",
+      identity: { id: "account-member", sub: "account-member", username: "member", name: "成员", role: "member", tokenVersion: 1, projectIds: ["jinshan"] },
+    }, () => service.createFromUpload({ filename: fileName, originalname: fileName, mimetype: "image/png", path: tempPath, size: 11 }, {})), /TIF\/TIFF.*XYZ ZIP/);
     await assert.rejects(access(tempPath));
     await rm(tempDirectory, { recursive: true, force: true });
   }
@@ -414,11 +418,15 @@ test("records activation time when publishing a tile map in the selected project
         return {};
       },
     },
-    $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
+    auditLog: { create: async () => undefined },
+    async $transaction(this: any, operation: any) { return typeof operation === "function" ? operation(this) : Promise.all(operation); },
   };
   const service = new MapAssetUploadService(database as never, { record: async () => undefined } as never);
 
-  await runWithProjectContext({ projectId: "jinshan" }, () => service.publishTileMap("map-1"));
+  await runWithProjectContext({
+    projectId: "jinshan",
+    identity: { id: "account-member", sub: "account-member", username: "member", name: "成员", role: "member", tokenVersion: 1, projectIds: ["jinshan"] },
+  }, () => service.publishTileMap("map-1"));
 
   assert.ok(activatedUpdate);
   assert.deepEqual(activatedUpdate.where, { id: "map-1", projectId: "jinshan" });

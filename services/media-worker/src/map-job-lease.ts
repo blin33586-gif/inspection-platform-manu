@@ -74,24 +74,33 @@ export class MapJobLeaseCoordinator {
   }
 
   async heartbeat(jobId: string, attemptId: string) {
+    await this.heartbeatGlobal();
     const now = this.now();
     const expiresAt = this.deadline(now);
-    const global = await this.database.mapWorkerLease.updateMany({
-      where: { id: GLOBAL_MAP_LEASE_ID, ownerId: this.ownerId },
-      data: { expiresAt, heartbeatAt: now },
-    });
-    if (global.count !== 1) throw new Error("地图处理全局租约已丢失");
-
     const job = await this.database.mediaProcessingJob.updateMany({
       where: {
         id: jobId,
         status: "running",
         leaseOwner: this.ownerId,
         attemptId,
+        leaseExpiresAt: { gt: now },
       },
       data: { leaseExpiresAt: expiresAt, heartbeatAt: now },
     });
     if (job.count !== 1) throw new Error("地图处理任务租约已丢失");
+  }
+
+  async heartbeatGlobal() {
+    const now = this.now();
+    const global = await this.database.mapWorkerLease.updateMany({
+      where: {
+        id: GLOBAL_MAP_LEASE_ID,
+        ownerId: this.ownerId,
+        expiresAt: { gt: now },
+      },
+      data: { expiresAt: this.deadline(now), heartbeatAt: now },
+    });
+    if (global.count !== 1) throw new Error("地图处理全局租约已丢失");
   }
 
   async expiredMapJobs(): Promise<ExpiredMapJob[]> {

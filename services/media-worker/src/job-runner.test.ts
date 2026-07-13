@@ -20,6 +20,7 @@ function testMapLeaseCoordinator(overrides: Record<string, unknown> = {}) {
       heartbeatAt: new Date("2026-07-14T00:00:00.000Z"),
     }),
     heartbeat: async () => {},
+    heartbeatGlobal: async () => {},
     releaseJob: async () => {},
     releaseGlobal: async () => {},
     ...overrides,
@@ -190,7 +191,10 @@ test("successfully extracts a map package and atomically activates it only for i
       update: (input: Record<string, unknown>) => { activations.push(input); return { kind: "activate", input }; },
     },
     auditLog: { create: (input: Record<string, unknown>) => ({ kind: "audit", input }) },
-    $transaction: async (operations: unknown[]) => { transactions.push(operations); return operations; },
+    async $transaction(this: any, operation: any) {
+      transactions.push([]);
+      return typeof operation === "function" ? operation(this) : Promise.all(operation);
+    },
   };
   const outputDirectories: string[] = [];
   const runner = new JobRunner(database as never, storageRoot, {
@@ -222,7 +226,7 @@ test("successfully extracts a map package and atomically activates it only for i
     assert.equal((activations[0].data as Record<string, unknown>).processStatus, "published");
     assert.ok((activations[0].data as Record<string, unknown>).activatedAt instanceof Date);
     assert.equal(transactions.length, 1);
-    assert.equal(transactions[0].length, 4);
+    assert.equal(transactions.length, 1);
     assert.equal(await readFile(join(storageRoot, "map-tiles/map-new/1/0/0.png"), "utf8"), "tile");
     await assert.rejects(() => stat(join(storageRoot, "map-tiles/.tmp-map-new")), { code: "ENOENT" });
     assert.equal(await readFile(sourcePath, "utf8"), "source-retained");
@@ -256,7 +260,9 @@ test("keeps map work globally serial within the worker", async () => {
       update: (input: unknown) => input,
     },
     auditLog: { create: (input: unknown) => input },
-    $transaction: async (operations: unknown[]) => operations,
+    async $transaction(this: any, operation: any) {
+      return typeof operation === "function" ? operation(this) : Promise.all(operation);
+    },
   };
   const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-serial-"));
   await mkdir(join(storageRoot, "map-assets"), { recursive: true });
@@ -303,7 +309,10 @@ test("failed map processing cleans partial outputs, preserves the source and nev
   const database = {
     mediaProcessingJob: {
       findFirst: async () => job,
-      updateMany: async () => ({ count: 1 }),
+      updateMany: async (input: Record<string, unknown>) => {
+        if ((input.data as Record<string, unknown>).status === "failed") jobUpdates.push(input);
+        return { count: 1 };
+      },
       findUnique: async () => job,
       update: (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
     },
@@ -318,7 +327,9 @@ test("failed map processing cleans partial outputs, preserves the source and nev
       update: (input: Record<string, unknown>) => { mapUpdates.push(input); return input; },
     },
     auditLog: { create: (input: unknown) => input },
-    $transaction: async (operations: unknown[]) => operations,
+    async $transaction(this: any, operation: any) {
+      return typeof operation === "function" ? operation(this) : Promise.all(operation);
+    },
   };
   const runner = new JobRunner(database as never, storageRoot, {
     mapLeaseCoordinator: testMapLeaseCoordinator() as never,
@@ -390,10 +401,10 @@ test("activation transaction failure rolls back the old map and cleans the renam
       update: (input: Record<string, unknown>) => { mapUpdates.push(input); return input; },
     },
     auditLog: { create: (input: unknown) => input },
-    $transaction: async (operations: unknown[]) => {
+    async $transaction(this: any, operation: any) {
       transactionCalls += 1;
       if (transactionCalls === 1) throw new Error("激活事务失败");
-      return operations;
+      return typeof operation === "function" ? operation(this) : Promise.all(operation);
     },
   };
   const runner = new JobRunner(database as never, storageRoot, {
@@ -407,7 +418,7 @@ test("activation transaction failure rolls back the old map and cleans the renam
 
   try {
     assert.equal(await runner.processNext(), true);
-    assert.equal(transactionCalls, 1);
+    assert.equal(transactionCalls, 2);
     const failedUpdate = mapUpdates.find((input) => (
       (input.data as Record<string, unknown>).processStatus === "failed"
     ));
@@ -436,7 +447,10 @@ test("rejects a map asset id that does not belong to the job project before read
   const database = {
     mediaProcessingJob: {
       findFirst: async () => job,
-      updateMany: async () => ({ count: 1 }),
+      updateMany: async (input: Record<string, unknown>) => {
+        if ((input.data as Record<string, unknown>).status === "failed") jobUpdates.push(input);
+        return { count: 1 };
+      },
       findUnique: async () => job,
       update: async (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
     },
@@ -446,7 +460,9 @@ test("rejects a map asset id that does not belong to the job project before read
       update: async (input: Record<string, unknown>) => input,
     },
     auditLog: { create: async (input: unknown) => input },
-    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+    async $transaction(this: any, operation: any) {
+      return typeof operation === "function" ? operation(this) : Promise.all(operation);
+    },
   };
   const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
     mapLeaseCoordinator: testMapLeaseCoordinator() as never,
@@ -479,7 +495,10 @@ test("rejects a payload source path that differs from the project map asset stor
   const database = {
     mediaProcessingJob: {
       findFirst: async () => job,
-      updateMany: async () => ({ count: 1 }),
+      updateMany: async (input: Record<string, unknown>) => {
+        if ((input.data as Record<string, unknown>).status === "failed") jobUpdates.push(input);
+        return { count: 1 };
+      },
       findUnique: async () => job,
       update: async (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
     },
@@ -493,7 +512,9 @@ test("rejects a payload source path that differs from the project map asset stor
       update: async (input: Record<string, unknown>) => input,
     },
     auditLog: { create: async (input: unknown) => input },
-    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+    async $transaction(this: any, operation: any) {
+      return typeof operation === "function" ? operation(this) : Promise.all(operation);
+    },
   };
   const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
     mapLeaseCoordinator: testMapLeaseCoordinator() as never,
@@ -528,7 +549,10 @@ test("rejects map jobs whose asset source type or process status is not allowed"
     const database = {
       mediaProcessingJob: {
         findFirst: async () => job,
-        updateMany: async () => ({ count: 1 }),
+        updateMany: async (input: Record<string, unknown>) => {
+          if ((input.data as Record<string, unknown>).status === "failed") jobUpdates.push(input);
+          return { count: 1 };
+        },
         findUnique: async () => job,
         update: async (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
       },
@@ -543,7 +567,9 @@ test("rejects map jobs whose asset source type or process status is not allowed"
         update: async (input: Record<string, unknown>) => input,
       },
       auditLog: { create: async (input: unknown) => input },
-      $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+      async $transaction(this: any, operation: any) {
+        return typeof operation === "function" ? operation(this) : Promise.all(operation);
+      },
     };
     const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
       mapLeaseCoordinator: testMapLeaseCoordinator() as never,
@@ -580,7 +606,10 @@ test("preserves the processing error when temporary-output cleanup also fails", 
   const database = {
     mediaProcessingJob: {
       findFirst: async () => job,
-      updateMany: async () => ({ count: 1 }),
+      updateMany: async (input: Record<string, unknown>) => {
+        if ((input.data as Record<string, unknown>).status === "failed") jobUpdates.push(input);
+        return { count: 1 };
+      },
       findUnique: async () => job,
       update: async (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
     },
@@ -594,7 +623,9 @@ test("preserves the processing error when temporary-output cleanup also fails", 
       update: async (input: Record<string, unknown>) => input,
     },
     auditLog: { create: async (input: unknown) => input },
-    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+    async $transaction(this: any, operation: any) {
+      return typeof operation === "function" ? operation(this) : Promise.all(operation);
+    },
   };
   const runner = new JobRunner(database as never, storageRoot, {
     mapLeaseCoordinator: testMapLeaseCoordinator() as never,
@@ -617,7 +648,7 @@ test("preserves the processing error when temporary-output cleanup also fails", 
   }
 });
 
-test("marks the job failed even when persisting the map asset error fails", async () => {
+test("uses one fenced transaction when persisting the map asset failure fails", async () => {
   const job = {
     id: "job-asset-update-failed",
     projectId: "jinshan",
@@ -632,7 +663,10 @@ test("marks the job failed even when persisting the map asset error fails", asyn
   const database = {
     mediaProcessingJob: {
       findFirst: async () => job,
-      updateMany: async () => ({ count: 1 }),
+      updateMany: async (input: Record<string, unknown>) => {
+        if ((input.data as Record<string, unknown>).status === "failed") jobUpdates.push(input);
+        return { count: 1 };
+      },
       findUnique: async () => job,
       update: async (input: Record<string, unknown>) => { jobUpdates.push(input); return input; },
     },
@@ -651,9 +685,9 @@ test("marks the job failed even when persisting the map asset error fails", asyn
       update: () => { throw new Error("地图错误状态写入失败"); },
     },
     auditLog: { create: async (input: unknown) => input },
-    $transaction: async (operations: Promise<unknown>[]) => {
+    async $transaction(this: any, operation: any) {
       failureTransactionCalls += 1;
-      return Promise.all(operations);
+      return typeof operation === "function" ? operation(this) : Promise.all(operation);
     },
   };
   const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
@@ -662,9 +696,8 @@ test("marks the job failed even when persisting the map asset error fails", asyn
   });
 
   assert.equal(await runner.processNext(), true);
-  assert.equal(failureTransactionCalls, 0);
-  assert.equal((jobUpdates[0].data as Record<string, unknown>).status, "failed");
-  assert.equal((jobUpdates[0].data as Record<string, unknown>).errorMessage, "瓦片处理失败");
+  assert.equal(failureTransactionCalls, 1);
+  assert.equal((jobUpdates[0].where as Record<string, unknown>).leaseOwner, "test-runner");
 });
 
 test("never replaces or removes an existing final tile directory", async () => {
@@ -1026,6 +1059,165 @@ test("map processing heartbeats during work and releases its lease on completion
   } finally {
     await rm(storageRoot, { recursive: true, force: true });
   }
+});
+
+test("crash recovery removes a promoted final directory only when its attempt marker matches", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-promoted-recovery-"));
+  const finalDirectory = join(storageRoot, "map-tiles/map-crashed");
+  await mkdir(finalDirectory, { recursive: true });
+  await writeFile(join(finalDirectory, ".xunjianbao-map-attempt"), "old-attempt", "utf8");
+  await writeFile(join(finalDirectory, "tile.png"), "partial-final");
+  let returned = false;
+  const runner = new JobRunner({
+    mediaProcessingJob: { findFirst: async () => null },
+    mapAsset: { updateMany: async () => ({ count: 1 }) },
+  } as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator({
+      expiredMapJobs: async () => returned ? [] : (returned = true, [{
+        id: "job-crashed",
+        projectId: "jinshan",
+        inputJson: JSON.stringify({ mapAssetId: "map-crashed" }),
+        attemptId: "old-attempt",
+        leaseOwner: "dead-runner",
+        leaseExpiresAt: new Date("2026-07-14T00:00:00.000Z"),
+      }]),
+    }) as never,
+  });
+
+  try {
+    assert.equal(await runner.processNext(), false);
+    await assert.rejects(() => stat(finalDirectory), { code: "ENOENT" });
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("crash recovery never removes a final directory owned by another attempt", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-foreign-final-"));
+  const finalDirectory = join(storageRoot, "map-tiles/map-foreign");
+  await mkdir(finalDirectory, { recursive: true });
+  await writeFile(join(finalDirectory, ".xunjianbao-map-attempt"), "new-attempt", "utf8");
+  await writeFile(join(finalDirectory, "tile.png"), "new-final");
+  let returned = false;
+  const runner = new JobRunner({
+    mediaProcessingJob: { findFirst: async () => null },
+    mapAsset: { updateMany: async () => ({ count: 1 }) },
+  } as never, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator({
+      expiredMapJobs: async () => returned ? [] : (returned = true, [{
+        id: "job-foreign",
+        projectId: "jinshan",
+        inputJson: JSON.stringify({ mapAssetId: "map-foreign" }),
+        attemptId: "old-attempt",
+        leaseOwner: "dead-runner",
+        leaseExpiresAt: new Date("2026-07-14T00:00:00.000Z"),
+      }]),
+    }) as never,
+  });
+
+  try {
+    assert.equal(await runner.processNext(), false);
+    assert.equal(await readFile(join(finalDirectory, "tile.png"), "utf8"), "new-final");
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("successful map transaction fences the attempt before publishing any asset", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-map-success-fence-"));
+  const job = {
+    id: "job-success-fence", projectId: "jinshan", jobType: "map_tile_package", status: "queued",
+    inputJson: JSON.stringify({ mapAssetId: "map-success-fence", sourcePath: "storage/map-assets/map-success-fence.zip" }),
+  };
+  let fenceSeen = false;
+  let published = false;
+  const database: any = {
+    mediaProcessingJob: {
+      findFirst: async () => job,
+      findUnique: async () => ({ ...job, status: "running", attemptId: "11111111-1111-4111-8111-111111111111" }),
+      updateMany: async ({ where }: any) => {
+        if (where.status === "running") {
+          fenceSeen = where.leaseOwner === "test-runner" && where.attemptId === "11111111-1111-4111-8111-111111111111" && where.leaseExpiresAt?.gt instanceof Date;
+        }
+        return { count: 1 };
+      },
+    },
+    mapAsset: {
+      findUnique: async () => queuedMapAsset("map-success-fence", "jinshan", "storage/map-assets/map-success-fence.zip"),
+      updateMany: async () => ({ count: 1 }),
+      update: async () => { assert.equal(fenceSeen, true); published = true; return {}; },
+    },
+    auditLog: { create: async () => ({}) },
+  };
+  database.$transaction = async (callback: any) => callback(database);
+  const runner = new JobRunner(database, storageRoot, {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
+    extractTilePackage: async ({ outputDirectory }) => { await mkdir(outputDirectory, { recursive: true }); return mapMetadata; },
+  });
+
+  try {
+    assert.equal(await runner.processNext(), true);
+    assert.equal(published, true);
+  } finally {
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("a stale failed runner cannot fail the replacement attempt or its map asset", async () => {
+  const job = {
+    id: "job-stale-fail", projectId: "jinshan", jobType: "map_tile_package", status: "queued",
+    inputJson: JSON.stringify({ mapAssetId: "map-stale-fail", sourcePath: "storage/map-assets/map-stale-fail.zip" }),
+  };
+  let claimCalls = 0;
+  let assetFailureWrites = 0;
+  const database: any = {
+    mediaProcessingJob: {
+      findFirst: async () => job,
+      findUnique: async () => ({ ...job, status: "running", attemptId: "11111111-1111-4111-8111-111111111111" }),
+      updateMany: async ({ where }: any) => ({ count: where.status === "queued" && claimCalls++ === 0 ? 1 : 0 }),
+      update: async () => { throw new Error("stale runner used unfenced update"); },
+    },
+    mapAsset: {
+      findUnique: async () => queuedMapAsset("map-stale-fail", "jinshan", "storage/map-assets/map-stale-fail.zip"),
+      updateMany: async ({ data }: any) => { if (data.processStatus === "failed") assetFailureWrites += 1; return { count: 1 }; },
+    },
+  };
+  database.$transaction = async (callback: any) => callback(database);
+  const runner = new JobRunner(database, "/tmp/xunjianbao-storage", {
+    mapLeaseCoordinator: testMapLeaseCoordinator() as never,
+    extractTilePackage: async () => { throw new Error("conversion failed after lease takeover"); },
+  });
+
+  assert.equal(await runner.processNext(), true);
+  assert.equal(assetFailureWrites, 0);
+});
+
+test("recovery heartbeats the global lease and revalidates ownership before claiming", async () => {
+  let globalHeartbeats = 0;
+  let claimWrites = 0;
+  const job = {
+    id: "job-after-recovery", projectId: "jinshan", jobType: "map_tile_package", status: "queued",
+    inputJson: JSON.stringify({ mapAssetId: "map-after-recovery", sourcePath: "storage/map-assets/map-after-recovery.zip" }),
+  };
+  let finds = 0;
+  const database = {
+    mediaProcessingJob: {
+      findFirst: async () => finds++ === 0 ? null : job,
+      updateMany: async () => { claimWrites += 1; return { count: 1 }; },
+    },
+  };
+  const runner = new JobRunner(database as never, "/tmp/xunjianbao-storage", {
+    mapLeaseCoordinator: testMapLeaseCoordinator({
+      heartbeatGlobal: async () => {
+        globalHeartbeats += 1;
+        if (globalHeartbeats >= 2) throw new Error("地图处理全局租约已丢失");
+      },
+    }) as never,
+  });
+
+  await assert.rejects(() => runner.processNext(), /全局租约已丢失/);
+  assert.equal(claimWrites, 0);
+  assert.ok(globalHeartbeats >= 2);
 });
 
 test("prepares direct images before they enter the task photo pool", async () => {

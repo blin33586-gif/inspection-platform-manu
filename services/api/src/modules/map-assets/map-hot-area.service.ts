@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import { parseMapGeometry } from "./map-geometry.js";
-import { currentProjectId } from "../auth/project-context.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 interface CreateHotAreaInput {
   label?: string;
@@ -35,6 +35,7 @@ export class MapHotAreaService {
   ) {}
 
   async create(mapAssetId: string, input: CreateHotAreaInput) {
+    const actor = requireCurrentIdentity().username;
     const projectId = currentProjectId();
     const mapAsset = await this.database.mapAsset.findUnique({ where: { id: mapAssetId, projectId } });
     if (!mapAsset) throw new NotFoundException("Map asset not found");
@@ -52,44 +53,35 @@ export class MapHotAreaService {
       ? JSON.stringify(parseMapGeometry(input.polygon))
       : null;
 
-    const hotArea = await this.database.mapHotArea.create({
-      data: {
-        id: `ha-${randomUUID()}`,
-        mapAssetId,
-        label: input.label.trim(),
-        objectType: input.objectType,
-        objectId: input.objectId?.trim() || null,
-        x: this.parseOptionalNumber(input.x),
-        y: this.parseOptionalNumber(input.y),
-        width: this.parseOptionalNumber(input.width),
-        height: this.parseOptionalNumber(input.height),
-        polygon,
-        color: this.parseOptionalColor(input.color),
-      },
-      select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true, color: true },
-    });
-
-    await this.database.mapAsset.update({
-      where: { id: mapAssetId, projectId },
-      data: {
-        hotAreaCount: { increment: 1 },
-        ...(mapAsset.processStatus === "uploaded" ? { processStatus: "published" } : {}),
-      },
-    });
-
-    await this.auditService.record({
-      action: "map.hotArea.create",
-      targetType: "mapHotArea",
-      targetId: hotArea.id,
-      summary: `为地图「${mapAsset.name}」新增热区「${hotArea.label}」`,
+    const hotArea = await this.database.$transaction(async (transaction) => {
+      const created = await transaction.mapHotArea.create({
+        data: {
+          id: `ha-${randomUUID()}`, mapAssetId, label: input.label!.trim(), objectType: input.objectType!,
+          objectId: input.objectId?.trim() || null,
+          x: this.parseOptionalNumber(input.x), y: this.parseOptionalNumber(input.y),
+          width: this.parseOptionalNumber(input.width), height: this.parseOptionalNumber(input.height),
+          polygon, color: this.parseOptionalColor(input.color),
+        },
+        select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true, color: true },
+      });
+      await transaction.mapAsset.update({
+        where: { id: mapAssetId, projectId },
+        data: { hotAreaCount: { increment: 1 }, ...(mapAsset.processStatus === "uploaded" ? { processStatus: "published" } : {}) },
+      });
+      await transaction.auditLog.create({
+        data: { projectId, id: `audit-${randomUUID()}`, actor, action: "map.hotArea.create", targetType: "mapHotArea", targetId: created.id, summary: `为地图「${mapAsset.name}」新增热区「${created.label}」` },
+      });
+      return created;
     });
 
     return hotArea;
   }
 
   async update(mapAssetId: string, hotAreaId: string, input: UpdateHotAreaInput) {
+    const actor = requireCurrentIdentity().username;
+    const projectId = currentProjectId();
     const existing = await this.database.mapHotArea.findFirst({
-      where: { id: hotAreaId, mapAssetId, mapAsset: { projectId: currentProjectId() } },
+      where: { id: hotAreaId, mapAssetId, mapAsset: { projectId } },
       include: { mapAsset: { select: { name: true } } },
     });
     if (!existing) throw new NotFoundException("Map hot area not found");
@@ -106,25 +98,25 @@ export class MapHotAreaService {
     if (input.color !== undefined) data.color = this.parseRequiredColor(input.color);
     if (!Object.keys(data).length) throw new BadRequestException("No map hot area fields to update");
 
-    const hotArea = await this.database.mapHotArea.update({
-      where: { id: existing.id },
-      data,
-      select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true, color: true },
-    });
-
-    await this.auditService.record({
-      action: "map.hotArea.update",
-      targetType: "mapHotArea",
-      targetId: hotArea.id,
-      summary: `编辑地图「${existing.mapAsset.name}」标绘「${hotArea.label}」`,
+    const hotArea = await this.database.$transaction(async (transaction) => {
+      const updated = await transaction.mapHotArea.update({
+        where: { id: existing.id }, data,
+        select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true, color: true },
+      });
+      await transaction.auditLog.create({
+        data: { projectId, id: `audit-${randomUUID()}`, actor, action: "map.hotArea.update", targetType: "mapHotArea", targetId: updated.id, summary: `编辑地图「${existing.mapAsset.name}」标绘「${updated.label}」` },
+      });
+      return updated;
     });
 
     return hotArea;
   }
 
   async remove(mapAssetId: string, hotAreaId: string) {
+    const actor = requireCurrentIdentity().username;
+    const projectId = currentProjectId();
     const existing = await this.database.mapHotArea.findFirst({
-      where: { id: hotAreaId, mapAssetId, mapAsset: { projectId: currentProjectId() } },
+      where: { id: hotAreaId, mapAssetId, mapAsset: { projectId } },
       include: { mapAsset: { select: { name: true } } },
     });
     if (!existing) throw new NotFoundException("Map hot area not found");
@@ -132,16 +124,12 @@ export class MapHotAreaService {
     await this.database.$transaction(async (transaction) => {
       await transaction.mapHotArea.delete({ where: { id: existing.id } });
       await transaction.mapAsset.update({
-        where: { id: mapAssetId, projectId: currentProjectId() },
+        where: { id: mapAssetId, projectId },
         data: { hotAreaCount: { decrement: 1 } },
       });
-    });
-
-    await this.auditService.record({
-      action: "map.hotArea.delete",
-      targetType: "mapHotArea",
-      targetId: existing.id,
-      summary: `从地图「${existing.mapAsset.name}」删除标绘「${existing.label}」`,
+      await transaction.auditLog.create({
+        data: { projectId, id: `audit-${randomUUID()}`, actor, action: "map.hotArea.delete", targetType: "mapHotArea", targetId: existing.id, summary: `从地图「${existing.mapAsset.name}」删除标绘「${existing.label}」` },
+      });
     });
   }
 

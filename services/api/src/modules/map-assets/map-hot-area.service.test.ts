@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MapHotAreaService } from "./map-hot-area.service.js";
+import { runAsMember } from "../../test-support/auth-context.js";
 
 test("converts a legacy uploaded map to the canonical published state when adding a hot area", async () => {
   let mapUpdate: Record<string, unknown> | undefined;
@@ -23,10 +24,12 @@ test("converts a legacy uploaded map to the canonical published state when addin
         color: null,
       }),
     },
+    auditLog: { create: async () => undefined },
+    async $transaction(this: any, callback: any) { return callback(this); },
   };
   const service = new MapHotAreaService(database as never, { record: async () => undefined } as never);
 
-  await service.create("map-legacy", { label: "入口", objectType: "point" });
+  await runAsMember(() => service.create("map-legacy", { label: "入口", objectType: "point" }));
 
   assert.equal((mapUpdate?.data as Record<string, unknown>).processStatus, "published");
 });
@@ -58,6 +61,8 @@ test("updates a named community area without changing its linked archive", async
         };
       },
     },
+    auditLog: { create: async ({ data }: { data: { action: string; summary: string } }) => { auditRecords.push(data); } },
+    async $transaction(this: any, callback: any) { return callback(this); },
   };
   const auditService = {
     record: async (input: { action: string; summary: string }) => {
@@ -66,13 +71,13 @@ test("updates a named community area without changing its linked archive", async
   };
   const service = new MapHotAreaService(database as never, auditService as never);
 
-  const result = await service.update("map-street-main", "ha-yutian", {
+  const result = await runAsMember(() => service.update("map-street-main", "ha-yutian", {
     label: "玉田新村北区",
     polygon: JSON.stringify({
       shape: "polygon",
       coordinates: [[31.287, 121.486], [31.288, 121.489], [31.286, 121.49]],
     }),
-  });
+  }));
 
   assert.equal(updateCalls.length, 1);
   assert.equal(updateCalls[0].data.label, "玉田新村北区");
@@ -107,11 +112,13 @@ test("stores a selected map boundary color", async () => {
         };
       },
     },
+    auditLog: { create: async () => undefined },
+    async $transaction(this: any, callback: any) { return callback(this); },
   };
   const auditService = { record: async () => undefined };
   const service = new MapHotAreaService(database as never, auditService as never);
 
-  const result = await service.update("map-street-main", "ha-quyang", { color: "#52c41a" });
+  const result = await runAsMember(() => service.update("map-street-main", "ha-quyang", { color: "#52c41a" }));
 
   assert.equal(updateCalls.length, 1);
   assert.equal(updateCalls[0].data.color, "#52c41a");
@@ -133,6 +140,9 @@ test("deletes a selected hot area and records the map audit", async () => {
         mapAssetUpdates.push(input);
       },
     },
+    auditLog: {
+      create: async ({ data }: { data: { action: string; targetId?: string } }) => { auditRecords.push(data); },
+    },
   };
   const database = {
     mapHotArea: {
@@ -151,7 +161,7 @@ test("deletes a selected hot area and records the map audit", async () => {
   };
   const service = new MapHotAreaService(database as never, auditService as never);
 
-  await service.remove("map-street-main", "ha-yutian");
+  await runAsMember(() => service.remove("map-street-main", "ha-yutian"));
 
   assert.deepEqual(deletedIds, ["ha-yutian"]);
   assert.deepEqual(mapAssetUpdates[0].data, { hotAreaCount: { decrement: 1 } });

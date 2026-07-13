@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from "@nes
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
-import { currentProjectId } from "../auth/project-context.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 export interface SubmitTaskReportInput {
   taskId?: string;
@@ -22,6 +22,7 @@ export class ReportCreateService {
   ) {}
 
   async submit(input: SubmitTaskReportInput) {
+    const actor = requireCurrentIdentity().username;
     const projectId = currentProjectId();
     if (!input.taskId) throw new BadRequestException("请选择报告所属任务");
     if (input.taskPhotoIds !== undefined && !Array.isArray(input.taskPhotoIds)) {
@@ -89,16 +90,18 @@ export class ReportCreateService {
         });
       }
 
+      await transaction.auditLog.create({
+        data: {
+          projectId, id: `audit-${randomUUID()}`, actor,
+          action: "report.task.submit", targetType: "report", targetId: report.id,
+          summary: `提交任务「${task.name}」综合报告「${title}」`,
+        },
+      });
+
       return {
         report: { ...report, taskPhotoIds },
         taskName: task.name,
       };
-    });
-    await this.auditService.record({
-      action: "report.task.submit",
-      targetType: "report",
-      targetId: result.report.id,
-      summary: `提交任务「${result.taskName}」综合报告「${title}」`,
     });
     return result.report;
   }

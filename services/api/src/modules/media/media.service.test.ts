@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MediaService } from "./media.service.js";
@@ -83,6 +83,7 @@ test("stores an uploaded MOV video and automatically queues extraction", async (
       },
     },
     auditLog: { create: async () => undefined },
+    async $transaction(this: any, callback: any) { return callback(this); },
   };
   const service = new MediaService(database as never);
 
@@ -151,6 +152,7 @@ test("stores an uploaded ZIP and automatically queues archive extraction", async
       },
     },
     auditLog: { create: async () => undefined },
+    async $transaction(this: any, callback: any) { return callback(this); },
   };
   const service = new MediaService(database as never);
 
@@ -270,4 +272,62 @@ test("requeues a failed direct image preparation job", async () => {
   const job = await service.retryJob("job-image-1");
 
   assert.equal(job.status, "queued");
+});
+
+test("rejects an upload without identity before moving its file or writing the database", async () => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), "xunjianbao-media-no-identity-"));
+  const tempPath = join(tempDirectory, "flight.mov");
+  await writeFile(tempPath, "video-source");
+  let databaseWrites = 0;
+  const service = new MediaService({
+    mediaAsset: { create: async () => { databaseWrites += 1; } },
+    mediaProcessingJob: { upsert: async () => { databaseWrites += 1; } },
+  } as never);
+
+  try {
+    await assert.rejects(() => service.createVideoFromUpload({
+      filename: "flight.mov", originalname: "flight.mov", mimetype: "video/quicktime", path: tempPath, size: 12,
+    }, 3), /Authenticated identity/);
+    await access(tempPath);
+    assert.equal(databaseWrites, 0);
+  } finally {
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
+});
+
+test("rolls back uploaded media and its queued job when audit creation fails", async () => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), "xunjianbao-media-audit-rollback-"));
+  const tempPath = join(tempDirectory, "flight.mov");
+  await writeFile(tempPath, "video-source");
+  const assets: Array<Record<string, unknown>> = [];
+  const jobs: Array<Record<string, unknown>> = [];
+  const database: any = {
+    mediaAsset: { create: async ({ data }: any) => { assets.push(data); return data; } },
+    mediaProcessingJob: { upsert: async ({ create }: any) => { jobs.push(create); return create; } },
+    auditLog: { create: async () => { throw new Error("audit unavailable"); } },
+  };
+  database.$transaction = async (callback: any) => {
+    const stagedAssets: Array<Record<string, unknown>> = [];
+    const stagedJobs: Array<Record<string, unknown>> = [];
+    const transaction = {
+      ...database,
+      mediaAsset: { create: async ({ data }: any) => { stagedAssets.push(data); return data; } },
+      mediaProcessingJob: { upsert: async ({ create }: any) => { stagedJobs.push(create); return create; } },
+    };
+    const result = await callback(transaction);
+    assets.push(...stagedAssets);
+    jobs.push(...stagedJobs);
+    return result;
+  };
+  const service = new MediaService(database);
+
+  try {
+    await assert.rejects(() => runAsMember(() => service.createVideoFromUpload({
+      filename: "flight.mov", originalname: "flight.mov", mimetype: "video/quicktime", path: tempPath, size: 12,
+    }, 3)), /audit unavailable/);
+    assert.equal(assets.length, 0);
+    assert.equal(jobs.length, 0);
+  } finally {
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
 });

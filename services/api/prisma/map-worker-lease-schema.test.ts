@@ -27,3 +27,13 @@ test("migration normalizes duplicate active maps before creating a partial uniqu
     migration.indexOf('SET "isActive" = false') < migration.indexOf('CREATE UNIQUE INDEX "MapAsset_one_active_per_project"'),
   );
 });
+
+test("lease migration requeues legacy running map jobs and their running assets", async () => {
+  const migration = await readFile(
+    new URL("./migrations/20260714020000_map_worker_leases/migration.sql", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(migration, /UPDATE "MediaProcessingJob"[\s\S]*"status" = 'queued'[\s\S]*"leaseOwner" = NULL[\s\S]*"attemptId" = NULL[\s\S]*"heartbeatAt" = NULL[\s\S]*"jobType" IN \('tiff_tile', 'map_tile_package'\)[\s\S]*"status" = 'running'/i);
+  assert.match(migration, /UPDATE "MapAsset"[\s\S]*"processStatus" = 'queued'[\s\S]*"processStatus" = 'running'/i);
+});

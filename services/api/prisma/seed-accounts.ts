@@ -5,6 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 type AccountDatabase = Pick<PrismaClient, "userAccount">;
 
 export async function seedLegacyAccounts(database: AccountDatabase, env: NodeJS.ProcessEnv) {
+  const allowsDevelopmentDefaults = env.NODE_ENV === "development" || env.NODE_ENV === "test";
   const administrator = await database.userAccount.findFirst({
     where: { role: "platform_admin" },
     select: { id: true },
@@ -22,11 +23,11 @@ export async function seedLegacyAccounts(database: AccountDatabase, env: NodeJS.
   });
 
   const administratorCredentials = administrator ? null : {
-    username: env.ADMIN_USERNAME?.trim() || (env.NODE_ENV === "production" ? "" : "admin"),
-    password: env.ADMIN_PASSWORD || (env.NODE_ENV === "production" ? "" : "xunjianbao2026"),
+    username: env.ADMIN_USERNAME?.trim() || (allowsDevelopmentDefaults ? "admin" : ""),
+    password: env.ADMIN_PASSWORD || (allowsDevelopmentDefaults ? "xunjianbao2026" : ""),
   };
   if (administratorCredentials && (!administratorCredentials.username || !administratorCredentials.password)) {
-    throw new Error("Production administrator bootstrap requires explicit ADMIN_USERNAME and ADMIN_PASSWORD");
+    throw new Error("Safe-mode administrator bootstrap requires explicit ADMIN_USERNAME and ADMIN_PASSWORD");
   }
   const memberCredentials = member ? null : resolveLegacyMemberCredentials(env, { required: true })!;
 

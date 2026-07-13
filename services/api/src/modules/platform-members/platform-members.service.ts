@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -8,7 +9,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { hashPassword } from "../auth/password-hash.js";
-import { requireCurrentIdentity } from "../auth/project-context.js";
+import { currentIdentity } from "../auth/project-context.js";
 
 export interface PlatformMemberDto {
   id: string;
@@ -61,6 +62,7 @@ export class PlatformMembersService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async list(): Promise<PlatformMemberDto[]> {
+    this.requirePlatformAdministrator();
     const members = await this.database.userAccount.findMany({
       where: { role: "member" },
       orderBy: { createdAt: "desc" },
@@ -70,6 +72,7 @@ export class PlatformMembersService {
   }
 
   async create(input: CreatePlatformMemberInput): Promise<PlatformMemberDto> {
+    const administrator = this.requirePlatformAdministrator();
     this.assertInputObject(input);
     const name = this.requiredText(input.name, "姓名不能为空");
     const phone = this.validPhone(input.phone);
@@ -119,7 +122,7 @@ export class PlatformMembersService {
       await transaction.platformAuditLog.create({
         data: {
           id: randomUUID(),
-          actorId: requireCurrentIdentity().id,
+          actorId: administrator.id,
           action: "member.create",
           targetId: member.id,
           summary: `创建成员“${name}”，分配项目：${projects.map((project) => project.name).join("、")}`,
@@ -134,6 +137,7 @@ export class PlatformMembersService {
     id: string,
     input: UpdatePlatformMemberInput,
   ): Promise<PlatformMemberDto> {
+    const administrator = this.requirePlatformAdministrator();
     this.assertInputObject(input);
     const name = input.name === undefined
       ? undefined
@@ -210,7 +214,7 @@ export class PlatformMembersService {
       await transaction.platformAuditLog.create({
         data: {
           id: randomUUID(),
-          actorId: requireCurrentIdentity().id,
+          actorId: administrator.id,
           action,
           targetId: id,
           summary: `更新成员“${current!.name}”：${summaryParts.join("；")}`,
@@ -225,6 +229,7 @@ export class PlatformMembersService {
     id: string,
     input: { password?: string },
   ): Promise<PlatformMemberDto> {
+    const administrator = this.requirePlatformAdministrator();
     this.assertInputObject(input);
     const password = this.validPassword(input.password);
     const passwordHash = await hashPassword(password);
@@ -244,7 +249,7 @@ export class PlatformMembersService {
       await transaction.platformAuditLog.create({
         data: {
           id: randomUUID(),
-          actorId: requireCurrentIdentity().id,
+          actorId: administrator.id,
           action: "member.password.reset",
           targetId: id,
           summary: `已重置成员“${current!.name}”的密码`,
@@ -271,6 +276,14 @@ export class PlatformMembersService {
       projectNames: assignedProjects.map((project) => project.name),
       createdAt: member.createdAt.toISOString(),
     };
+  }
+
+  private requirePlatformAdministrator() {
+    const identity = currentIdentity();
+    if (!identity || identity.role !== "platform_admin") {
+      throw new ForbiddenException("platform administrator identity is required");
+    }
+    return identity;
   }
 
   private requiredText(value: unknown, message: string) {

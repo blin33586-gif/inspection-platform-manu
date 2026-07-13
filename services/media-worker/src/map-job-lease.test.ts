@@ -157,3 +157,17 @@ test("only expired running map attempts are returned for crash recovery", async 
 
   assert.deepEqual((await coordinator.expiredMapJobs()).map((job) => job.id), ["expired-map"]);
 });
+
+test("global heartbeat renews only the current owner and rejects a stale recovery runner", async () => {
+  let timestamp = new Date("2026-07-14T00:00:00.000Z");
+  const now = () => new Date(timestamp);
+  const database = createLeaseDatabase(now);
+  const owner = new MapJobLeaseCoordinator(database as never, { ownerId: "runner-a", leaseDurationMs: 30_000, now });
+  const stale = new MapJobLeaseCoordinator(database as never, { ownerId: "runner-b", leaseDurationMs: 30_000, now });
+  assert.equal(await owner.acquireGlobal(), true);
+
+  timestamp = new Date("2026-07-14T00:00:10.000Z");
+  await owner.heartbeatGlobal();
+  assert.equal(database.lease()?.expiresAt.toISOString(), "2026-07-14T00:00:40.000Z");
+  await assert.rejects(() => stale.heartbeatGlobal(), /全局租约已丢失/);
+});

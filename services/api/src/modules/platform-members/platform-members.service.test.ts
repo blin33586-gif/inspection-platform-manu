@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlatformMembersService } from "./platform-members.service.js";
-import { runAsPlatformAdmin } from "../../test-support/auth-context.js";
+import {
+  PlatformMembersService,
+  type CreatePlatformMemberInput,
+  type UpdatePlatformMemberInput,
+} from "./platform-members.service.js";
+import { runAsMember, runAsPlatformAdmin } from "../../test-support/auth-context.js";
 
 const projects = {
   jinshan: { id: "jinshan", name: "金山项目" },
@@ -40,11 +44,13 @@ function createFixture(options: {
     membershipDeleteCalls: number;
     membershipCreateCalls: number;
     auditCalls: number;
+    databaseCalls: number;
   } = {
     updateCalls: 0,
     membershipDeleteCalls: 0,
     membershipCreateCalls: 0,
     auditCalls: 0,
+    databaseCalls: 0,
   };
   const account = options.account ?? memberAccount();
   const availableProjectIds = options.availableProjectIds ?? Object.keys(projects);
@@ -109,14 +115,26 @@ function createFixture(options: {
 
   const database = {
     userAccount: {
-      findMany: async () => [account],
+      findMany: async () => { fixture.databaseCalls += 1; return [account]; },
     },
-    $transaction: async (callback: (client: typeof transaction) => unknown) => callback(transaction),
+    $transaction: async (callback: (client: typeof transaction) => unknown) => {
+      fixture.databaseCalls += 1;
+      return callback(transaction);
+    },
   };
+
+  const rawService = new PlatformMembersService(database as never);
+  const service = {
+    list: () => runAsPlatformAdmin(() => rawService.list()),
+    create: (input: CreatePlatformMemberInput) => runAsPlatformAdmin(() => rawService.create(input)),
+    update: (id: string, input: UpdatePlatformMemberInput) => runAsPlatformAdmin(() => rawService.update(id, input)),
+    resetPassword: (id: string, input: { password?: string }) => runAsPlatformAdmin(() => rawService.resetPassword(id, input)),
+  } as PlatformMembersService;
 
   return {
     fixture,
-    service: new PlatformMembersService(database as never),
+    service,
+    rawService,
   };
 }
 
@@ -354,4 +372,18 @@ test("rejects a non-string reset password with a bad request before hashing", as
     () => service.resetPassword("member-1", { password: {} } as never),
     (error: any) => error?.getStatus?.() === 400,
   );
+});
+
+test("every public member-management method rejects direct member or missing context before database access", async () => {
+  for (const invoke of [
+    (service: PlatformMembersService) => service.list(),
+    (service: PlatformMembersService) => service.create(validCreateInput),
+    (service: PlatformMembersService) => service.update("member-1", { name: "李四" }),
+    (service: PlatformMembersService) => service.resetPassword("member-1", { password: "new-password-2026" }),
+  ]) {
+    const { rawService, fixture } = createFixture();
+    await assert.rejects(() => invoke(rawService), /platform administrator/i);
+    await assert.rejects(() => runAsMember(() => invoke(rawService)), /platform administrator/i);
+    assert.equal(fixture.databaseCalls, 0);
+  }
 });

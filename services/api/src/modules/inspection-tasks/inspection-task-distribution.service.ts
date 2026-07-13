@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
-import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 export interface PhotoDistributionInput {
   action?: "archive" | "ignore" | "unarchive";
@@ -13,6 +13,7 @@ export class InspectionTaskDistributionService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async update(taskId: string, photoId: string, input: PhotoDistributionInput) {
+    const actor = requireCurrentIdentity().username;
     const projectId = currentProjectId();
     if (!input.action || !new Set(["archive", "ignore", "unarchive"]).has(input.action)) {
       throw new BadRequestException("请选择归档、忽略或解除归档操作");
@@ -82,7 +83,7 @@ export class InspectionTaskDistributionService {
         data: {
           id: `audit-${randomUUID()}`,
           projectId,
-          actor: currentActorUsername(),
+          actor,
           action: input.action === "archive" ? "taskPhoto.archive" : input.action === "unarchive" ? "taskPhoto.unarchive" : "taskPhoto.ignore",
           targetType: "taskPhoto",
           targetId: photoId,

@@ -50,14 +50,14 @@ test("runtime configuration exposes configured credentials", () => {
     ADMIN_USERNAME: "operator",
     ADMIN_PASSWORD: "password",
     MEMBER_USERNAME: "reader",
-    MEMBER_PASSWORD: "reader-password",
+    MEMBER_PASSWORD: "reader-password-2026",
     AUTH_SECRET: "secret",
   });
 
   assert.equal(config.adminUsername, "operator");
   assert.equal(config.adminPassword, "password");
   assert.equal(config.memberUsername, "reader");
-  assert.equal(config.memberPassword, "reader-password");
+  assert.equal(config.memberPassword, "reader-password-2026");
   assert.equal(config.authSecret, "secret");
 });
 

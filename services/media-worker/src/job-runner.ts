@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, relative, resolve, sep } from "node:path";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { sanitizeMapProcessingFailureMessage, type TileMapMetadata } from "@xunjianbao/shared";
@@ -70,8 +70,12 @@ interface JobRunnerHandlers {
 interface MapOutputDirectories {
   temporaryDirectory: string;
   finalDirectory: string;
+  attemptId: string;
   promoted: boolean;
+  committed: boolean;
 }
+
+const MAP_ATTEMPT_MARKER = ".xunjianbao-map-attempt";
 
 export class JobRunner {
   private readonly extractVideoFramesHandler: NonNullable<JobRunnerHandlers["extractVideoFrames"]>;
@@ -176,29 +180,36 @@ export class JobRunner {
     attemptId: string,
     error: unknown,
   ) {
-    try {
-      await this.mapLeaseCoordinator.heartbeat(jobId, attemptId);
-    } catch {
-      return;
-    }
     const errorMessage = sanitizeMapProcessingFailureMessage(error instanceof Error ? error.message : error);
-    await Promise.allSettled([
-      Promise.resolve().then(() => this.database.mediaProcessingJob.update({
-        where: { id: jobId },
-        data: {
-          status: "failed",
-          errorMessage,
+    try {
+      await this.database.$transaction(async (transaction) => {
+        const failed = await transaction.mediaProcessingJob.updateMany({
+          where: {
+            id: jobId,
+            status: "running",
+            leaseOwner: this.mapLeaseCoordinator.ownerId,
+            attemptId,
+            leaseExpiresAt: { gt: new Date() },
+          },
+          data: {
+            status: "failed",
+            errorMessage,
           leaseOwner: null,
           attemptId: null,
           leaseExpiresAt: null,
-          heartbeatAt: null,
-        },
-      })),
-      Promise.resolve().then(() => this.database.mapAsset.updateMany({
-        where: { id: mapAssetId, projectId, processStatus: { in: ["queued", "running"] } },
-        data: { processStatus: "failed", errorMessage, isActive: false },
-      })),
-    ]);
+            heartbeatAt: null,
+          },
+        });
+        if (failed.count !== 1) throw new Error("地图处理任务租约已丢失");
+        await transaction.mapAsset.updateMany({
+          where: { id: mapAssetId, projectId, processStatus: { in: ["queued", "running"] } },
+          data: { processStatus: "failed", errorMessage, isActive: false },
+        });
+      });
+    } catch {
+      // A lost/stale attempt must not alter the replacement attempt. Database
+      // errors leave the running lease to expire and be recovered safely.
+    }
   }
 
   private errorMessage(error: unknown) {
@@ -225,7 +236,7 @@ export class JobRunner {
       });
       if (!candidate) {
         if (!await this.mapLeaseCoordinator.acquireGlobal()) return null;
-        await this.recoverExpiredMapJobs();
+        await this.withGlobalHeartbeat(() => this.recoverExpiredMapJobs());
         candidate = await this.database.mediaProcessingJob.findFirst({
           where: {
             jobType: { in: ["tiff_tile", "map_tile_package"] },
@@ -241,7 +252,7 @@ export class JobRunner {
         if (!await this.mapLeaseCoordinator.acquireGlobal()) {
           return this.claimNonMapJob();
         }
-        if (await this.recoverExpiredMapJobs() > 0) {
+        if (await this.withGlobalHeartbeat(() => this.recoverExpiredMapJobs()) > 0) {
           candidate = await this.database.mediaProcessingJob.findFirst({
             where: {
               jobType: { in: ["tiff_tile", "map_tile_package"] },
@@ -258,6 +269,7 @@ export class JobRunner {
 
       const isMapJob = this.isMapJobType(candidate.jobType);
       const attemptId = isMapJob ? this.mapLeaseCoordinator.newAttemptId() : null;
+      if (isMapJob) await this.mapLeaseCoordinator.heartbeatGlobal();
       const claim = await this.database.mediaProcessingJob.updateMany({
         where: { id: candidate.id, status: "queued" },
         data: {
@@ -299,6 +311,7 @@ export class JobRunner {
     let recoveredCount = 0;
     for (const expired of await this.mapLeaseCoordinator.expiredMapJobs()) {
       await this.cleanupExpiredMapAttempt(expired);
+      await this.mapLeaseCoordinator.heartbeatGlobal();
       const requeued = await this.mapLeaseCoordinator.requeueExpiredJob(expired);
       if (requeued.count !== 1) continue;
       recoveredCount += 1;
@@ -315,8 +328,30 @@ export class JobRunner {
   private async cleanupExpiredMapAttempt(job: ExpiredMapJob) {
     const mapAssetId = this.readMapAssetId(job.inputJson);
     if (!mapAssetId || !job.attemptId) return;
-    const directory = this.mapOutputDirectories(job.id, mapAssetId, job.attemptId).temporaryDirectory;
-    await this.removePathHandler(directory, { recursive: true, force: true });
+    const directories = this.mapOutputDirectories(job.id, mapAssetId, job.attemptId);
+    await this.removePathHandler(directories.temporaryDirectory, { recursive: true, force: true });
+    await this.removeFinalDirectoryIfOwned(directories.finalDirectory, job.attemptId);
+  }
+
+  private async withGlobalHeartbeat<T>(process: () => Promise<T>) {
+    let heartbeatError: unknown = null;
+    let inFlight = Promise.resolve();
+    await this.mapLeaseCoordinator.heartbeatGlobal();
+    const timer = setInterval(() => {
+      inFlight = inFlight
+        .then(() => this.mapLeaseCoordinator.heartbeatGlobal())
+        .catch((error) => { heartbeatError = error; });
+    }, this.heartbeatIntervalMs);
+    timer.unref();
+    try {
+      const result = await process();
+      await inFlight;
+      if (heartbeatError) throw heartbeatError;
+      return result;
+    } finally {
+      clearInterval(timer);
+      await inFlight;
+    }
   }
 
   private async withMapHeartbeat(jobId: string, attemptId: string, process: () => Promise<void>) {
@@ -375,6 +410,8 @@ export class JobRunner {
   private async prepareMapOutput(jobId: string, mapAssetId: string, attemptId: string) {
     const directories = this.mapOutputDirectories(jobId, mapAssetId, attemptId);
     await mkdir(resolve(this.storageRoot, "map-tiles"), { recursive: true });
+    await mkdir(directories.temporaryDirectory, { recursive: true });
+    await writeFile(resolve(directories.temporaryDirectory, MAP_ATTEMPT_MARKER), attemptId, "utf8");
     return directories;
   }
 
@@ -392,12 +429,29 @@ export class JobRunner {
     directories.promoted = true;
     const publicTilePath = `storage/map-tiles/${mapAssetId}`;
     const activatedAt = new Date();
-    await this.database.$transaction([
-      this.database.mapAsset.updateMany({
+    await this.database.$transaction(async (transaction) => {
+      const completed = await transaction.mediaProcessingJob.updateMany({
+        where: {
+          id: jobId,
+          status: "running",
+          leaseOwner: this.mapLeaseCoordinator.ownerId,
+          attemptId,
+          leaseExpiresAt: { gt: new Date() },
+        },
+        data: {
+          status: "completed",
+          progress: 100,
+          completedAt: activatedAt,
+          errorMessage: null,
+          outputJson: JSON.stringify({ tilePath: publicTilePath, metadata }),
+        },
+      });
+      if (completed.count !== 1) throw new Error("地图处理任务租约已丢失");
+      await transaction.mapAsset.updateMany({
         where: { projectId, isActive: true },
         data: { isActive: false },
-      }),
-      this.database.mapAsset.update({
+      });
+      await transaction.mapAsset.update({
         where: { id: mapAssetId, projectId },
         data: {
           projectId,
@@ -409,18 +463,8 @@ export class JobRunner {
           activatedAt,
           errorMessage: null,
         },
-      }),
-      this.database.mediaProcessingJob.update({
-        where: { id: jobId },
-        data: {
-          status: "completed",
-          progress: 100,
-          completedAt: activatedAt,
-          errorMessage: null,
-          outputJson: JSON.stringify({ tilePath: publicTilePath, metadata }),
-        },
-      }),
-      this.database.auditLog.create({
+      });
+      await transaction.auditLog.create({
         data: {
           projectId,
           id: `audit-${randomUUID()}`,
@@ -430,16 +474,35 @@ export class JobRunner {
           targetId: mapAssetId,
           summary: "地图瓦片处理完成并自动启用",
         },
-      }),
-    ]);
+      });
+    });
+    directories.committed = true;
+    await rm(resolve(directories.finalDirectory, MAP_ATTEMPT_MARKER), { force: true });
   }
 
   private async cleanupOwnedMapOutput(directories: MapOutputDirectories) {
     const ownedPaths = [directories.temporaryDirectory];
-    if (directories.promoted) ownedPaths.push(directories.finalDirectory);
+    if (directories.promoted && !directories.committed) {
+      await this.removeFinalDirectoryIfOwned(directories.finalDirectory, directories.attemptId);
+    }
     await Promise.allSettled(ownedPaths.map(async (path) => (
       this.removePathHandler(path, { recursive: true, force: true })
     )));
+  }
+
+  private async removeFinalDirectoryIfOwned(finalDirectory: string, attemptId: string | null) {
+    if (!attemptId) return;
+    if (await this.readAttemptMarker(finalDirectory) !== attemptId) return;
+    await this.removePathHandler(finalDirectory, { recursive: true, force: true });
+  }
+
+  private async readAttemptMarker(directory: string) {
+    try {
+      return (await readFile(resolve(directory, MAP_ATTEMPT_MARKER), "utf8")).trim();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
   }
 
   private async assertFinalDirectoryAbsent(finalDirectory: string) {
@@ -779,7 +842,9 @@ export class JobRunner {
     return {
       temporaryDirectory: resolve(this.storageRoot, "map-tiles", `.tmp-${mapAssetId}-${safeJobId}-${safeAttemptId}`),
       finalDirectory: resolve(this.storageRoot, "map-tiles", mapAssetId),
+      attemptId,
       promoted: false,
+      committed: false,
     };
   }
 

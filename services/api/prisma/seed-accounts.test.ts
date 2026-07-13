@@ -44,15 +44,22 @@ test("seeding an existing legacy member never restores a revoked project members
   assert.equal(database.accounts.length, 2);
 });
 
-test("production seed refuses default credentials only when the legacy member is absent", async () => {
+test("seed CLI without an explicit development environment refuses public default credentials on a fresh database", async () => {
   const database = createDatabase();
   await assert.rejects(
     () => seedLegacyAccounts(database as never, {
-      NODE_ENV: "production",
       ADMIN_USERNAME: "admin",
       ADMIN_PASSWORD: "admin-password-2026",
     }),
     /MEMBER_USERNAME and MEMBER_PASSWORD/,
   );
   assert.equal(database.accounts.length, 0, "credential validation must finish before bootstrap writes");
+});
+
+test("only explicit development and test environments may use legacy development defaults", async () => {
+  for (const NODE_ENV of ["development", "test"]) {
+    const database = createDatabase();
+    await seedLegacyAccounts(database as never, { NODE_ENV });
+    assert.deepEqual(database.accounts.map((account) => account.username), ["admin", "member"]);
+  }
 });

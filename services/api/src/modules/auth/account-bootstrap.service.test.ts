@@ -76,7 +76,7 @@ test("creates configured legacy accounts once and assigns the member to both pro
   process.env.ADMIN_USERNAME = "configured-admin";
   process.env.ADMIN_PASSWORD = "configured-admin-password";
   process.env.MEMBER_USERNAME = "configured-member";
-  process.env.MEMBER_PASSWORD = "configured-member-password";
+  process.env.MEMBER_PASSWORD = "configured-member-password-2026";
 
   try {
     const database = createDatabase();
@@ -84,7 +84,7 @@ test("creates configured legacy accounts once and assigns the member to both pro
       ADMIN_USERNAME: "configured-admin",
       ADMIN_PASSWORD: "configured-admin-password",
       MEMBER_USERNAME: "configured-member",
-      MEMBER_PASSWORD: "configured-member-password",
+      MEMBER_PASSWORD: "configured-member-password-2026",
     });
 
     await service.onModuleInit();
@@ -100,7 +100,7 @@ test("creates configured legacy accounts once and assigns the member to both pro
     assert.equal(member?.name, "项目成员");
     assert.equal(member?.phone, "");
     assert.equal(await verifyPassword("configured-admin-password", administrator?.passwordHash ?? ""), true);
-    assert.equal(await verifyPassword("configured-member-password", member?.passwordHash ?? ""), true);
+    assert.equal(await verifyPassword("configured-member-password-2026", member?.passwordHash ?? ""), true);
     assert.deepEqual(
       database.memberships.map(({ projectId }) => projectId).sort(),
       ["jinshan", "quyang"],
@@ -147,6 +147,17 @@ test("production refuses to create a project-wide legacy member without explicit
     /MEMBER_USERNAME and MEMBER_PASSWORD/,
   );
   assert.equal(database.accounts.length, 1);
+  assert.equal(database.memberships.length, 0);
+});
+
+test("API bootstrap without NODE_ENV uses safe-mode credentials on a fresh database", async () => {
+  const database = createDatabase();
+
+  await assert.rejects(
+    () => new AccountBootstrapService(database as never, {}).onModuleInit(),
+    /ADMIN_USERNAME and ADMIN_PASSWORD/,
+  );
+  assert.equal(database.accounts.length, 0);
   assert.equal(database.memberships.length, 0);
 });
 

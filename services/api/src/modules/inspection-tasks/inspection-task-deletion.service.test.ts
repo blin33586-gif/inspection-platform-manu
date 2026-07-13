@@ -141,5 +141,5 @@ test("rejects deleting a missing task", async () => {
 
   const service = new InspectionTaskDeletionService(database as never, join(tmpdir(), "missing-storage"));
 
-  await assert.rejects(service.purge("missing-task"), /巡检任务不存在/);
+  await assert.rejects(runAsMember(() => service.purge("missing-task")), /巡检任务不存在/);
 });
