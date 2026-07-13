@@ -2837,35 +2837,53 @@ h4 {
   margin-top: 18px;
 }
 
-.pipeline {
+.map-upload-form {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-  margin-top: 18px;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.35fr) auto;
+  align-items: end;
+  gap: 18px;
+  max-width: 1040px;
+  margin-top: 24px;
 }
 
-.pipeline div {
-  min-height: 120px;
-  padding: 18px;
-  border-radius: 8px;
-  background: linear-gradient(145deg, #ffffff, #edf6ff);
-  border: 1px solid var(--line);
+.map-upload-form .ant-form-item {
+  margin-bottom: 0;
 }
 
-.pipeline strong {
+.map-upload-form > .ant-btn {
+  min-width: 118px;
+  margin-bottom: 1px;
+}
+
+.map-section-description {
+  max-width: 720px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.map-history-polling {
+  color: var(--blue-700);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.map-history-alert {
+  margin-top: 20px;
+}
+
+.map-history-muted {
+  color: var(--muted);
+}
+
+.map-history-status {
   display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  margin-bottom: 18px;
-  border-radius: 50%;
-  color: white;
-  background: var(--blue-700);
+  justify-items: start;
+  gap: 6px;
 }
 
-.pipeline span {
-  color: var(--blue-950);
-  font-weight: 800;
+.map-history-error {
+  color: var(--red-500);
   line-height: 1.5;
 }
 
@@ -5170,7 +5188,7 @@ h4 {
   .split-section,
   .detail-layout,
   .detail-kpis,
-  .pipeline,
+  .map-upload-form,
   .coordinate-grid,
   .report-write-basic,
   .report-write-workspace,
@@ -5178,6 +5196,15 @@ h4 {
   .archive-overview-card,
   .card-grid {
     grid-template-columns: 1fr;
+  }
+
+  .map-upload-form > .ant-btn {
+    width: 100%;
+  }
+
+  .map-history-section .section-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .global-nav-inner {
