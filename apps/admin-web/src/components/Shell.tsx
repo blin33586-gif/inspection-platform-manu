@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { canModifyProject, projectArchiveNavigation } from "../auth/project-access";
+import { canManagePlatform, canModifyProject, projectArchiveNavigation } from "../auth/project-access";
 import { clearSession, getCurrentProject, getUser } from "../auth/session";
-import { ACCOUNT_NAV_ITEMS, PRIMARY_NAV_ITEMS } from "./navigation-config";
+import { accountNavigation, PRIMARY_NAV_ITEMS } from "./navigation-config";
 
 const navItems = [
   { to: "/", label: "地图总览" },
@@ -14,6 +14,7 @@ export function Shell() {
   const user = getUser();
   const project = getCurrentProject();
   const projectNavItems = projectArchiveNavigation(project);
+  const accountNavItems = accountNavigation(user?.role);
   const canModify = canModifyProject(user?.role);
   const isHome = location.pathname === "/";
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
@@ -21,7 +22,7 @@ export function Shell() {
   const isProjectActive = projectNavItems.some((item) => (
     location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
   ));
-  const isAccountActive = ACCOUNT_NAV_ITEMS.some((item) => (
+  const isAccountActive = accountNavItems.some((item) => (
     location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
   ));
 
@@ -82,7 +83,7 @@ export function Shell() {
           <div className="project-pill">
             <div>
               <span>{project?.shortName ?? "未选择项目"}</span>
-              <strong>{user?.name ?? "用户"} · {canModify ? "管理员" : "只读"}</strong>
+              <strong>{user?.name ?? "用户"} · {canManagePlatform(user?.role) ? "平台管理员" : "项目成员"}</strong>
             </div>
             <div className={`account-menu ${isAccountActive ? "active" : ""} ${isAccountMenuOpen ? "open" : ""}`}>
               <button
@@ -96,10 +97,7 @@ export function Shell() {
                 <span aria-hidden="true">⌄</span>
               </button>
               <div className="nav-dropdown account-dropdown" role="menu">
-                <NavLink role="menuitem" to="/projects" onClick={() => setIsAccountMenuOpen(false)}>
-                  切换项目
-                </NavLink>
-                {ACCOUNT_NAV_ITEMS.map((item) => (
+                {accountNavItems.map((item) => (
                   <NavLink key={item.to} role="menuitem" to={item.to} onClick={() => setIsAccountMenuOpen(false)}>
                     {item.label}
                   </NavLink>

@@ -2,15 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, DatePicker, Empty, Input, message, Modal, Pagination, Select, Spin } from "antd";
 import {
-  Bell,
   CalendarDays,
-  ChevronDown,
   FileArchive,
   FileImage,
   FileText,
   Gauge,
   Images,
-  ListChecks,
   ScanSearch,
   Trash2,
   Timer,
@@ -219,13 +216,7 @@ export function MediaLibraryPage() {
     <section className="media-library-page video-analysis-page real-task-center-page">
       <main className="media-workspace">
         <header className="media-topbar video-analysis-topbar">
-          <div><h1>巡检任务中心</h1></div>
-          <div className="media-top-actions">
-            <Bell size={18} />
-            <span className="media-notice">12</span>
-            <strong>{project?.shortName ?? "当前项目"}</strong>
-            <ChevronDown size={16} />
-          </div>
+          <h1>巡检任务中心</h1>
         </header>
 
         <section className="media-filter-strip video-filter-strip real-task-filter-strip">
@@ -272,7 +263,6 @@ export function MediaLibraryPage() {
           <div className="media-gallery-toolbar video-task-toolbar">
             <strong>任务</strong>
             <span>共 {taskList.total} 个真实任务</span>
-            <div><span>按上传时间排序</span><ListChecks size={18} /></div>
           </div>
 
           {loading ? <div className="real-task-loading"><Spin />正在读取任务</div> : null}

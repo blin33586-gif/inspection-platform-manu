@@ -3869,30 +3869,6 @@ h4 {
   font-weight: 900;
 }
 
-.media-topbar span {
-  color: #6e7f93;
-  font-size: 13px;
-}
-
-.media-top-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  color: #102033;
-}
-
-.media-notice {
-  display: grid;
-  width: 24px;
-  height: 20px;
-  place-items: center;
-  border-radius: 999px;
-  color: white !important;
-  background: var(--red-500);
-  font-size: 11px !important;
-  font-weight: 900;
-}
-
 .media-filter-strip {
   gap: 16px;
   margin-bottom: 22px;
@@ -4141,13 +4117,6 @@ h4 {
   color: #53667d;
   background: #f8fbff;
   font-weight: 700;
-}
-
-.media-gallery-toolbar > div {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-left: auto;
 }
 
 .media-card-grid {
@@ -5238,8 +5207,12 @@ h4 {
     padding-left: 10px;
   }
 
-  .project-pill div {
+  .project-pill > div:first-child {
     display: none;
+  }
+
+  .project-pill .account-menu {
+    display: block;
   }
 
   .video-main-grid,
@@ -5260,12 +5233,6 @@ h4 {
   .video-task-toolbar {
     align-items: flex-start;
     flex-wrap: wrap;
-  }
-
-  .video-task-toolbar > div {
-    width: 100%;
-    justify-content: flex-start;
-    margin-left: 0;
   }
 
   .video-workspace-split {
