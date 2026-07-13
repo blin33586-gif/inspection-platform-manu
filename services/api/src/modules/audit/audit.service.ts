@@ -1,9 +1,9 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
+import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
 
 interface RecordAuditInput {
-  actor?: string;
   action: string;
   targetType: string;
   targetId?: string | null;
@@ -17,8 +17,9 @@ export class AuditService {
   async record(input: RecordAuditInput) {
     return this.database.auditLog.create({
       data: {
+        projectId: currentProjectId(),
         id: `audit-${randomUUID()}`,
-        actor: input.actor ?? "曲阳路街道管理员",
+        actor: currentActorUsername(),
         action: input.action,
         targetType: input.targetType,
         targetId: input.targetId,
@@ -30,6 +31,7 @@ export class AuditService {
   async list(filters: { keyword?: string; action?: string; targetType?: string } = {}) {
     const logs = await this.database.auditLog.findMany({
       where: {
+        projectId: currentProjectId(),
         ...(filters.action ? { action: { contains: filters.action } } : {}),
         ...(filters.targetType ? { targetType: filters.targetType } : {}),
         ...(filters.keyword

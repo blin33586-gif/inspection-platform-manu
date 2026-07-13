@@ -4,17 +4,26 @@ export interface RuntimeConfig {
   isProduction: boolean;
   adminUsername?: string;
   adminPassword?: string;
+  memberUsername?: string;
+  memberPassword?: string;
   authSecret?: string;
 }
+
+import { resolveLegacyMemberCredentials } from "./legacy-member-credentials.js";
 
 export function resolveRuntimeConfig(env: NodeJS.ProcessEnv): RuntimeConfig {
   const isProduction = env.NODE_ENV === "production";
   const adminUsername = env.ADMIN_USERNAME;
   const adminPassword = env.ADMIN_PASSWORD;
+  const memberUsername = env.MEMBER_USERNAME;
+  const memberPassword = env.MEMBER_PASSWORD;
   const authSecret = env.AUTH_SECRET;
 
   if (isProduction && (!adminUsername || !adminPassword || !authSecret)) {
     throw new Error("Production requires ADMIN_USERNAME, ADMIN_PASSWORD and AUTH_SECRET");
+  }
+  if (memberUsername || memberPassword) {
+    resolveLegacyMemberCredentials(env, { required: true });
   }
 
   const port = Number(env.API_PORT ?? env.PORT ?? 3010);
@@ -28,6 +37,8 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv): RuntimeConfig {
     isProduction,
     adminUsername,
     adminPassword,
+    memberUsername,
+    memberPassword,
     authSecret,
   };
 }

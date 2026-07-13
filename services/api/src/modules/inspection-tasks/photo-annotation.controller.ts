@@ -23,6 +23,6 @@ export class PhotoAnnotationController {
 
   @Put(":photoId/annotation")
   async save(@Param("photoId") photoId: string, @Body() input: SavePhotoAnnotationInput) {
-    return ok(await this.annotationService.save(photoId, "admin", input));
+    return ok(await this.annotationService.save(photoId, input));
   }
 }

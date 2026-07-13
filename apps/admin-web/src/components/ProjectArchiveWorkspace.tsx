@@ -2,13 +2,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Input, message, Spin } from "antd";
 import { Download, Pencil, Printer, Search, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import type { ManagedObjectArchiveOverview } from "@xunjianbao/shared";
 import { getApi, getApiUrl, patchJsonApi, postJsonApi } from "../api/client";
+import { canModifyProject } from "../auth/project-access";
+import { getCurrentProject, getUser } from "../auth/session";
 import {
   isArchiveMediaRequestCurrent,
   toProjectArchiveMediaItem,
   type ArchiveTaskPhotoRecord,
   type ProjectArchiveMediaItem,
 } from "./project-archive-media-adapter";
+import {
+  filterArchiveIssues,
+  formatArchiveDateTime,
+  formatLatestInspectionTime,
+  issueSeverityTone,
+  type ArchiveIssueFilter,
+} from "./project-archive-overview-presenter";
 
 export type ProjectArchiveVariant = "community" | "road" | "point";
 
@@ -84,21 +94,35 @@ const archiveMeta: Record<ProjectArchiveVariant, {
   },
 };
 
-const issueTemplates = [
-  { title: "非机动车乱停放", status: "待整改", date: "2026-07-03 09:45", severity: "warning" },
-  { title: "沿街广告牌破损", status: "待整改", date: "2026-07-02 16:30", severity: "danger" },
-  { title: "建筑垃圾临时堆放", status: "待复查", date: "2026-07-02 11:15", severity: "warning" },
-  { title: "飞线充电隐患", status: "已整改", date: "2026-07-01 15:10", severity: "success" },
-  { title: "绿化带杂物堆放", status: "已整改", date: "2026-06-30 10:25", severity: "success" },
-];
-
-const timelineItems = [
-  { title: "待整改超时提醒", description: "系统已生成复查提醒，等待责任单位处置", time: "2026-07-03 16:30", tone: "danger" },
-  { title: "问题上报", description: "无人机巡检发现疑似问题，进入台账", time: "2026-07-03 09:45", tone: "warning" },
-  { title: "问题派发", description: "已派发至街道处置人员", time: "2026-07-03 10:20", tone: "info" },
-  { title: "现场核实", description: "处置人员现场核实问题情况", time: "2026-07-03 10:40", tone: "info" },
-  { title: "处置中", description: "正在安排整改和复查", time: "2026-07-03 11:05", tone: "muted" },
-];
+const jinshanArchiveMeta: typeof archiveMeta = {
+  community: {
+    archiveTitle: "企业安全档案",
+    badge: "企业档案",
+    navTitle: "企业档案",
+    area: "上海市金山区 / 化工园区 / 入园企业",
+    owner: "园区安全管理部门、企业安全负责人",
+    frequency: "按企业风险等级巡检",
+    range: "企业厂区、生产装置、仓储区域、消防通道",
+  },
+  road: {
+    archiveTitle: "园区道路档案",
+    badge: "道路档案",
+    navTitle: "道路档案",
+    area: "上海市金山区 / 化工园区 / 园区道路",
+    owner: "园区综合管理部门",
+    frequency: "每日巡检",
+    range: "园区道路、危化品运输通道、道路设施",
+  },
+  point: {
+    archiveTitle: "园区河道档案",
+    badge: "河道档案",
+    navTitle: "河道档案",
+    area: "上海市金山区 / 化工园区 / 河道水系",
+    owner: "园区环保与水务管理部门",
+    frequency: "按周巡检",
+    range: "园区河道、排口、岸线及周边环境",
+  },
+};
 
 function statusTone(status: string) {
   if (status.includes("重点") || status.includes("超时")) return "danger";
@@ -149,8 +173,13 @@ async function loadArchiveMediaItems(path: string, signal?: AbortSignal) {
 }
 
 export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, variant }: ProjectArchiveWorkspaceProps) {
-  const meta = archiveMeta[variant];
+  const project = getCurrentProject();
+  const user = getUser();
+  const canModify = canModifyProject(user?.role);
+  const meta = (project?.id === "jinshan" ? jinshanArchiveMeta : archiveMeta)[variant];
   const [isEditingBasicInfo, setIsEditingBasicInfo] = useState(false);
+  const [overview, setOverview] = useState<ManagedObjectArchiveOverview | null>(null);
+  const [issueFilter, setIssueFilter] = useState<ArchiveIssueFilter>("all");
   const [linkedMediaItems, setLinkedMediaItems] = useState<ProjectArchiveMediaItem[]>([]);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [unlinkingPhotoId, setUnlinkingPhotoId] = useState<string | null>(null);
@@ -160,8 +189,6 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
   activeObjectIdRef.current = activeItem?.id ?? null;
   const [basicInfo, setBasicInfo] = useState<BasicInfoDraft>(() => buildBasicInfo(meta, activeItem));
   const [basicInfoDraft, setBasicInfoDraft] = useState<BasicInfoDraft>(() => buildBasicInfo(meta, activeItem));
-  const pendingCount = activeItem ? Math.max(1, Math.round(activeItem.issueCount * 0.38)) : 0;
-  const fixedCount = activeItem ? Math.max(0, activeItem.issueCount - pendingCount) : 0;
   const visibleProjectGroups = projectGroups ?? [{
     key: variant,
     label: meta.navTitle,
@@ -210,6 +237,23 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
       });
     return () => controller.abort();
   }, [activeItem?.id, refreshLinkedMedia]);
+
+  useEffect(() => {
+    setOverview(null);
+    setIssueFilter("all");
+    if (!activeItem) return;
+    const controller = new AbortController();
+    void getApi<ManagedObjectArchiveOverview>(
+      `/managed-objects/${encodeURIComponent(activeItem.id)}/archive-overview`,
+      controller.signal,
+    )
+      .then(setOverview)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        message.error(error instanceof Error ? error.message : "档案概览读取失败");
+      });
+    return () => controller.abort();
+  }, [activeItem?.id]);
 
   const requestArchiveDeletion = async (item: ProjectArchiveItem) => {
     setRequestingDeleteId(item.id);
@@ -260,7 +304,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
         <Input.Search placeholder="输入关键词搜索" />
         <div className="archive-tree">
           <details open>
-            <summary>曲阳路街道</summary>
+            <summary>{project?.shortName ?? "当前项目"}</summary>
             {visibleProjectGroups.map((group) => (
               <details key={group.key} open={group.key === variant}>
                 <summary className={group.key === variant ? "active-folder" : ""}>
@@ -275,7 +319,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
                           <span>{item.name}</span>
                           <em>{item.issueCount}</em>
                         </Link>
-                        <div className="archive-tree-actions">
+                        {canModify ? <div className="archive-tree-actions">
                           <button
 	                            type="button"
 	                            onClick={(event) => {
@@ -300,7 +344,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
                           >
                             {requestingDeleteId === item.id ? "提交中" : "删除"}
                           </button>
-                        </div>
+                        </div> : null}
                       </div>
                     ))}
                   </div>
@@ -322,16 +366,16 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
             <span className="archive-badge">{meta.badge}</span>
           </div>
           <div className="archive-actions">
-	            <Button
+            {canModify ? <Button
 	              icon={<Pencil size={15} />}
 	              onClick={() => {
 	                setBasicInfoDraft(basicInfo);
 	                setIsEditingBasicInfo(true);
 	              }}
-	            >
+            >
 	              编辑档案
-	            </Button>
-            <Button danger loading={requestingDeleteId === activeItem.id} icon={<Trash2 size={15} />} onClick={() => void requestArchiveDeletion(activeItem)}>删除</Button>
+	            </Button> : null}
+            {canModify ? <Button danger loading={requestingDeleteId === activeItem.id} icon={<Trash2 size={15} />} onClick={() => void requestArchiveDeletion(activeItem)}>删除</Button> : null}
             <Button icon={<Download size={15} />} onClick={() => message.info("导出档案功能将接入服务器文件生成")}>导出档案</Button>
             <Button icon={<Printer size={15} />} onClick={() => message.info("打印档案功能已预留")}>打印档案</Button>
           </div>
@@ -346,7 +390,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	          <div className="archive-basic-card">
 	            <div className="archive-card-title-row">
 	              <div className="archive-card-title">基础信息</div>
-	              {isEditingBasicInfo ? (
+	              {canModify && isEditingBasicInfo ? (
 	                <div className="archive-basic-actions">
 	                  <Button
 	                    size="small"
@@ -369,11 +413,11 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	                    取消
 	                  </Button>
 	                </div>
-	              ) : (
+	              ) : canModify ? (
 	                <Button size="small" icon={<Pencil size={13} />} onClick={() => setIsEditingBasicInfo(true)}>
 	                  编辑
 	                </Button>
-	              )}
+	              ) : null}
 	            </div>
 	            {isEditingBasicInfo ? (
 	              <div className="archive-basic-editor">
@@ -417,27 +461,27 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	          <div className="archive-kpi-grid">
 	            <article>
 	              <span>累计问题数</span>
-	              <strong>{activeItem.issueCount + 116}</strong>
-              <em>同比 +12%</em>
+	              <strong>{overview?.totalIssues ?? 0}</strong>
+              <em>来自当前项目问题库</em>
             </article>
             <article className="warning">
               <span>待整改数</span>
-              <strong>{pendingCount}</strong>
-              <em>较上周 +{Math.min(5, pendingCount)}</em>
+              <strong>{overview?.openIssues ?? 0}</strong>
+              <em>尚未闭环</em>
             </article>
             <article className="success">
-              <span>已整改数</span>
-              <strong>{fixedCount + 100}</strong>
-              <em>较上周 +7</em>
+              <span>已完成数</span>
+              <strong>{overview?.completedIssues ?? 0}</strong>
+              <em>已完成处置</em>
             </article>
             <article>
 	              <span>最近巡检时间</span>
-	              <strong>07-03 09:45</strong>
-	              <em>巡检人：无人机 Dock</em>
+	              <strong>{formatLatestInspectionTime(overview?.latestInspectionAt ?? null)}</strong>
+	              <em>{overview?.latestInspectionSource ? `来源：${overview.latestInspectionSource}` : "暂无巡检记录"}</em>
 	            </article>
 	            <article>
 	              <span>关联报告</span>
-	              <strong>{activeItem.reportCount}</strong>
+	              <strong>{overview?.reportCount ?? 0}</strong>
 	              <em>已归档至报告管理</em>
 	            </article>
 	          </div>
@@ -463,7 +507,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	                    <img className="archive-photo-media-image" src={photo.thumbnailUrl} alt={photo.title} />
 	                    <span className={`photo-status ${statusTone(photo.status)}`}>{photo.status}</span>
 	                    <em>{photo.capturedAt.startsWith("视频 ") ? photo.capturedAt : photo.capturedAt.slice(5, 16)}</em>
-	                    <Button
+	                    {canModify ? <Button
 	                      className="archive-photo-unlink"
 	                      danger
 	                      size="small"
@@ -472,7 +516,7 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
 	                      onClick={() => void unlinkPhoto(photo)}
 	                    >
 	                      解除关联
-	                    </Button>
+	                    </Button> : null}
 	                  </div>
 	                  <strong>{photo.issueTitle}</strong>
 	                  <span className="archive-photo-source">{photo.sourceName} / {photo.fileName}</span>
@@ -494,47 +538,31 @@ export function ProjectArchiveWorkspace({ activeItem, items, projectGroups, vari
           <div className="archive-section-head compact">
             <div>
               <h3>问题明细</h3>
-              <span>近 30 天</span>
+              <span>当前档案真实数据</span>
             </div>
             <div className="archive-filter-tabs mini">
-              <button className="active" type="button">全部</button>
-              <button type="button">待整改</button>
-              <button type="button">已整改</button>
+              <button className={issueFilter === "all" ? "active" : ""} type="button" onClick={() => setIssueFilter("all")}>全部</button>
+              <button className={issueFilter === "open" ? "active" : ""} type="button" onClick={() => setIssueFilter("open")}>未闭环</button>
+              <button className={issueFilter === "completed" ? "active" : ""} type="button" onClick={() => setIssueFilter("completed")}>已完成</button>
             </div>
           </div>
           <div className="archive-issue-list">
-            {issueTemplates.map((issue, index) => (
-              <article key={issue.title}>
+            {filterArchiveIssues(overview?.issues ?? [], issueFilter).map((issue) => (
+              <article key={issue.id}>
                 <div>
-                  <i className={issue.severity} />
-                  <strong>{issue.title}</strong>
-                  <span className={`issue-state ${statusTone(issue.status)}`}>{issue.status}</span>
+                  <i className={issueSeverityTone(issue.severity)} />
+                  <Link to={`/issues/${issue.id}`}><strong>{issue.title}</strong></Link>
+                  <span className={`issue-state ${issue.state === "open" ? "warning" : "success"}`}>{issue.stateLabel}</span>
                 </div>
-                <p>编号：QY2026070{index + 1} / {activeItem.name} / 巡检发现问题</p>
-                <time>{issue.date}</time>
+                <p>编号：{issue.id} / {activeItem.name} / {issue.category}</p>
+                <time>{formatArchiveDateTime(issue.foundAt)} · {issue.sourceLabel}</time>
               </article>
             ))}
+            {overview && filterArchiveIssues(overview.issues, issueFilter).length === 0 ? (
+              <div className="archive-tree-empty">当前筛选下暂无问题</div>
+            ) : null}
           </div>
           <Link className="archive-side-link" to="/issues">查看全部问题</Link>
-        </section>
-
-        <section className="archive-side-card">
-          <div className="archive-section-head compact">
-            <div>
-              <h3>处置时间线</h3>
-              <span>最新进展</span>
-            </div>
-          </div>
-          <div className="archive-timeline">
-            {timelineItems.map((item) => (
-              <article className={item.tone} key={item.title}>
-                <strong>{item.title}</strong>
-                <p>{item.description}</p>
-                <time>{item.time}</time>
-              </article>
-            ))}
-          </div>
-          <Link className="archive-side-link" to="/audit-logs">查看全部时间线</Link>
         </section>
       </aside>
     </section>

@@ -1,6 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { resolveDatabaseUrl } from "../src/database/database-url.js";
+import { seedLegacyAccounts } from "./seed-accounts.js";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
@@ -9,34 +10,66 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
-  await prisma.auditLog.deleteMany();
-  await prisma.mapHotArea.deleteMany();
-  await prisma.mapAsset.deleteMany();
-  await prisma.inspectionReport.deleteMany();
-  await prisma.issueAttachment.deleteMany();
-  await prisma.issue.deleteMany();
-  await prisma.managedObject.deleteMany();
-  await prisma.issueCategoryStat.deleteMany();
-  await prisma.dashboardMetric.deleteMany();
+  await prisma.project.upsert({
+    where: { id: "quyang" },
+    update: {},
+    create: {
+      id: "quyang",
+      name: "曲阳街道城管巡检项目",
+      shortName: "曲阳街道",
+      customerType: "街道城管",
+      archiveDimensions: [
+        { key: "community", label: "小区档案" },
+        { key: "road", label: "道路街面" },
+        { key: "point", label: "重点点位" },
+      ],
+    },
+  });
+  await prisma.project.upsert({
+    where: { id: "jinshan" },
+    update: {},
+    create: {
+      id: "jinshan",
+      name: "金山化工园区项目",
+      shortName: "金山化工园区",
+      customerType: "化工园区",
+      archiveDimensions: [
+        { key: "community", label: "企业档案" },
+        { key: "road", label: "道路档案" },
+        { key: "point", label: "河道档案" },
+      ],
+    },
+  });
+
+  await seedLegacyAccounts(prisma, process.env);
 
   await prisma.dashboardMetric.createMany({
+    skipDuplicates: true,
     data: [
-      { key: "inspectionsThisMonth", label: "本月巡检", value: 18 },
-      { key: "issuesThisMonth", label: "本月发现问题", value: 126 },
-      { key: "pendingIssues", label: "待处理", value: 31 },
+      { projectId: "quyang", key: "inspectionsThisMonth", label: "本月巡检", value: 18 },
+      { projectId: "quyang", key: "issuesThisMonth", label: "本月发现问题", value: 126 },
+      { projectId: "quyang", key: "pendingIssues", label: "待处理", value: 31 },
+      { projectId: "jinshan", key: "inspectionsThisMonth", label: "本月巡检", value: 0 },
+      { projectId: "jinshan", key: "issuesThisMonth", label: "本月发现问题", value: 0 },
+      { projectId: "jinshan", key: "pendingIssues", label: "待处理", value: 0 },
     ],
   });
 
   await prisma.issueCategoryStat.createMany({
+    skipDuplicates: true,
     data: [
-      { id: "stat-flying-wire", category: "飞线整治", value: 32, sort: 1 },
-      { id: "stat-occupy-road", category: "占道经营", value: 26, sort: 2 },
-      { id: "stat-illegal-build", category: "违建隐患", value: 18, sort: 3 },
-      { id: "stat-green-river", category: "绿化河道", value: 14, sort: 4 },
+      { projectId: "quyang", id: "stat-flying-wire", category: "飞线整治", value: 32, sort: 1 },
+      { projectId: "quyang", id: "stat-occupy-road", category: "占道经营", value: 26, sort: 2 },
+      { projectId: "quyang", id: "stat-illegal-build", category: "违建隐患", value: 18, sort: 3 },
+      { projectId: "quyang", id: "stat-green-river", category: "绿化河道", value: 14, sort: 4 },
+      { projectId: "jinshan", id: "js-stat-enterprise", category: "企业安全", value: 0, sort: 1 },
+      { projectId: "jinshan", id: "js-stat-road", category: "园区道路", value: 0, sort: 2 },
+      { projectId: "jinshan", id: "js-stat-river", category: "河道环境", value: 0, sort: 3 },
     ],
   });
 
   await prisma.managedObject.createMany({
+    skipDuplicates: true,
     data: [
       { id: "c-yutian", name: "玉田新村", objectType: "community", status: "待复查", issueCount: 12, reportCount: 4 },
       { id: "c-chifeng", name: "赤峰小区", objectType: "community", status: "重点", issueCount: 9, reportCount: 3 },
@@ -46,10 +79,14 @@ async function main() {
       { id: "r-yutian", name: "玉田路", objectType: "road", status: "稳定", issueCount: 3, reportCount: 1 },
       { id: "p-river-001", name: "河道绿化带", objectType: "point", objectSubtype: "绿化河道", parentName: "曲阳路街道", status: "待完善", issueCount: 2, reportCount: 0 },
       { id: "p-sign-001", name: "曲阳路重点广告牌", objectType: "point", objectSubtype: "广告牌", parentName: "曲阳路", status: "待复查", issueCount: 3, reportCount: 0 },
+      { projectId: "jinshan", id: "js-company-001", name: "上海化工区示例企业", objectType: "community", objectSubtype: "企业", parentName: "金山化工园区", status: "稳定", issueCount: 0, reportCount: 0 },
+      { projectId: "jinshan", id: "js-road-001", name: "园区示例道路", objectType: "road", objectSubtype: "园区道路", parentName: "金山化工园区", status: "稳定", issueCount: 0, reportCount: 0 },
+      { projectId: "jinshan", id: "js-river-001", name: "园区示例河道", objectType: "point", objectSubtype: "河道", parentName: "金山化工园区", status: "稳定", issueCount: 0, reportCount: 0 },
     ],
   });
 
   await prisma.issue.createMany({
+    skipDuplicates: true,
     data: [
       { id: "is-001", title: "3 号楼外立面飞线充电", objectId: "c-yutian", category: "飞线", status: "pending", severity: "medium", foundAt: new Date("2026-06-24") },
       { id: "is-002", title: "沿街门头广告牌松动", objectId: "r-quyang", category: "广告牌", status: "processing", severity: "normal", foundAt: new Date("2026-06-22") },
@@ -59,6 +96,7 @@ async function main() {
   });
 
   await prisma.inspectionReport.createMany({
+    skipDuplicates: true,
     data: [
       { id: "rp-0624", title: "玉田新村飞线与堆物巡检报告", reportDate: new Date("2026-06-24"), reportType: "community", relatedObjectId: "c-yutian", relatedObjectName: "玉田新村", issueCount: 12 },
       { id: "rp-0622", title: "曲阳路沿街广告牌巡检报告", reportDate: new Date("2026-06-22"), reportType: "road", relatedObjectId: "r-quyang", relatedObjectName: "曲阳路", issueCount: 9 },
@@ -67,13 +105,15 @@ async function main() {
   });
 
   await prisma.mapAsset.createMany({
+    skipDuplicates: true,
     data: [
-      { id: "map-street-main", name: "曲阳路街道总览图", mapType: "街道总览", sourceType: "image", fileName: "quyang-street-main.png", processStatus: "processed", hotAreaCount: 6 },
-      { id: "map-yutian", name: "玉田新村小区示意图", mapType: "小区地图", sourceType: "tiff", fileName: "yutian-community.tif", processStatus: "processed", hotAreaCount: 3 },
+      { id: "map-street-main", name: "曲阳路街道总览图", mapType: "街道总览", sourceType: "image", fileName: "quyang-street-main.png", processStatus: "published", hotAreaCount: 6 },
+      { id: "map-yutian", name: "玉田新村小区示意图", mapType: "小区地图", sourceType: "tiff", fileName: "yutian-community.tif", processStatus: "published", hotAreaCount: 3 },
     ],
   });
 
   await prisma.mapHotArea.createMany({
+    skipDuplicates: true,
     data: [
       { id: "ha-yutian", mapAssetId: "map-street-main", label: "玉田新村", objectType: "community", objectId: "c-yutian", x: 18, y: 32, width: 24, height: 18 },
       { id: "ha-quyang", mapAssetId: "map-street-main", label: "曲阳路", objectType: "road", objectId: "r-quyang", x: 46, y: 50, width: 20, height: 8 },

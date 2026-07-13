@@ -28,6 +28,7 @@ import { TaskPhotoSelector, type SelectableTaskPhoto } from "../components/TaskP
 import { IssueEventPushModal } from "../components/IssueEventPushModal";
 import type { IssuePushDraft, IssuePushResult } from "./issue-event-push-state";
 import type { InspectionTaskRecord } from "./inspection-task-presenter";
+import { getCurrentProject } from "../auth/session";
 import {
   effectiveReportTaskPhotoIds,
   mergeReportTaskOptions,
@@ -129,7 +130,6 @@ interface MovingAnnotation {
 const initialAnnotations: ReportAnnotation[] = [];
 const initialPhotoItems: PhotoItem[] = [];
 const defaultCoordinateText = "31.288210, 121.491320";
-const defaultReportArea = "曲阳路街道重点区域";
 
 const toolItems: { key: ToolKey; label: string; icon: typeof MousePointer2 }[] = [
   { key: "pointer", label: "选择", icon: MousePointer2 },
@@ -272,6 +272,8 @@ function getPointFromEvent(event: PointerEvent<HTMLDivElement>) {
 
 export function ReportWritePage() {
   const navigate = useNavigate();
+  const project = getCurrentProject();
+  const defaultReportArea = `${project?.shortName ?? "当前项目"}重点区域`;
   const [searchParams] = useSearchParams();
   const preferredMediaId = searchParams.get("mediaId");
   const taskIdFromQuery = searchParams.get("taskId");
@@ -279,7 +281,7 @@ export function ReportWritePage() {
   const nextPhotoIdRef = useRef(initialPhotoItems.length + 1);
   const issuePushKeyRef = useRef("");
   const photoCanvasRef = useRef<HTMLDivElement | null>(null);
-  const [reportTitle, setReportTitle] = useState("曲阳路街道无人机巡检报告");
+  const [reportTitle, setReportTitle] = useState(`${project?.shortName ?? "当前项目"}无人机巡检报告`);
   const [reportDate, setReportDate] = useState(getTodayDateString());
   const [selectedTaskId, setSelectedTaskId] = useState(taskIdFromQuery ?? "");
   const [taskOptions, setTaskOptions] = useState<ReportTaskOption[]>([]);

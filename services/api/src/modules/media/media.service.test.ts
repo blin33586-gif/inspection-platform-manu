@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MediaService } from "./media.service.js";
+import { runAsMember } from "../../test-support/auth-context.js";
 
 function createService() {
   const upsertCalls: Array<Record<string, unknown>> = [];
@@ -33,6 +34,7 @@ test("creates an idempotent frame extraction job", async () => {
   assert.equal(job.id, "job-frame-media-video-1-3");
   assert.deepEqual(upsertCalls[0].where, { dedupeKey: "frame_extract:media-video-1:3" });
   assert.deepEqual(upsertCalls[0].create, {
+    projectId: "quyang",
     id: "job-frame-media-video-1-3",
     jobType: "frame_extract",
     status: "queued",
@@ -81,17 +83,18 @@ test("stores an uploaded MOV video and automatically queues extraction", async (
       },
     },
     auditLog: { create: async () => undefined },
+    async $transaction(this: any, callback: any) { return callback(this); },
   };
   const service = new MediaService(database as never);
 
   try {
-    const result = await service.createVideoFromUpload({
+    const result = await runAsMember(() => service.createVideoFromUpload({
       filename: "flight.mov",
       originalname: "DJI_FLIGHT.MOV",
       mimetype: "video/quicktime",
       path: tempPath,
       size: 12,
-    }, 4);
+    }, 4));
 
     assert.equal(result.asset.kind, "video");
     assert.equal(result.asset.originalFileName, "DJI_FLIGHT.MOV");
@@ -149,17 +152,18 @@ test("stores an uploaded ZIP and automatically queues archive extraction", async
       },
     },
     auditLog: { create: async () => undefined },
+    async $transaction(this: any, callback: any) { return callback(this); },
   };
   const service = new MediaService(database as never);
 
   try {
-    const result = await service.createMediaFromUpload({
+    const result = await runAsMember(() => service.createMediaFromUpload({
       filename: "photos.zip",
       originalname: "曲阳巡检照片.zip",
       mimetype: "application/zip",
       path: tempPath,
       size: 18,
-    }, 3);
+    }, 3));
 
     assert.equal(result.asset.kind, "image_bundle");
     assert.equal(result.asset.originalFileName, "曲阳巡检照片.zip");
@@ -187,6 +191,7 @@ test("lists top-level media tasks with their latest processing job", async () =>
   await service.listTasks();
 
   assert.deepEqual(findManyCalls[0].where, {
+    projectId: "quyang",
     parentMediaId: null,
     kind: { in: ["video", "image_bundle"] },
   });
@@ -212,7 +217,7 @@ test("lists task children in preview order", async () => {
   await service.listChildren("media-parent-1");
 
   assert.deepEqual(findManyCalls[0], {
-    where: { parentMediaId: "media-parent-1", kind: { in: ["frame", "image"] } },
+    where: { projectId: "quyang", parentMediaId: "media-parent-1", kind: { in: ["frame", "image"] } },
     orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }],
   });
 });
@@ -233,7 +238,7 @@ test("returns one persisted media asset", async () => {
 
   assert.equal(asset.id, "media-video-1");
   assert.deepEqual(findUniqueCalls[0], {
-    where: { id: "media-video-1" },
+    where: { id: "media-video-1", projectId: "quyang" },
     include: {
       jobs: { orderBy: { createdAt: "desc" }, take: 1 },
       frames: { orderBy: [{ videoTimestampMs: "asc" }, { createdAt: "asc" }], take: 1 },
@@ -267,4 +272,62 @@ test("requeues a failed direct image preparation job", async () => {
   const job = await service.retryJob("job-image-1");
 
   assert.equal(job.status, "queued");
+});
+
+test("rejects an upload without identity before moving its file or writing the database", async () => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), "xunjianbao-media-no-identity-"));
+  const tempPath = join(tempDirectory, "flight.mov");
+  await writeFile(tempPath, "video-source");
+  let databaseWrites = 0;
+  const service = new MediaService({
+    mediaAsset: { create: async () => { databaseWrites += 1; } },
+    mediaProcessingJob: { upsert: async () => { databaseWrites += 1; } },
+  } as never);
+
+  try {
+    await assert.rejects(() => service.createVideoFromUpload({
+      filename: "flight.mov", originalname: "flight.mov", mimetype: "video/quicktime", path: tempPath, size: 12,
+    }, 3), /Authenticated identity/);
+    await access(tempPath);
+    assert.equal(databaseWrites, 0);
+  } finally {
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
+});
+
+test("rolls back uploaded media and its queued job when audit creation fails", async () => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), "xunjianbao-media-audit-rollback-"));
+  const tempPath = join(tempDirectory, "flight.mov");
+  await writeFile(tempPath, "video-source");
+  const assets: Array<Record<string, unknown>> = [];
+  const jobs: Array<Record<string, unknown>> = [];
+  const database: any = {
+    mediaAsset: { create: async ({ data }: any) => { assets.push(data); return data; } },
+    mediaProcessingJob: { upsert: async ({ create }: any) => { jobs.push(create); return create; } },
+    auditLog: { create: async () => { throw new Error("audit unavailable"); } },
+  };
+  database.$transaction = async (callback: any) => {
+    const stagedAssets: Array<Record<string, unknown>> = [];
+    const stagedJobs: Array<Record<string, unknown>> = [];
+    const transaction = {
+      ...database,
+      mediaAsset: { create: async ({ data }: any) => { stagedAssets.push(data); return data; } },
+      mediaProcessingJob: { upsert: async ({ create }: any) => { stagedJobs.push(create); return create; } },
+    };
+    const result = await callback(transaction);
+    assets.push(...stagedAssets);
+    jobs.push(...stagedJobs);
+    return result;
+  };
+  const service = new MediaService(database);
+
+  try {
+    await assert.rejects(() => runAsMember(() => service.createVideoFromUpload({
+      filename: "flight.mov", originalname: "flight.mov", mimetype: "video/quicktime", path: tempPath, size: 12,
+    }, 3)), /audit unavailable/);
+    assert.equal(assets.length, 0);
+    assert.equal(jobs.length, 0);
+  } finally {
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
 });

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 export interface InspectionTaskPurgeResult {
   taskId: string;
@@ -25,11 +26,13 @@ export class InspectionTaskDeletionService {
   }
 
   async purge(taskId: string): Promise<InspectionTaskPurgeResult> {
+    const actor = requireCurrentIdentity().username;
+    const projectId = currentProjectId();
     const storagePaths = new Set<string>();
     const result = await this.database.$transaction(async (transaction) => {
       const database = transaction as DatabaseService;
       const task = await database.inspectionTask.findUnique({
-        where: { id: taskId },
+        where: { id: taskId, projectId },
         select: {
           id: true,
           name: true,
@@ -43,6 +46,7 @@ export class InspectionTaskDeletionService {
 
       const jobs = await database.mediaProcessingJob.findMany({
         where: {
+          projectId,
           OR: [
             { mediaId: task.sourceMediaId ?? undefined },
             { dedupeKey: { contains: `:${taskId}` } },
@@ -65,6 +69,7 @@ export class InspectionTaskDeletionService {
       const mediaAssets = mediaIds.size
         ? await database.mediaAsset.findMany({
           where: {
+            projectId,
             OR: [
               { id: { in: [...mediaIds] } },
               { parentMediaId: { in: [...mediaIds] } },
@@ -81,7 +86,7 @@ export class InspectionTaskDeletionService {
       const photoIds = task.photos.map((photo) => photo.id);
       const issues = photoIds.length
         ? await database.issue.findMany({
-          where: { sourceTaskPhotoId: { in: photoIds } },
+          where: { projectId, sourceTaskPhotoId: { in: photoIds } },
           select: { id: true, cardStoragePath: true },
         })
         : [];
@@ -97,19 +102,20 @@ export class InspectionTaskDeletionService {
         : [];
       issueAttachments.forEach((attachment) => storagePaths.add(attachment.storagePath));
 
-      const deletedReports = await database.inspectionReport.deleteMany({ where: { taskId } });
+      const deletedReports = await database.inspectionReport.deleteMany({ where: { projectId, taskId } });
       if (issueIds.length) {
         await database.issueAttachment.deleteMany({ where: { issueId: { in: issueIds } } });
       }
       const deletedIssues = issueIds.length
-        ? await database.issue.deleteMany({ where: { id: { in: issueIds } } })
+        ? await database.issue.deleteMany({ where: { projectId, id: { in: issueIds } } })
         : { count: 0 };
       const deletedJobs = jobs.length
-        ? await database.mediaProcessingJob.deleteMany({ where: { id: { in: jobs.map((job) => job.id) } } })
+        ? await database.mediaProcessingJob.deleteMany({ where: { projectId, id: { in: jobs.map((job) => job.id) } } })
         : { count: 0 };
       const deletedMedia = mediaAssets.length
         ? await database.mediaAsset.deleteMany({
           where: {
+            projectId,
             OR: [
               { id: { in: mediaAssets.map((asset) => asset.id) } },
               { parentMediaId: { in: mediaAssets.map((asset) => asset.id) } },
@@ -118,11 +124,12 @@ export class InspectionTaskDeletionService {
         })
         : { count: 0 };
       const deletedPhotos = await database.taskPhoto.deleteMany({ where: { taskId } });
-      await database.inspectionTask.delete({ where: { id: taskId } });
+      await database.inspectionTask.delete({ where: { id: taskId, projectId } });
       await database.auditLog.create({
         data: {
+          projectId,
           id: `audit-${randomUUID()}`,
-          actor: "admin",
+          actor,
           action: "inspectionTask.purge",
           targetType: "inspectionTask",
           targetId: taskId,

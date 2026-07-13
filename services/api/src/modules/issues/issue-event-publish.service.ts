@@ -15,6 +15,7 @@ import { AuditService } from "../audit/audit.service.js";
 import { renderIssueCard } from "./issue-card-renderer.js";
 import type { PublishIssueEventInput, PublishIssueEventResult } from "./issue-event-publish.types.js";
 import { deriveIssueShareToken, hashShareToken } from "./issue-share-token.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 type CardRenderer = typeof renderIssueCard;
 
@@ -50,17 +51,20 @@ export class IssueEventPublishService {
     this.cardRenderer = cardRenderer ?? renderIssueCard;
   }
 
-  async publish(photoId: string, actor: string, input: PublishIssueEventInput): Promise<PublishIssueEventResult> {
+  async publish(photoId: string, input: PublishIssueEventInput): Promise<PublishIssueEventResult> {
+    const identity = requireCurrentIdentity();
+    const projectId = currentProjectId();
     this.validate(input);
-    const existing = await this.database.issue.findUnique({ where: { publishIdempotencyKey: input.idempotencyKey } });
+    const existing = await this.database.issue.findUnique({ where: { publishIdempotencyKey: input.idempotencyKey, projectId } });
     if (existing) {
-      await this.ensureCard(existing, actor);
+      await this.ensureCard(existing, projectId, identity.username);
       return this.result(existing.id);
     }
 
-    const photo = await this.requirePhoto(photoId);
+    const photo = await this.requirePhoto(photoId, projectId);
     if (!photo.annotationDocument) throw new BadRequestException("请先保存图片标注");
-    if (photo.annotationDocument.currentVersion !== input.expectedAnnotationVersion) {
+    const annotationDocument = photo.annotationDocument;
+    if (annotationDocument.currentVersion !== input.expectedAnnotationVersion) {
       throw new ConflictException("标注已更新，请刷新后重试");
     }
     const foundAt = new Date(input.foundAt);
@@ -68,52 +72,60 @@ export class IssueEventPublishService {
 
     const id = `is-${randomUUID()}`;
     const token = this.token(id);
-    const issue = await this.database.issue.create({
-      data: {
-        id,
-        title: input.description.slice(0, 60),
-        category: input.category.trim(),
-        status: "pending",
-        severity: "normal",
-        foundAt,
-        description: input.description.trim(),
-        locationName: input.locationName.trim(),
-        sourceTaskPhotoId: photoId,
-        sourceAnnotationVersion: input.expectedAnnotationVersion,
-        longitude: photo.annotationDocument.longitude,
-        latitude: photo.annotationDocument.latitude,
-        shareTokenHash: hashShareToken(token),
-        shareEnabled: true,
-        publishIdempotencyKey: input.idempotencyKey,
-        publishedAt: new Date(),
-      },
-    });
-    await this.audit.record({
-      actor,
-      action: "issue.event.publish",
-      targetType: "issue",
-      targetId: issue.id,
-      summary: `推送问题「${issue.title}」`,
+    const issue = await this.database.$transaction(async (transaction) => {
+      const created = await transaction.issue.create({
+        data: {
+          projectId,
+          id,
+          title: input.description.slice(0, 60),
+          category: input.category.trim(),
+          status: "pending",
+          severity: "normal",
+          foundAt,
+          description: input.description.trim(),
+          locationName: input.locationName.trim(),
+          sourceTaskPhotoId: photoId,
+          sourceAnnotationVersion: input.expectedAnnotationVersion,
+          longitude: annotationDocument.longitude,
+          latitude: annotationDocument.latitude,
+          shareTokenHash: hashShareToken(token),
+          shareEnabled: true,
+          publishIdempotencyKey: input.idempotencyKey,
+          publishedAt: new Date(),
+        },
+      });
+      await transaction.auditLog.create({
+        data: {
+          projectId,
+          id: `audit-${randomUUID()}`,
+          actor: identity.username,
+          action: "issue.event.publish",
+          targetType: "issue",
+          targetId: created.id,
+          summary: `推送问题「${created.title}」`,
+        },
+      });
+      return created;
     });
 
-    await this.generateCard(issue, photo, photo.annotationDocument.annotationJson, actor);
+    await this.generateCard(issue, photo, annotationDocument.annotationJson, projectId, identity.username);
     return this.result(id);
   }
 
-  private async ensureCard(issue: IssueCardRecord, actor: string) {
+  private async ensureCard(issue: IssueCardRecord, projectId: string, actor: string) {
     if (issue.cardStoragePath) return;
     if (!issue.sourceTaskPhotoId || !issue.sourceAnnotationVersion) {
       throw new ConflictException("问题缺少原始照片或标注版本，无法生成分享卡");
     }
-    const photo = await this.requirePhoto(issue.sourceTaskPhotoId);
+    const photo = await this.requirePhoto(issue.sourceTaskPhotoId, projectId);
     if (!photo.annotationDocument) throw new ConflictException("问题的原始标注已不存在");
     const annotationJson = await this.readAnnotationVersion(photo, issue.sourceAnnotationVersion);
-    await this.generateCard(issue, photo, annotationJson, actor);
+    await this.generateCard(issue, photo, annotationJson, projectId, actor);
   }
 
-  private async requirePhoto(photoId: string) {
+  private async requirePhoto(photoId: string, projectId: string) {
     const photo = await this.database.taskPhoto.findUnique({
-      where: { id: photoId },
+      where: { id: photoId, task: { projectId } },
       include: { mediaAsset: true, annotationDocument: true },
     });
     if (!photo) throw new NotFoundException("任务照片不存在");
@@ -132,7 +144,7 @@ export class IssueEventPublishService {
     return snapshot.annotationJson;
   }
 
-  private async generateCard(issue: IssueCardRecord, photo: IssuePhotoRecord, annotationJson: string, actor: string) {
+  private async generateCard(issue: IssueCardRecord, photo: IssuePhotoRecord, annotationJson: string, projectId: string, actor: string) {
     const token = this.token(issue.id);
     const finalStoragePath = `storage/issues/cards/${issue.id}.png`;
     const finalPath = this.resolveStoragePath(finalStoragePath);
@@ -153,17 +165,21 @@ export class IssueEventPublishService {
       await writeFile(tempPath, png);
       await rename(tempPath, finalPath);
       await this.database.issue.update({
-        where: { id: issue.id },
+        where: { id: issue.id, projectId },
         data: { cardStoragePath: finalStoragePath, cardMimeType: "image/png", cardFileSize: png.length },
       });
     } catch (error) {
       await rm(tempPath, { force: true }).catch(() => undefined);
-      await this.audit.record({
-        actor,
-        action: "issue.card.failed",
-        targetType: "issue",
-        targetId: issue.id,
-        summary: `问题卡生成失败：${error instanceof Error ? error.message : "unknown"}`,
+      await this.database.auditLog.create({
+        data: {
+          projectId,
+          id: `audit-${randomUUID()}`,
+          actor,
+          action: "issue.card.failed",
+          targetType: "issue",
+          targetId: issue.id,
+          summary: `问题卡生成失败：${error instanceof Error ? error.message : "unknown"}`,
+        },
       });
       throw new InternalServerErrorException("问题已创建，但分享卡生成失败，请重试");
     }

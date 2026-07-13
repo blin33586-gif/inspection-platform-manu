@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InspectionTaskDeletionService } from "./inspection-task-deletion.service.js";
+import { runAsMember } from "../../test-support/auth-context.js";
 
 async function exists(path: string) {
   try {
@@ -102,7 +103,7 @@ test("purges a task, its owned records, and its storage files", async () => {
   };
 
   const service = new InspectionTaskDeletionService(database as never, storageRoot);
-  const result = await service.purge("task-1");
+  const result = await runAsMember(() => service.purge("task-1"));
 
   assert.deepEqual(result, {
     taskId: "task-1",
@@ -140,5 +141,5 @@ test("rejects deleting a missing task", async () => {
 
   const service = new InspectionTaskDeletionService(database as never, join(tmpdir(), "missing-storage"));
 
-  await assert.rejects(service.purge("missing-task"), /巡检任务不存在/);
+  await assert.rejects(runAsMember(() => service.purge("missing-task")), /巡检任务不存在/);
 });

@@ -94,8 +94,10 @@ DATABASE_URL=postgresql://xunjianbao:change-me@127.0.0.1:5432/xunjianbao?schema=
 API_PORT=3010
 VITE_API_BASE_URL=http://127.0.0.1:3010/api/v1
 PUBLIC_APP_URL=http://127.0.0.1:5182
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=xunjianbao2026
+ADMIN_USERNAME=replace-with-private-admin-login
+ADMIN_PASSWORD=replace-with-strong-admin-password-2026
+MEMBER_USERNAME=replace-with-private-member-login
+MEMBER_PASSWORD=replace-with-strong-member-password-2026
 AUTH_SECRET=change-me-before-production
 ```
 
@@ -114,6 +116,8 @@ VITE_API_BASE_URL=/api/v1
 PUBLIC_APP_URL=https://你的巡检宝域名
 ADMIN_USERNAME=你的管理员账号
 ADMIN_PASSWORD=强密码
+MEMBER_USERNAME=单独设置的成员账号
+MEMBER_PASSWORD=至少 12 位且同时包含字母和数字的强密码
 AUTH_SECRET=一串随机长密钥
 ```
 
@@ -123,7 +127,8 @@ AUTH_SECRET=一串随机长密钥
 - `API_PORT`：后端服务端口，默认 `3010`。
 - `VITE_API_BASE_URL`：前端请求 API 的地址。
 - `PUBLIC_APP_URL`：二维码和问题分享链接使用的巡检宝公网地址，生产环境必须填写 HTTPS 域名。
-- `ADMIN_USERNAME` / `ADMIN_PASSWORD`：管理端登录账号密码。
+- `ADMIN_USERNAME` / `ADMIN_PASSWORD`：管理端登录账号密码，不要保留示例值。
+- `MEMBER_USERNAME` / `MEMBER_PASSWORD`：全新库初始化的成员账号密码；密码至少 12 位并同时包含字母和数字。Docker Compose 缺少任一项会在启动容器前失败。
 - `AUTH_SECRET`：登录 token 签名密钥，生产环境必须改。
 
 ## 5. 数据库初始化
@@ -317,6 +322,8 @@ VITE_API_BASE_URL=/api/v1
 PUBLIC_APP_URL=https://你的巡检宝域名
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=换成强密码
+MEMBER_USERNAME=换成私有成员账号
+MEMBER_PASSWORD=至少12位且包含字母和数字的强密码
 AUTH_SECRET=换成随机长字符串
 ```
 
@@ -327,7 +334,7 @@ pnpm db:generate
 pnpm --filter @xunjianbao/api db:deploy
 ```
 
-全新环境可执行 `pnpm db:seed` 写入演示数据；从旧 SQLite 切换时使用 `pnpm --filter @xunjianbao/api db:migrate-sqlite`，不要同时执行 seed。
+全新环境可执行 `pnpm db:seed` 写入演示数据；seed 在未显式设置 `NODE_ENV=development` 或 `NODE_ENV=test` 时按生产安全模式运行，必须提供私有的管理员和成员凭据，绝不会使用公开开发密码。从旧 SQLite 切换时使用 `pnpm --filter @xunjianbao/api db:migrate-sqlite`，不要同时执行 seed。
 
 构建前端：
 

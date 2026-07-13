@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Controller, Get, Module } from "@nestjs/common";
+import { Controller, Get, Global, Module } from "@nestjs/common";
 import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import { DatabaseService } from "../../database/database.service.js";
 import { AuthModule } from "../auth/auth.module.js";
 import { HealthModule } from "./health.module.js";
 
@@ -15,7 +16,24 @@ class ProtectedRouteController {
 }
 
 @Module({
-  imports: [AuthModule, HealthModule],
+  providers: [
+    {
+      provide: DatabaseService,
+      useValue: {
+        userAccount: {
+          findFirst: async () => ({ id: "platform-admin" }),
+          findUnique: async () => ({ id: "legacy-member" }),
+        },
+      },
+    },
+  ],
+  exports: [DatabaseService],
+})
+@Global()
+class HealthDatabaseTestModule {}
+
+@Module({
+  imports: [HealthDatabaseTestModule, AuthModule, HealthModule],
   controllers: [ProtectedRouteController],
 })
 class HealthHttpTestModule {}

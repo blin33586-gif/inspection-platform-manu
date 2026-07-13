@@ -8,6 +8,7 @@ import { ok, paged } from "../../shared/api-response.js";
 import { sendStoredFile } from "../../shared/file-download.js";
 import { ReportUploadService } from "./report-upload.service.js";
 import { ReportCreateService, type SubmitTaskReportInput } from "./report-create.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -61,7 +62,7 @@ export class ReportsController {
   @Get(":id/file")
   async file(@Param("id") id: string, @Res() response: Response) {
     const item = await this.database.inspectionReport.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       select: { storagePath: true, originalFileName: true, fileName: true },
     });
     return sendStoredFile(response, item);

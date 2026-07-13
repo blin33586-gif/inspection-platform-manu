@@ -11,7 +11,7 @@ export interface ApiResourceState<T> {
   reload: () => void;
 }
 
-export function useApiResource<T>(path: string, fallback: T): ApiResourceState<T> {
+export function useApiResource<T>(path: string, fallback: T, scopeKey = ""): ApiResourceState<T> {
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<ApiResourceState<T>>({
     data: fallback,
@@ -35,7 +35,7 @@ export function useApiResource<T>(path: string, fallback: T): ApiResourceState<T
       });
 
     return () => controller.abort();
-  }, [fallback, path, reloadKey]);
+  }, [fallback, path, reloadKey, scopeKey]);
 
   return state;
 }

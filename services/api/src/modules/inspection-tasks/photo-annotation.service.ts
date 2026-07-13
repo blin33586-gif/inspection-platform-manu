@@ -6,6 +6,7 @@ import {
   validateAnnotationDocument,
 } from "@xunjianbao/media-contracts";
 import { DatabaseService } from "../../database/database.service.js";
+import { currentActorUsername, currentProjectId } from "../auth/project-context.js";
 
 export interface SavePhotoAnnotationInput {
   expectedVersion?: number;
@@ -51,7 +52,8 @@ export class PhotoAnnotationService {
     return presentVersion(snapshot);
   }
 
-  async save(photoId: string, actor: string, input: SavePhotoAnnotationInput) {
+  async save(photoId: string, input: SavePhotoAnnotationInput) {
+    const actor = currentActorUsername();
     const expectedVersion = input.expectedVersion;
     if (!Number.isInteger(expectedVersion) || expectedVersion! < 0) {
       throw new BadRequestException("标注版本号无效");
@@ -63,7 +65,7 @@ export class PhotoAnnotationService {
 
     return this.database.$transaction(async (transaction) => {
       const database = transaction as DatabaseService;
-      const photo = await database.taskPhoto.findUnique({ where: { id: photoId }, select: { id: true } });
+      const photo = await database.taskPhoto.findUnique({ where: { id: photoId, task: { projectId: currentProjectId() } }, select: { id: true } });
       if (!photo) throw new NotFoundException("任务照片不存在");
 
       const current = await database.photoAnnotationDocument.findUnique({ where: { taskPhotoId: photoId } });
@@ -129,7 +131,7 @@ export class PhotoAnnotationService {
   }
 
   private async requirePhoto(photoId: string) {
-    const photo = await this.database.taskPhoto.findUnique({ where: { id: photoId }, select: { id: true } });
+    const photo = await this.database.taskPhoto.findUnique({ where: { id: photoId, task: { projectId: currentProjectId() } }, select: { id: true } });
     if (!photo) throw new NotFoundException("任务照片不存在");
   }
 }
@@ -267,6 +269,7 @@ function nullableNumber(value: number | null | undefined, label: string, minimum
 async function writeAudit(database: DatabaseService, actor: string, photoId: string, version: number) {
   await database.auditLog.create({
     data: {
+      projectId: currentProjectId(),
       id: `audit-${randomUUID()}`,
       actor,
       action: "taskPhoto.annotation.save",

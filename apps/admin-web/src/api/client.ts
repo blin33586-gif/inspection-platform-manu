@@ -1,12 +1,18 @@
 import type { ApiResponse } from "@xunjianbao/shared";
 import { ApiClientError } from "./api-client-error";
 import { buildApiUrl } from "./api-url";
-import { getToken } from "../auth/session";
+import { getCurrentProject, getToken } from "../auth/session";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3010/api/v1";
 
 export function getApiUrl(path: string) {
-  return buildApiUrl(apiBaseUrl, path, window.location.origin, getToken() ?? undefined);
+  return buildApiUrl(
+    apiBaseUrl,
+    path,
+    window.location.origin,
+    getToken() ?? undefined,
+    getCurrentProject()?.id,
+  );
 }
 
 export function getPublicApiUrl(path: string) {
@@ -36,9 +42,10 @@ export async function getApi<T>(path: string, signal?: AbortSignal): Promise<T> 
   return body.data;
 }
 
-export async function postFormApi<T>(path: string, formData: FormData): Promise<T> {
+export async function postFormApi<T>(path: string, formData: FormData, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: "POST",
+    signal,
     headers: authHeaders(),
     body: formData,
   });
@@ -107,7 +114,11 @@ export async function postJsonApi<T>(path: string, payload: unknown): Promise<T>
 
 function authHeaders(): Record<string, string> {
   const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const projectId = getCurrentProject()?.id;
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(projectId ? { "X-Project-Id": projectId } : {}),
+  };
 }
 
 async function parseApiError(response: Response): Promise<ApiClientError> {

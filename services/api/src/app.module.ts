@@ -13,6 +13,7 @@ import { ManagedObjectsModule } from "./modules/managed-objects/managed-objects.
 import { HealthModule } from "./modules/health/health.module.js";
 import { MediaModule } from "./modules/media/media.module.js";
 import { InspectionTasksModule } from "./modules/inspection-tasks/inspection-tasks.module.js";
+import { PlatformMembersModule } from "./modules/platform-members/platform-members.module.js";
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { InspectionTasksModule } from "./modules/inspection-tasks/inspection-tas
     MapAssetsModule,
     MediaModule,
     InspectionTasksModule,
+    PlatformMembersModule,
   ],
 })
 export class AppModule {}

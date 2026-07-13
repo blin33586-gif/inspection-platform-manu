@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 export interface PhotoDistributionInput {
   action?: "archive" | "ignore" | "unarchive";
@@ -12,6 +13,8 @@ export class InspectionTaskDistributionService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async update(taskId: string, photoId: string, input: PhotoDistributionInput) {
+    const actor = requireCurrentIdentity().username;
+    const projectId = currentProjectId();
     if (!input.action || !new Set(["archive", "ignore", "unarchive"]).has(input.action)) {
       throw new BadRequestException("请选择归档、忽略或解除归档操作");
     }
@@ -21,13 +24,13 @@ export class InspectionTaskDistributionService {
 
     return this.database.$transaction(async (transaction) => {
       const database = transaction as DatabaseService;
-      const photo = await database.taskPhoto.findFirst({ where: { id: photoId, taskId } });
+      const photo = await database.taskPhoto.findFirst({ where: { id: photoId, taskId, task: { projectId } } });
       if (!photo) throw new NotFoundException("任务照片不存在");
 
       let archiveObject: { id: string; name: string; objectType: string } | null = null;
       if (input.action === "archive") {
         archiveObject = await database.managedObject.findUnique({
-          where: { id: input.archiveObjectId },
+          where: { id: input.archiveObjectId, projectId },
           select: { id: true, name: true, objectType: true },
         });
         if (!archiveObject) throw new NotFoundException("对象档案不存在");
@@ -58,19 +61,19 @@ export class InspectionTaskDistributionService {
 
       const task = transitionedFromPending
         ? await database.inspectionTask.update({
-            where: { id: taskId },
+            where: { id: taskId, projectId },
             data: { pendingPhotoCount: { decrement: 1 } },
           })
         : transitionedToPending
           ? await database.inspectionTask.update({
-              where: { id: taskId },
+              where: { id: taskId, projectId },
               data: { pendingPhotoCount: { increment: 1 } },
             })
-        : await database.inspectionTask.findUnique({ where: { id: taskId } });
+        : await database.inspectionTask.findUnique({ where: { id: taskId, projectId } });
       if (!task) throw new NotFoundException("巡检任务不存在");
       const pendingPhotoCount = Math.max(0, task.pendingPhotoCount);
       await database.inspectionTask.update({
-        where: { id: taskId },
+        where: { id: taskId, projectId },
         data: {
           ...(pendingPhotoCount !== task.pendingPhotoCount ? { pendingPhotoCount } : {}),
           processStatus: transitionedToPending || pendingPhotoCount > 0 ? "ready_for_distribution" : "completed",
@@ -79,7 +82,8 @@ export class InspectionTaskDistributionService {
       await database.auditLog.create({
         data: {
           id: `audit-${randomUUID()}`,
-          actor: "admin",
+          projectId,
+          actor,
           action: input.action === "archive" ? "taskPhoto.archive" : input.action === "unarchive" ? "taskPhoto.unarchive" : "taskPhoto.ignore",
           targetType: "taskPhoto",
           targetId: photoId,

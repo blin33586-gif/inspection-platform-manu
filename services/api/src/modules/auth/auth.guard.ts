@@ -1,24 +1,63 @@
-import { CanActivate, ExecutionContext, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import type { Request } from "express";
-import { AuthService } from "./auth.service.js";
+import { AuthService, type AuthIdentity } from "./auth.service.js";
+
+export type AuthenticatedProjectRequest = Request & {
+  authIdentity?: AuthIdentity;
+  projectId?: string;
+};
 
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
-  canActivate(context: ExecutionContext) {
-    const request = context.switchToHttp().getRequest<Request>();
+  async canActivate(context: ExecutionContext) {
+    const request = context.switchToHttp().getRequest<AuthenticatedProjectRequest>();
+    if (this.isPublicRequest(request)) return true;
+
+    const identity = await this.authService.authenticateToken(this.tokenFromRequest(request));
+    if (!identity) throw new UnauthorizedException("Unauthorized");
+    request.authIdentity = identity;
+
+    const authorizationPath = request.path.toLowerCase();
+    if (authorizationPath === "/api/v1/auth/projects") return true;
+
     if (
-      request.method === "OPTIONS"
+      authorizationPath === "/api/v1/platform"
+      || authorizationPath.startsWith("/api/v1/platform/")
+    ) {
+      if (identity.role !== "platform_admin") {
+        throw new ForbiddenException("Platform administrator required");
+      }
+      return true;
+    }
+
+    const projectIdHeader = request.headers["x-project-id"];
+    const headerProjectId = Array.isArray(projectIdHeader) ? projectIdHeader[0] : projectIdHeader;
+    const queryProjectId = typeof request.query.projectId === "string" ? request.query.projectId : undefined;
+    const projectId = headerProjectId ?? queryProjectId;
+    if (!projectId) throw new BadRequestException("Project selection required");
+    if (identity.role !== "platform_admin" && !identity.projectIds.includes(projectId)) {
+      throw new ForbiddenException("Project access denied");
+    }
+    request.projectId = projectId;
+
+    return true;
+  }
+
+  private isPublicRequest(request: Request) {
+    return request.method === "OPTIONS"
       || request.path === "/api/v1/auth/login"
       || request.path === "/api/v1/health"
-      || request.path.startsWith("/api/v1/public/issues/")
-    ) return true;
-
-    const token = this.tokenFromRequest(request);
-    if (this.authService.verifyToken(token)) return true;
-
-    throw new UnauthorizedException("Unauthorized");
+      || request.path.startsWith("/api/v1/public/issues/");
   }
 
   private tokenFromRequest(request: Request) {

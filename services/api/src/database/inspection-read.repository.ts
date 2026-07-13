@@ -1,5 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { DashboardSummary, IssueStatus, IssueSummary, ManagedObjectSummary, MapAssetSummary, PointSummary, ReportSummary, TileMapMetadata } from "@xunjianbao/shared";
+import {
+  normalizeMapAssetProcessStatus,
+  sanitizeMapProcessingFailureMessage,
+  type DashboardSummary,
+  type IssueStatus,
+  type IssueSummary,
+  type ManagedObjectSummary,
+  type MapAssetSummary,
+  type PointSummary,
+  type ReportSummary,
+  type TileMapMetadata,
+} from "@xunjianbao/shared";
+import { currentProjectId } from "../modules/auth/project-context.js";
 import { DatabaseService } from "./database.service.js";
 
 function formatDate(date: Date) {
@@ -11,7 +23,7 @@ export class InspectionReadRepository {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async dashboardSummary(): Promise<DashboardSummary> {
-    const metrics = await this.database.dashboardMetric.findMany();
+    const metrics = await this.database.dashboardMetric.findMany({ where: { projectId: currentProjectId() } });
     const byKey = new Map(metrics.map((metric) => [metric.key, metric.value]));
 
     return {
@@ -23,6 +35,7 @@ export class InspectionReadRepository {
 
   async issueDistribution() {
     return this.database.issueCategoryStat.findMany({
+      where: { projectId: currentProjectId() },
       orderBy: { sort: "asc" },
       select: { category: true, value: true },
     });
@@ -30,7 +43,7 @@ export class InspectionReadRepository {
 
   async topObjects(): Promise<ManagedObjectSummary[]> {
     const objects = await this.database.managedObject.findMany({
-      where: { objectType: "community" },
+      where: { projectId: currentProjectId(), objectType: "community" },
       orderBy: [{ issueCount: "desc" }, { name: "asc" }],
       take: 3,
     });
@@ -40,7 +53,7 @@ export class InspectionReadRepository {
 
   async managedObjects(objectType: string): Promise<ManagedObjectSummary[]> {
     const objects = await this.database.managedObject.findMany({
-      where: { objectType },
+      where: { projectId: currentProjectId(), objectType },
       orderBy: [{ issueCount: "desc" }, { name: "asc" }],
     });
 
@@ -48,14 +61,14 @@ export class InspectionReadRepository {
   }
 
   async managedObject(id: string, objectType?: string): Promise<ManagedObjectSummary | null> {
-    const object = await this.database.managedObject.findUnique({ where: { id } });
+    const object = await this.database.managedObject.findUnique({ where: { id, projectId: currentProjectId() } });
     if (objectType && object?.objectType !== objectType) return null;
     return object ? this.toManagedObjectSummary(object) : null;
   }
 
   async points(): Promise<PointSummary[]> {
     const objects = await this.database.managedObject.findMany({
-      where: { objectType: "point" },
+      where: { projectId: currentProjectId(), objectType: "point" },
       orderBy: [{ issueCount: "desc" }, { name: "asc" }],
     });
 
@@ -71,7 +84,7 @@ export class InspectionReadRepository {
   }
 
   async point(id: string): Promise<PointSummary | null> {
-    const object = await this.database.managedObject.findUnique({ where: { id } });
+    const object = await this.database.managedObject.findUnique({ where: { id, projectId: currentProjectId() } });
     if (!object || object.objectType !== "point") return null;
 
     return {
@@ -88,6 +101,7 @@ export class InspectionReadRepository {
   async issues(filters: { objectId?: string; keyword?: string; status?: IssueStatus; category?: string; cardOnly?: boolean; workflowStatus?: "pending" | "processed" } = {}): Promise<IssueSummary[]> {
     const issues = await this.database.issue.findMany({
       where: {
+        projectId: currentProjectId(),
         ...(filters.objectId ? { objectId: filters.objectId } : {}),
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.workflowStatus === "pending" ? { status: "pending" } : {}),
@@ -124,7 +138,7 @@ export class InspectionReadRepository {
 
   async issue(id: string): Promise<IssueSummary | null> {
     const issue = await this.database.issue.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       include: { object: true },
     });
 
@@ -145,11 +159,12 @@ export class InspectionReadRepository {
   }
 
   async updateIssueStatus(id: string, status: IssueStatus): Promise<IssueSummary | null> {
-    const exists = await this.database.issue.findUnique({ where: { id } });
+    const projectId = currentProjectId();
+    const exists = await this.database.issue.findUnique({ where: { id, projectId } });
     if (!exists) return null;
 
     const issue = await this.database.issue.update({
-      where: { id },
+      where: { id, projectId },
       data: { status },
       include: { object: true },
     });
@@ -171,6 +186,7 @@ export class InspectionReadRepository {
   async reports(filters: { objectId?: string; keyword?: string; reportType?: string } = {}): Promise<ReportSummary[]> {
     const reports = await this.database.inspectionReport.findMany({
       where: {
+        projectId: currentProjectId(),
         ...(filters.objectId ? { relatedObjectId: filters.objectId } : {}),
         ...(filters.reportType ? { reportType: filters.reportType } : {}),
         ...(filters.keyword
@@ -204,7 +220,7 @@ export class InspectionReadRepository {
 
   async report(id: string): Promise<ReportSummary | null> {
     const report = await this.database.inspectionReport.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       include: {
         photos: {
           orderBy: { sortIndex: "asc" },
@@ -214,7 +230,7 @@ export class InspectionReadRepository {
                 mediaAsset: true,
                 annotationDocument: true,
                 sourceIssues: {
-                  where: { cardStoragePath: { not: null } },
+                  where: { projectId: currentProjectId(), cardStoragePath: { not: null } },
                   orderBy: { updatedAt: "desc" },
                   take: 1,
                 },
@@ -264,6 +280,7 @@ export class InspectionReadRepository {
   async mapAssets(filters: { keyword?: string; mapType?: string; processStatus?: string } = {}) {
     const assets = await this.database.mapAsset.findMany({
       where: {
+        projectId: currentProjectId(),
         ...(filters.mapType ? { mapType: { contains: filters.mapType } } : {}),
         ...(filters.processStatus ? { processStatus: filters.processStatus } : {}),
         ...(filters.keyword
@@ -290,14 +307,27 @@ export class InspectionReadRepository {
         isActive: true,
         processStatus: true,
         hotAreaCount: true,
+        uploadedBy: { select: { name: true } },
+        createdAt: true,
+        activatedAt: true,
+        errorMessage: true,
       },
     });
     return assets.map((asset) => this.toMapAssetSummary(asset));
   }
 
+  async hasActiveMapProcessing() {
+    return (await this.database.mapAsset.count({
+      where: {
+        projectId: currentProjectId(),
+        processStatus: { in: ["queued", "running", "processing"] },
+      },
+    })) > 0;
+  }
+
   async mapAsset(id: string) {
     const asset = await this.database.mapAsset.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       select: {
         id: true,
         name: true,
@@ -311,6 +341,10 @@ export class InspectionReadRepository {
         isActive: true,
         processStatus: true,
         hotAreaCount: true,
+        uploadedBy: { select: { name: true } },
+        createdAt: true,
+        activatedAt: true,
+        errorMessage: true,
       },
     });
     return asset ? this.toMapAssetSummary(asset) : null;
@@ -318,7 +352,7 @@ export class InspectionReadRepository {
 
   async activeTileMap() {
     const asset = await this.database.mapAsset.findFirst({
-      where: { sourceType: "tile", isActive: true },
+      where: { projectId: currentProjectId(), sourceType: "tile", isActive: true },
       orderBy: { updatedAt: "desc" },
       select: {
         id: true,
@@ -333,6 +367,10 @@ export class InspectionReadRepository {
         isActive: true,
         processStatus: true,
         hotAreaCount: true,
+        uploadedBy: { select: { name: true } },
+        createdAt: true,
+        activatedAt: true,
+        errorMessage: true,
       },
     });
     return asset ? this.toMapAssetSummary(asset) : null;
@@ -340,7 +378,7 @@ export class InspectionReadRepository {
 
   async mapHotAreas(mapAssetId: string) {
     return this.database.mapHotArea.findMany({
-      where: { mapAssetId },
+      where: { mapAssetId, mapAsset: { projectId: currentProjectId() } },
       orderBy: { label: "asc" },
       select: { id: true, label: true, objectType: true, objectId: true, x: true, y: true, width: true, height: true, polygon: true, color: true },
     });
@@ -373,6 +411,10 @@ export class InspectionReadRepository {
     isActive: boolean;
     processStatus: string;
     hotAreaCount: number;
+    uploadedBy: { name: string } | null;
+    createdAt: Date;
+    activatedAt: Date | null;
+    errorMessage: string | null;
   }): MapAssetSummary {
     return {
       id: asset.id,
@@ -385,8 +427,12 @@ export class InspectionReadRepository {
       fileSize: asset.fileSize,
       tileMetadata: this.parseTileMetadata(asset.tileMetadata),
       isActive: asset.isActive,
-      processStatus: asset.processStatus,
+      processStatus: normalizeMapAssetProcessStatus(asset.processStatus),
       hotAreaCount: asset.hotAreaCount,
+      uploadedByName: asset.uploadedBy?.name ?? null,
+      createdAt: asset.createdAt.toISOString(),
+      activatedAt: asset.activatedAt?.toISOString() ?? null,
+      errorMessage: asset.errorMessage === null ? null : sanitizeMapProcessingFailureMessage(asset.errorMessage),
     };
   }
 

@@ -2,13 +2,14 @@ import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundExc
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { access } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { extname, resolve, sep } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { ok, page, paged } from "../../shared/api-response.js";
 import { sendInlineStoredFile, sendStoredFile } from "../../shared/file-download.js";
-import { MapAssetUploadService } from "./map-asset-upload.service.js";
+import { MAP_UPLOAD_TEMP_DIR, MapAssetUploadService } from "./map-asset-upload.service.js";
 import { MapHotAreaService } from "./map-hot-area.service.js";
+import { currentProjectId } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -17,6 +18,30 @@ interface UploadedFileLike {
   path: string;
   size: number;
 }
+
+export const MAP_UPLOAD_OPTIONS = {
+  dest: MAP_UPLOAD_TEMP_DIR,
+  limits: { fileSize: 1024 * 1024 * 1024 },
+  fileFilter: (_request: unknown, file: { originalname: string }, callback: (error: Error | null, accepted: boolean) => void) => {
+    if ([".tif", ".tiff", ".zip"].includes(extname(file.originalname).toLowerCase())) {
+      callback(null, true);
+      return;
+    }
+    callback(new BadRequestException("仅支持 TIF/TIFF 底图或 XYZ ZIP 瓦片包"), false);
+  },
+};
+
+export const TILE_PACKAGE_UPLOAD_OPTIONS = {
+  dest: MAP_UPLOAD_TEMP_DIR,
+  limits: { fileSize: 1024 * 1024 * 1024 },
+  fileFilter: (_request: unknown, file: { originalname: string }, callback: (error: Error | null, accepted: boolean) => void) => {
+    if (extname(file.originalname).toLowerCase() === ".zip") {
+      callback(null, true);
+      return;
+    }
+    callback(new BadRequestException("仅支持上传 ZIP 格式瓦片包"), false);
+  },
+};
 
 @Controller("map-assets")
 export class MapAssetsController {
@@ -29,27 +54,25 @@ export class MapAssetsController {
 
   @Get()
   async list(@Query() query: { keyword?: string; mapType?: string; processStatus?: string; page?: string; pageSize?: string }) {
-    return ok(paged(await this.readRepository.mapAssets({
-      keyword: query.keyword,
-      mapType: query.mapType,
-      processStatus: query.processStatus,
-    }), query));
+    const [items, hasProcessing] = await Promise.all([
+      this.readRepository.mapAssets({
+        keyword: query.keyword,
+        mapType: query.mapType,
+        processStatus: query.processStatus,
+      }),
+      this.readRepository.hasActiveMapProcessing(),
+    ]);
+    return ok({ ...paged(items, query), hasProcessing });
   }
 
   @Post("upload")
-  @UseInterceptors(FileInterceptor("file", {
-    dest: "storage/map-assets/tmp",
-    limits: { fileSize: 200 * 1024 * 1024 },
-  }))
+  @UseInterceptors(FileInterceptor("file", MAP_UPLOAD_OPTIONS))
   async upload(@UploadedFile() file: UploadedFileLike | undefined, @Body() body: { name?: string; mapType?: string }) {
     return ok(await this.uploadService.createFromUpload(file, body));
   }
 
   @Post("tile-packages/upload")
-  @UseInterceptors(FileInterceptor("file", {
-    dest: "storage/map-assets/tmp",
-    limits: { fileSize: 1024 * 1024 * 1024 },
-  }))
+  @UseInterceptors(FileInterceptor("file", TILE_PACKAGE_UPLOAD_OPTIONS))
   async uploadTilePackage(@UploadedFile() file: UploadedFileLike | undefined, @Body() body: { name?: string; mapType?: string }) {
     return ok(await this.uploadService.createTilePackageFromUpload(file, body));
   }
@@ -70,7 +93,7 @@ export class MapAssetsController {
   @Get(":id/tiles/:z/:x/:y")
   async tile(@Param("id") id: string, @Param("z") z: string, @Param("x") x: string, @Param("y") y: string, @Res() response: Response) {
     if (![z, x, y].every((part) => /^\d+$/.test(part))) throw new BadRequestException("瓦片坐标无效");
-    const item = await this.database.mapAsset.findUnique({ where: { id }, select: { sourceType: true, tilePath: true } });
+    const item = await this.database.mapAsset.findUnique({ where: { id, projectId: currentProjectId() }, select: { sourceType: true, tilePath: true } });
     if (!item || item.sourceType !== "tile" || !item.tilePath) throw new NotFoundException("瓦片底图不存在");
 
     const root = resolve(process.cwd(), item.tilePath);
@@ -95,7 +118,7 @@ export class MapAssetsController {
   @Get(":id/file")
   async file(@Param("id") id: string, @Res() response: Response) {
     const item = await this.database.mapAsset.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       select: { storagePath: true, originalFileName: true, fileName: true },
     });
     return sendStoredFile(response, item);
@@ -104,7 +127,7 @@ export class MapAssetsController {
   @Get(":id/preview")
   async preview(@Param("id") id: string, @Res() response: Response) {
     const item = await this.database.mapAsset.findUnique({
-      where: { id },
+      where: { id, projectId: currentProjectId() },
       select: { storagePath: true, originalFileName: true, fileName: true, mimeType: true, sourceType: true },
     });
     if (!item) throw new NotFoundException("Map asset not found");

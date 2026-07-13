@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import { getToken } from "./auth/session";
+import { canManagePlatform } from "./auth/project-access";
+import { getCurrentProject, getToken, getUser } from "./auth/session";
 import { Shell } from "./components/Shell";
 import { DashboardPage } from "./pages/DashboardPage";
 import { CommunitiesPage } from "./pages/CommunitiesPage";
@@ -19,9 +20,19 @@ import { IssueDetailPage } from "./pages/IssueDetailPage";
 import { ReportDetailPage } from "./pages/ReportDetailPage";
 import { ReportWritePage } from "./pages/ReportWritePage";
 import { PublicIssueSharePage } from "./pages/PublicIssueSharePage";
+import { ProjectSelectPage } from "./pages/ProjectSelectPage";
+import { PlatformMembersPage } from "./pages/PlatformMembersPage";
 
 function RequireAuth() {
-  return getToken() ? <Outlet /> : <Navigate to="/login" replace />;
+  return getToken() && getUser() ? <Outlet /> : <Navigate to="/login" replace />;
+}
+
+function RequireProject() {
+  return getCurrentProject() ? <Outlet /> : <Navigate to="/projects" replace />;
+}
+
+function RequirePlatformAdmin() {
+  return canManagePlatform(getUser()?.role) ? <Outlet /> : <Navigate to="/projects" replace />;
 }
 
 export function App() {
@@ -30,7 +41,12 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/s/issue/:shareToken" element={<PublicIssueSharePage />} />
       <Route element={<RequireAuth />}>
-        <Route element={<Shell />}>
+        <Route path="/projects" element={<ProjectSelectPage />} />
+        <Route element={<RequirePlatformAdmin />}>
+          <Route path="/platform/members" element={<PlatformMembersPage />} />
+        </Route>
+        <Route element={<RequireProject />}>
+          <Route element={<Shell />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/communities" element={<CommunitiesPage />} />
           <Route path="/communities/:id" element={<ManagedObjectDetailPage objectType="community" />} />
@@ -49,6 +65,7 @@ export function App() {
           <Route path="/map-assets/:id" element={<MapAssetDetailPage />} />
           <Route path="/audit-logs" element={<AuditLogsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
         </Route>
       </Route>
     </Routes>

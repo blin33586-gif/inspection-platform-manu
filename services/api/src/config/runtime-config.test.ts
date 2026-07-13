@@ -2,10 +2,38 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveRuntimeConfig } from "./runtime-config.js";
 
-test("production requires explicit credentials and signing secret", () => {
+test("production requires explicit administrator credentials and signing secret", () => {
   assert.throws(
     () => resolveRuntimeConfig({ NODE_ENV: "production" }),
     /ADMIN_USERNAME, ADMIN_PASSWORD and AUTH_SECRET/,
+  );
+});
+
+test("production may start without legacy member credentials when no bootstrap is needed", () => {
+  const config = resolveRuntimeConfig({
+    NODE_ENV: "production",
+    ADMIN_USERNAME: "operator",
+    ADMIN_PASSWORD: "operator-password-2026",
+    AUTH_SECRET: "production-signing-secret",
+  });
+
+  assert.equal(config.memberUsername, undefined);
+  assert.equal(config.memberPassword, undefined);
+});
+
+test("production rejects partial or weak legacy member credentials", () => {
+  const base = {
+    NODE_ENV: "production",
+    ADMIN_USERNAME: "operator",
+    ADMIN_PASSWORD: "operator-password-2026",
+    AUTH_SECRET: "production-signing-secret",
+  };
+
+  assert.throws(() => resolveRuntimeConfig({ ...base, MEMBER_USERNAME: "member" }), /MEMBER_USERNAME and MEMBER_PASSWORD/);
+  assert.throws(() => resolveRuntimeConfig({ ...base, MEMBER_PASSWORD: "strong-member-password-2026" }), /MEMBER_USERNAME and MEMBER_PASSWORD/);
+  assert.throws(
+    () => resolveRuntimeConfig({ ...base, MEMBER_USERNAME: "member", MEMBER_PASSWORD: "password" }),
+    /strong password/,
   );
 });
 
@@ -21,11 +49,15 @@ test("runtime configuration exposes configured credentials", () => {
   const config = resolveRuntimeConfig({
     ADMIN_USERNAME: "operator",
     ADMIN_PASSWORD: "password",
+    MEMBER_USERNAME: "reader",
+    MEMBER_PASSWORD: "reader-password-2026",
     AUTH_SECRET: "secret",
   });
 
   assert.equal(config.adminUsername, "operator");
   assert.equal(config.adminPassword, "password");
+  assert.equal(config.memberUsername, "reader");
+  assert.equal(config.memberPassword, "reader-password-2026");
   assert.equal(config.authSecret, "secret");
 });
 

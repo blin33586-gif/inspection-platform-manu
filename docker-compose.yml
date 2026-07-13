@@ -6,8 +6,10 @@ services:
     environment:
       API_PORT: 3010
       DATABASE_URL: ${DATABASE_URL}
-      ADMIN_USERNAME: ${ADMIN_USERNAME}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?ADMIN_USERNAME must be set to a private administrator login}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set to a strong private password}
+      MEMBER_USERNAME: ${MEMBER_USERNAME:?MEMBER_USERNAME must be set to a private member login}
+      MEMBER_PASSWORD: ${MEMBER_PASSWORD:?MEMBER_PASSWORD must be set to a strong private password}
       AUTH_SECRET: ${AUTH_SECRET}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL}
     volumes:

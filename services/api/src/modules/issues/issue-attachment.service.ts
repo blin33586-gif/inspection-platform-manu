@@ -4,6 +4,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
+import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
 
 interface UploadedFileLike {
   filename: string;
@@ -51,7 +52,9 @@ export class IssueAttachmentService {
   }
 
   async create(issueId: string, file: UploadedFileLike | undefined, input: UploadIssueAttachmentInput) {
-    const issue = await this.ensureIssue(issueId);
+    const actor = requireCurrentIdentity().username;
+    const projectId = currentProjectId();
+    const issue = await this.ensureIssue(issueId, projectId);
     if (!file) throw new BadRequestException("Issue attachment file is required");
 
     const extension = extname(file.originalname).toLowerCase();
@@ -70,26 +73,21 @@ export class IssueAttachmentService {
       ? input.attachmentType
       : "现场照片";
 
-    const attachment = await this.database.issueAttachment.create({
-      data: {
-        id,
-        issueId,
-        attachmentType,
-        fileName: storedFileName,
-        originalFileName: file.originalname,
-        storagePath,
-        mimeType: file.mimetype,
-        fileSize: file.size,
-        remark: input.remark?.trim() || null,
-      },
-    });
-
-    await this.auditService.record({
-      action: "issue.attachment.upload",
-      targetType: "issueAttachment",
-      targetId: attachment.id,
-      summary: `为问题「${issue.title}」上传${attachment.attachmentType}「${attachment.originalFileName}」`,
-    });
+    let attachment;
+    try {
+      attachment = await this.database.$transaction(async (transaction) => {
+        const created = await transaction.issueAttachment.create({
+          data: { id, issueId, attachmentType, fileName: storedFileName, originalFileName: file.originalname, storagePath, mimeType: file.mimetype, fileSize: file.size, remark: input.remark?.trim() || null },
+        });
+        await transaction.auditLog.create({
+          data: { projectId, id: `audit-${randomUUID()}`, actor, action: "issue.attachment.upload", targetType: "issueAttachment", targetId: created.id, summary: `为问题「${issue.title}」上传${created.attachmentType}「${created.originalFileName}」` },
+        });
+        return created;
+      });
+    } catch (error) {
+      await rm(storagePath, { force: true });
+      throw error;
+    }
 
     return {
       id: attachment.id,
@@ -106,13 +104,13 @@ export class IssueAttachmentService {
 
   async file(id: string) {
     return this.database.issueAttachment.findUnique({
-      where: { id },
+      where: { id, issue: { projectId: currentProjectId() } },
       select: { storagePath: true, originalFileName: true, fileName: true },
     });
   }
 
-  private async ensureIssue(issueId: string) {
-    const issue = await this.database.issue.findUnique({ where: { id: issueId } });
+  private async ensureIssue(issueId: string, projectId = currentProjectId()) {
+    const issue = await this.database.issue.findUnique({ where: { id: issueId, projectId } });
     if (!issue) throw new NotFoundException("Issue not found");
     return issue;
   }

@@ -6,22 +6,99 @@ datasource db {
   provider = "postgresql"
 }
 
+model Project {
+  id                String   @id
+  name              String
+  shortName         String
+  customerType      String
+  archiveDimensions Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  dashboardMetrics    DashboardMetric[]
+  issueCategoryStats  IssueCategoryStat[]
+  managedObjects      ManagedObject[]
+  issues              Issue[]
+  reports             InspectionReport[]
+  mapAssets           MapAsset[]
+  mediaProcessingJobs MediaProcessingJob[]
+  mediaAssets         MediaAsset[]
+  inspectionTasks     InspectionTask[]
+  auditLogs           AuditLog[]
+  memberships         ProjectMembership[]
+}
+
+model UserAccount {
+  id             String   @id
+  username       String   @unique
+  passwordHash   String
+  name           String
+  phone          String
+  role           String
+  status         String   @default("active")
+  tokenVersion   Int      @default(1)
+  lastLoginAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  memberships    ProjectMembership[]
+  platformAudits PlatformAuditLog[] @relation("PlatformAuditActor")
+  uploadedMaps   MapAsset[]
+
+  @@index([role, status])
+}
+
+model ProjectMembership {
+  id        String   @id
+  userId    String
+  projectId String
+  createdAt DateTime @default(now())
+  user      UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@index([projectId])
+}
+
+model PlatformAuditLog {
+  id        String   @id
+  actorId   String
+  action    String
+  targetId  String?
+  summary   String
+  createdAt DateTime @default(now())
+  actor     UserAccount @relation("PlatformAuditActor", fields: [actorId], references: [id])
+
+  @@index([createdAt])
+}
+
 model DashboardMetric {
-  key       String   @id
+  projectId String   @default("quyang")
+  key       String
   label     String
   value     Int
   remark    String?
   updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@id([projectId, key])
+  @@index([projectId])
 }
 
 model IssueCategoryStat {
+  projectId String @default("quyang")
   id       String @id
   category String
   value    Int
   sort     Int    @default(0)
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, sort])
 }
 
 model ManagedObject {
+  projectId     String   @default("quyang")
   id            String   @id
   name          String
   objectType    String
@@ -37,12 +114,15 @@ model ManagedObject {
   reports  InspectionReport[]
   hotAreas MapHotArea[]
   taskPhotos TaskPhoto[]
+  project    Project @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, objectType])
   @@index([objectType])
   @@index([status])
 }
 
 model Issue {
+  projectId               String   @default("quyang")
   id                      String   @id
   title                   String
   category                String
@@ -69,7 +149,9 @@ model Issue {
   object          ManagedObject? @relation(fields: [objectId], references: [id])
   sourceTaskPhoto TaskPhoto?     @relation(fields: [sourceTaskPhotoId], references: [id], onDelete: SetNull)
   attachments     IssueAttachment[]
+  project         Project        @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, status])
   @@index([objectId])
   @@index([status])
   @@index([foundAt])
@@ -97,6 +179,7 @@ model IssueAttachment {
 }
 
 model InspectionReport {
+  projectId         String   @default("quyang")
   id                String   @id
   title             String
   reportDate        DateTime
@@ -118,7 +201,9 @@ model InspectionReport {
   relatedObject ManagedObject? @relation(fields: [relatedObjectId], references: [id])
   task          InspectionTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
   photos        ReportPhoto[]
+  project       Project        @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, reportDate])
   @@index([relatedObjectId])
   @@index([reportType])
   @@index([reportDate])
@@ -126,6 +211,7 @@ model InspectionReport {
 }
 
 model MapAsset {
+  projectId        String   @default("quyang")
   id               String   @id
   name             String
   mapType          String
@@ -140,17 +226,25 @@ model MapAsset {
   isActive         Boolean  @default(false)
   processStatus    String
   hotAreaCount     Int      @default(0)
+  uploadedByAccountId String?
+  errorMessage        String?
+  activatedAt         DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   hotAreas MapHotArea[]
+  project  Project      @relation(fields: [projectId], references: [id])
+  uploadedBy UserAccount? @relation(fields: [uploadedByAccountId], references: [id], onDelete: SetNull)
 
+  @@index([projectId, isActive])
+  @@index([uploadedByAccountId])
   @@index([mapType])
   @@index([processStatus])
   @@index([isActive])
 }
 
 model MediaProcessingJob {
+  projectId    String   @default("quyang")
   id           String   @id
   jobType      String
   status       String   @default("queued")
@@ -163,17 +257,34 @@ model MediaProcessingJob {
   attempts     Int      @default(0)
   startedAt    DateTime?
   completedAt  DateTime?
+  leaseOwner    String?
+  attemptId     String?
+  leaseExpiresAt DateTime?
+  heartbeatAt   DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  media MediaAsset? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  media   MediaAsset? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  project Project     @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, status])
   @@index([jobType, status])
+  @@index([status, leaseExpiresAt])
   @@index([mediaId])
   @@index([createdAt])
 }
 
+model MapWorkerLease {
+  id          String   @id
+  ownerId     String?
+  expiresAt   DateTime
+  heartbeatAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model MediaAsset {
+  projectId        String   @default("quyang")
   id               String   @id
   kind             String
   originalFileName String
@@ -192,13 +303,16 @@ model MediaAsset {
   jobs        MediaProcessingJob[]
   inspectionTask InspectionTask? @relation("InspectionTaskSource")
   taskPhoto      TaskPhoto?      @relation("TaskPhotoMedia")
+  project        Project         @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, createdAt])
   @@unique([parentMediaId, videoTimestampMs])
   @@index([kind])
   @@index([createdAt])
 }
 
 model InspectionTask {
+  projectId         String   @default("quyang")
   id                String   @id
   name              String
   taskDate          DateTime
@@ -214,7 +328,9 @@ model InspectionTask {
   sourceMedia MediaAsset?      @relation("InspectionTaskSource", fields: [sourceMediaId], references: [id], onDelete: SetNull)
   photos      TaskPhoto[]
   report      InspectionReport?
+  project     Project           @relation(fields: [projectId], references: [id])
 
+  @@index([projectId, taskDate])
   @@index([taskDate])
   @@index([sourceType])
   @@index([processStatus])
@@ -351,6 +467,7 @@ model MapHotArea {
 }
 
 model AuditLog {
+  projectId   String   @default("quyang")
   id         String   @id
   actor      String
   action     String
@@ -362,6 +479,9 @@ model AuditLog {
   reviewedAt   DateTime?
   createdAt  DateTime @default(now())
 
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, createdAt])
   @@index([action])
   @@index([targetType])
   @@index([createdAt])

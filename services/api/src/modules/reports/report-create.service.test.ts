@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ReportCreateService } from "./report-create.service.js";
+import { runAsMember } from "../../test-support/auth-context.js";
 
 test("replaces ordered report photo links in the report transaction", async () => {
   const upserts: Array<Record<string, unknown>> = [];
@@ -25,6 +26,7 @@ test("replaces ordered report photo links in the report transaction", async () =
       deleteMany: async (input: Record<string, unknown>) => (deletions.push(input), { count: 0 }),
       createMany: async (input: Record<string, unknown>) => (creations.push(input), { count: 2 }),
     },
+    auditLog: { create: async ({ data }: { data: Record<string, unknown> }) => (audits.push(data), data) },
   };
   const database = {
     $transaction: async (callback: (client: typeof transaction) => unknown) => callback(transaction),
@@ -32,15 +34,15 @@ test("replaces ordered report photo links in the report transaction", async () =
   const auditService = { record: async (input: Record<string, unknown>) => (audits.push(input), input) };
   const service = new ReportCreateService(database as never, auditService as never);
 
-  const result = await service.submit({
+  const result = await runAsMember(() => service.submit({
     taskId: "task-1",
     title: "7月巡检综合报告",
     reportDate: "2026-07-11",
-    relatedObjectName: "曲阳路街道",
+    relatedObjectName: "当前项目",
     issueCount: 3,
     contentSummary: "综合巡检结果",
     taskPhotoIds: ["photo-2", "photo-1"],
-  });
+  }));
 
   assert.equal(result.id, "report-1");
   assert.deepEqual(result.taskPhotoIds, ["photo-2", "photo-1"]);
@@ -62,12 +64,12 @@ test("rejects duplicate report photo selections", async () => {
   const service = new ReportCreateService({} as never, { record: async () => undefined } as never);
 
   await assert.rejects(
-    service.submit({
+    runAsMember(() => service.submit({
       taskId: "task-1",
       title: "7月巡检综合报告",
       reportDate: "2026-07-11",
       taskPhotoIds: ["photo-1", "photo-1"],
-    }),
+    })),
     /报告照片不能重复/,
   );
 });
@@ -76,6 +78,7 @@ test("rejects photos that do not belong to the selected task", async () => {
   const transaction = {
     inspectionTask: { findUnique: async () => ({ id: "task-1", name: "7月巡检" }) },
     taskPhoto: { findMany: async () => [{ id: "photo-1", taskId: "task-1" }] },
+    auditLog: { create: async () => undefined },
   };
   const database = {
     $transaction: async (callback: (client: typeof transaction) => unknown) => callback(transaction),
@@ -83,12 +86,12 @@ test("rejects photos that do not belong to the selected task", async () => {
   const service = new ReportCreateService(database as never, { record: async () => undefined } as never);
 
   await assert.rejects(
-    service.submit({
+    runAsMember(() => service.submit({
       taskId: "task-1",
       title: "7月巡检综合报告",
       reportDate: "2026-07-11",
       taskPhotoIds: ["photo-1", "photo-other-task"],
-    }),
+    })),
     /所选照片不属于当前任务/,
   );
 });
