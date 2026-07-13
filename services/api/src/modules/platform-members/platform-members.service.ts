@@ -69,6 +69,7 @@ export class PlatformMembersService {
   }
 
   async create(input: CreatePlatformMemberInput, actorId?: string): Promise<PlatformMemberDto> {
+    this.assertInputObject(input);
     const name = this.requiredText(input.name, "姓名不能为空");
     const phone = this.validPhone(input.phone);
     const username = this.requiredText(input.username, "用户名不能为空");
@@ -106,7 +107,13 @@ export class PlatformMembersService {
           },
         },
         include: memberInclude,
-      });
+      })
+        .catch((error: unknown) => {
+          if (this.isUsernameUniqueConstraintError(error)) {
+            throw new ConflictException("用户名已存在");
+          }
+          throw error;
+        });
 
       await transaction.platformAuditLog.create({
         data: {
@@ -127,6 +134,7 @@ export class PlatformMembersService {
     input: UpdatePlatformMemberInput,
     actorId?: string,
   ): Promise<PlatformMemberDto> {
+    this.assertInputObject(input);
     const name = input.name === undefined
       ? undefined
       : this.requiredText(input.name, "姓名不能为空");
@@ -147,43 +155,56 @@ export class PlatformMembersService {
       });
       this.assertEditableMember(current);
 
-      const projects = projectIds === undefined
+      const currentProjectIds = current.memberships.map((membership) => membership.projectId);
+      const projectsChanged = projectIds !== undefined
+        && !this.sameProjectSet(currentProjectIds, projectIds);
+      const statusChanged = status !== undefined && status !== current.status;
+      const nameChanged = name !== undefined && name !== current.name;
+      const phoneChanged = phone !== undefined && phone !== current.phone;
+
+      if (!projectsChanged && !statusChanged && !nameChanged && !phoneChanged) {
+        return this.toDto(current);
+      }
+
+      const projects = !projectsChanged
         ? undefined
         : await transaction.project.findMany({
           where: { id: { in: projectIds } },
           select: { id: true, name: true },
         });
-      if (projectIds && projects) this.assertAllProjectsExist(projectIds, projects);
+      if (projectsChanged && projectIds && projects) {
+        this.assertAllProjectsExist(projectIds, projects);
+      }
 
-      if (projectIds) {
+      if (projectsChanged && projectIds) {
         await transaction.projectMembership.deleteMany({ where: { userId: id } });
         await transaction.projectMembership.createMany({
           data: projectIds.map((projectId) => ({ id: randomUUID(), userId: id, projectId })),
         });
       }
 
-      const invalidatesSession = projectIds !== undefined || status !== undefined;
+      const invalidatesSession = projectsChanged || statusChanged;
       const member = await transaction.userAccount.update({
         where: { id },
         data: {
-          ...(name === undefined ? {} : { name }),
-          ...(phone === undefined ? {} : { phone }),
-          ...(status === undefined ? {} : { status }),
+          ...(nameChanged ? { name } : {}),
+          ...(phoneChanged ? { phone } : {}),
+          ...(statusChanged ? { status } : {}),
           ...(invalidatesSession ? { tokenVersion: { increment: 1 } } : {}),
         },
         include: memberInclude,
       });
 
-      const action = projectIds !== undefined
+      const action = projectsChanged
         ? "member.projects.update"
-        : status !== undefined
+        : statusChanged
           ? "member.status.update"
           : "member.profile.update";
       const summaryParts = [
-        name === undefined ? undefined : `姓名：${name}`,
-        phone === undefined ? undefined : `手机号：${phone}`,
+        nameChanged ? `姓名：${name}` : undefined,
+        phoneChanged ? `手机号：${phone}` : undefined,
         projects === undefined ? undefined : `项目：${projects.map((project) => project.name).join("、")}`,
-        status === undefined ? undefined : `状态：${status === "active" ? "启用" : "停用"}`,
+        statusChanged ? `状态：${status === "active" ? "启用" : "停用"}` : undefined,
       ].filter((part): part is string => Boolean(part));
 
       await transaction.platformAuditLog.create({
@@ -205,6 +226,7 @@ export class PlatformMembersService {
     input: { password?: string },
     actorId?: string,
   ): Promise<PlatformMemberDto> {
+    this.assertInputObject(input);
     const password = this.validPassword(input.password);
     const passwordHash = await hashPassword(password);
 
@@ -252,29 +274,59 @@ export class PlatformMembersService {
     };
   }
 
-  private requiredText(value: string | undefined, message: string) {
-    const normalized = value?.trim();
+  private requiredText(value: unknown, message: string) {
+    if (typeof value !== "string") throw new BadRequestException(message);
+    const normalized = value.trim();
     if (!normalized) throw new BadRequestException(message);
     return normalized;
   }
 
-  private validPhone(value: string | undefined) {
-    const phone = value?.trim() ?? "";
+  private validPhone(value: unknown) {
+    if (typeof value !== "string") throw new BadRequestException("手机号格式无效");
+    const phone = value.trim();
     if (!/^1[3-9]\d{9}$/.test(phone)) throw new BadRequestException("手机号格式无效");
     return phone;
   }
 
-  private validPassword(value: string | undefined) {
-    if (!value || value.length < 8) throw new BadRequestException("密码至少需要 8 个字符");
+  private validPassword(value: unknown) {
+    if (typeof value !== "string" || value.length < 8) {
+      throw new BadRequestException("密码至少需要 8 个字符");
+    }
     return value;
   }
 
-  private validProjectIds(value: string[] | undefined) {
-    const projectIds = Array.isArray(value)
-      ? [...new Set(value.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean))]
-      : [];
-    if (projectIds.length === 0) throw new BadRequestException("成员至少需要分配一个项目");
+  private validProjectIds(value: unknown) {
+    if (!Array.isArray(value)) throw new BadRequestException("项目列表无效");
+    if (value.length === 0) throw new BadRequestException("成员至少需要分配一个项目");
+    if (value.some((id) => typeof id !== "string" || !id.trim())) {
+      throw new BadRequestException("项目 ID 必须是非空字符串");
+    }
+    const projectIds = value.map((id) => (id as string).trim());
+    if (new Set(projectIds).size !== projectIds.length) {
+      throw new BadRequestException("项目 ID 不得重复");
+    }
     return projectIds;
+  }
+
+  private assertInputObject(value: unknown): asserts value is Record<string, unknown> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new BadRequestException("请求内容无效");
+    }
+  }
+
+  private sameProjectSet(left: string[], right: string[]) {
+    return left.length === right.length && new Set(left).size === new Set([...left, ...right]).size;
+  }
+
+  private isUsernameUniqueConstraintError(error: unknown) {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "P2002") {
+      return false;
+    }
+    if (!("meta" in error) || !error.meta || typeof error.meta !== "object") return false;
+    const target = "target" in error.meta ? error.meta.target : undefined;
+    if (Array.isArray(target)) return target.includes("username");
+    return typeof target === "string"
+      && target.split(/[^A-Za-z0-9]+/).includes("username");
   }
 
   private assertAllProjectsExist(
