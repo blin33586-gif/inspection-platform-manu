@@ -19,6 +19,8 @@
 - Association changes update old and new managed-object `issueCount` values in the same database transaction.
 - Material changes create one project-scoped audit entry; an unchanged save creates none.
 - A published card with source photo and annotation is regenerated after metadata changes, and its browser URL is versioned.
+- A committed metadata update returns success even if derived card rendering fails; the failure is audited and the card endpoint retries stale cards on the next read.
+- Card rendering checks the issue data version before replacing the PNG, so an older concurrent render cannot overwrite a newer card.
 - Manually created issues without a card remain cardless.
 - Existing rectification, attachment, and closure behavior must not be redesigned.
 
@@ -38,6 +40,7 @@
 **Interfaces:**
 - Produces: `IssueSummary.objectId: string | null` and full ISO `IssueSummary.foundAt`.
 - Produces: `IssueWriteService.updateMetadata(id: string, input: UpdateIssueMetadataInput): Promise<IssueSummary | null>`.
+- Produces internally: a transaction result containing `{ issueId: string; changed: boolean }`, so later card refresh runs only for material changes.
 - Produces: `PATCH /api/v1/issues/:id` with `{ objectId: string | null; category: string; severity: Severity; foundAt: string }`.
 - Produces: `GET /api/v1/managed-objects` returning `ManagedObjectSummary[]` for the selected project.
 
@@ -103,7 +106,7 @@ export interface UpdateIssueMetadataInput {
 }
 ```
 
-Validate all four fields before entering the transaction. Inside the transaction, load the issue with `{ id, projectId }`, validate a non-null target object with the same `projectId`, compare normalized values, and return without writes when nothing changed. When association changes, decrement the old object's count only when greater than zero and increment the new object's count. Update the issue without touching `status`; create one audit row with action `issue.metadata.update` and a Chinese summary listing changed labels.
+Validate all four fields before entering the transaction. Inside the transaction, load the issue with `{ id, projectId }`, validate a non-null target object with the same `projectId`, compare normalized values, and return `{ issueId, changed: false }` without writes when nothing changed. When association changes, decrement the old object's count only when greater than zero and increment the new object's count. Update the issue without touching `status`; create one audit row with action `issue.metadata.update` and a Chinese summary listing changed labels, then return `{ issueId, changed: true }`.
 
 - [ ] **Step 5: Expose the two endpoints**
 
@@ -146,12 +149,14 @@ git commit -m "feat: edit project-scoped issue metadata"
 - Modify: `services/api/src/modules/issues/issue-event-publish.service.ts`
 - Modify: `services/api/src/modules/issues/issue-write.service.ts`
 - Modify: `services/api/src/database/inspection-read.repository.ts`
+- Modify: `services/api/src/modules/issues/issues.controller.ts`
 - Test: `services/api/src/modules/issues/issue-event-publish.service.test.ts`
 - Test: `services/api/src/modules/issues/issue-write.service.test.ts`
 
 **Interfaces:**
 - Consumes: `IssueWriteService.updateMetadata` from Task 1.
 - Produces: `IssueEventPublishService.refreshCard(issueId: string): Promise<void>`.
+- Produces: `IssueEventPublishService.ensureFreshCard(issueId: string): Promise<void>` for the protected card endpoint.
 - Produces: versioned `cardImageUrl`, `/api/v1/issues/:id/card.png?v=<updatedAtEpoch>`.
 
 - [ ] **Step 1: Write failing card refresh tests**
@@ -167,6 +172,8 @@ assert.deepEqual(await readFile(cardPath), Buffer.from("new-card"));
 
 Add a test proving an issue with `cardStoragePath: null` and no source photo returns without rendering, and a write-service test proving refresh is requested only after a material update.
 
+Add tests proving: metadata save still returns its updated summary when rendering throws; the failure audit is retained; `ensureFreshCard` retries when the stored file is older than issue `updatedAt`; and a render that started from an older `updatedAt` discards its temporary output instead of overwriting the newer card.
+
 - [ ] **Step 2: Run tests and verify RED**
 
 Run:
@@ -179,9 +186,11 @@ Expected: failures because `refreshCard` does not exist and metadata updates do 
 
 - [ ] **Step 3: Implement refresh and versioning**
 
-Make `refreshCard(issueId)` load the current-project issue. If it has no existing card, source photo, or source annotation version, return. Otherwise reuse `requirePhoto`, `readAnnotationVersion`, and `generateCard` so rendering uses the updated authoritative category and occurrence time.
+Make `refreshCard(issueId)` load the current-project issue and retain its `updatedAt` as the expected data version. If it has no existing card, source photo, or source annotation version, return. Otherwise reuse `requirePhoto`, `readAnnotationVersion`, and the renderer. Before replacing the final file, re-read the current issue version; if it differs, delete the temporary result and refresh the newest version instead. Preserve the business `updatedAt` when persisting card size/path metadata so card generation itself does not create a new business version.
 
-Inject the publisher into `IssueWriteService` and call `refreshCard(id)` after a material transaction succeeds. Re-read the final summary after refresh. Version all issue summary card URLs with the final `updatedAt` epoch:
+Make `ensureFreshCard(issueId)` compare the current issue version with the existing card file modification time. If the file is missing or older, call `refreshCard`; otherwise return without rendering. Call it from `GET /issues/:id/card.png` before `sendInlineStoredFile`.
+
+Inject the publisher into `IssueWriteService` and call `refreshCard(id)` only when the transaction returns `changed: true`. Catch a refresh failure after it has produced the existing `issue.card.failed` audit, return the successfully committed metadata summary, and let `ensureFreshCard` retry on the next card read. Version all issue summary card URLs with the business `updatedAt` epoch:
 
 ```ts
 cardImageUrl: issue.cardStoragePath
@@ -203,7 +212,7 @@ Expected: selected tests pass and typecheck exits 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add services/api/src/modules/issues/issue-event-publish.service.ts services/api/src/modules/issues/issue-write.service.ts services/api/src/database/inspection-read.repository.ts services/api/src/modules/issues/issue-event-publish.service.test.ts services/api/src/modules/issues/issue-write.service.test.ts
+git add services/api/src/modules/issues/issue-event-publish.service.ts services/api/src/modules/issues/issue-write.service.ts services/api/src/database/inspection-read.repository.ts services/api/src/modules/issues/issues.controller.ts services/api/src/modules/issues/issue-event-publish.service.test.ts services/api/src/modules/issues/issue-write.service.test.ts
 git commit -m "feat: refresh cards after issue edits"
 ```
 

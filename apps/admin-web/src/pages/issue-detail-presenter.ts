@@ -1,4 +1,4 @@
-import type { IssueStatus } from "@xunjianbao/shared";
+import type { IssueStatus, Severity } from "@xunjianbao/shared";
 
 const statusLabels: Record<IssueStatus, string> = {
   pending: "待处理",
@@ -19,4 +19,31 @@ export function isIssueReadOnly(status: IssueStatus) {
 
 export function canCloseIssue(status: IssueStatus, recordCount: number) {
   return recordCount > 0 && !isIssueReadOnly(status);
+}
+
+export const severityOptions = [
+  { value: "high", label: "严重" },
+  { value: "medium", label: "重要" },
+  { value: "normal", label: "轻微" },
+] as const;
+
+export function issueSeverityLabel(value: Severity) {
+  return severityOptions.find((item) => item.value === value)?.label ?? "轻微";
+}
+
+export function toLocalDateTimeInput(iso: string) {
+  const date = new Date(iso);
+  const shanghai = new Date(date.getTime() + 8 * 60 * 60_000);
+  return shanghai.toISOString().slice(0, 16);
+}
+
+export function fromShanghaiDateTimeInput(value: string) {
+  return new Date(`${value}:00+08:00`).toISOString();
+}
+
+export function formatShanghaiDateTime(iso: string) {
+  const shanghai = new Date(new Date(iso).getTime() + 8 * 60 * 60_000).toISOString();
+  const [date, time] = shanghai.split("T");
+  const [year, month, day] = date.split("-");
+  return `${year}/${Number(month)}/${Number(day)} ${time.slice(0, 8)}`;
 }

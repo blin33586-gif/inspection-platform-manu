@@ -5,12 +5,13 @@ import type { Response } from "express";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { AuditService } from "../audit/audit.service.js";
 import { ok, paged } from "../../shared/api-response.js";
-import { IssueWriteService } from "./issue-write.service.js";
+import { IssueWriteService, type UpdateIssueMetadataInput } from "./issue-write.service.js";
 import { IssueAttachmentService } from "./issue-attachment.service.js";
 import { sendInlineStoredFile, sendStoredFile } from "../../shared/file-download.js";
 import { DatabaseService } from "../../database/database.service.js";
 import { currentProjectId } from "../auth/project-context.js";
 import { IssueRectificationService, type UploadedFileLike } from "./issue-rectification.service.js";
+import { IssueEventPublishService } from "./issue-event-publish.service.js";
 
 const allowedStatuses: IssueStatus[] = ["pending", "processing", "rectified", "verified", "ignored", "archived"];
 const rectificationUploadOptions = {
@@ -27,6 +28,7 @@ export class IssuesController {
     @Inject(IssueAttachmentService) private readonly attachmentService: IssueAttachmentService,
     @Inject(IssueRectificationService) private readonly rectificationService: IssueRectificationService,
     @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(IssueEventPublishService) private readonly publisher: IssueEventPublishService,
   ) {}
 
   @Get()
@@ -43,6 +45,7 @@ export class IssuesController {
 
   @Get(":id/card.png")
   async card(@Param("id") id: string, @Res() response: Response) {
+    await this.publisher.ensureFreshCard(id);
     const issue = await this.database.issue.findUnique({
       where: { id, projectId: currentProjectId() },
       select: { cardStoragePath: true, cardMimeType: true },
@@ -98,6 +101,13 @@ export class IssuesController {
   @Post()
   async create(@Body() body: { title?: string; category?: string; status?: IssueStatus; severity?: Severity; foundAt?: string; objectId?: string }) {
     return ok(await this.issueWriteService.create(body));
+  }
+
+  @Patch(":id")
+  async update(@Param("id") id: string, @Body() body: UpdateIssueMetadataInput) {
+    const item = await this.issueWriteService.updateMetadata(id, body);
+    if (!item) throw new NotFoundException("Issue not found");
+    return ok(item);
   }
 
   @Get(":id/attachments")

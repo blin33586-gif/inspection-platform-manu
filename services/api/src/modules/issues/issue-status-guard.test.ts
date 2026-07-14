@@ -12,6 +12,7 @@ function createController(readRepository: Record<string, unknown>) {
     {} as never,
     {} as never,
     {} as never,
+    { ensureFreshCard: async () => undefined } as never,
   );
 }
 
@@ -43,6 +44,7 @@ test("general status endpoint cannot reopen an already closed issue", async () =
     {} as never,
     {} as never,
     {} as never,
+    { ensureFreshCard: async () => undefined } as never,
   );
 
   await assert.rejects(
