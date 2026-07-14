@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { IssueStatus, Severity } from "@xunjianbao/shared";
 import { runAsMember } from "../../test-support/auth-context.js";
+import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { IssueWriteService } from "./issue-write.service.js";
 
 interface IssueRecord {
@@ -18,7 +19,10 @@ interface IssueRecord {
   cardStoragePath: string | null;
 }
 
-function createMetadataFixture(overrides: Partial<IssueRecord> = {}) {
+function createMetadataFixture(
+  overrides: Partial<IssueRecord> = {},
+  refreshCard: (id: string) => Promise<void> = async () => undefined,
+) {
   let issue: IssueRecord = {
     id: "is-1",
     projectId: "quyang",
@@ -105,13 +109,21 @@ function createMetadataFixture(overrides: Partial<IssueRecord> = {}) {
       };
     },
   };
-  const service = new IssueWriteService(database as never, readRepository as never, {} as never);
+  const refreshCalls: string[] = [];
+  const publisher = {
+    refreshCard: async (id: string) => {
+      refreshCalls.push(id);
+      await refreshCard(id);
+    },
+  };
+  const service = new IssueWriteService(database as never, readRepository as never, {} as never, publisher as never);
 
   return {
     service,
     counterWrites,
     audits,
     issueWrites,
+    refreshCalls,
     transactionCalls: () => transactionCalls,
     transactionResult: () => transactionResult,
   };
@@ -125,7 +137,7 @@ test("rejects read-only terminal statuses when creating an issue", async () => {
       throw new Error("transaction must not start for an invalid initial status");
     },
   };
-  const service = new IssueWriteService(database as never, {} as never, {} as never);
+  const service = new IssueWriteService(database as never, {} as never, {} as never, {} as never);
   const terminalStatuses: IssueStatus[] = ["verified", "ignored", "archived"];
 
   for (const status of terminalStatuses) {
@@ -139,7 +151,7 @@ test("rejects read-only terminal statuses when creating an issue", async () => {
 });
 
 test("updates issue metadata without changing a verified status", async () => {
-  const { service, counterWrites, audits, issueWrites, transactionResult } = createMetadataFixture();
+  const { service, counterWrites, audits, issueWrites, transactionResult, refreshCalls } = createMetadataFixture();
 
   const result = await runAsMember(() => service.updateMetadata("is-1", {
     objectId: "r-new",
@@ -160,6 +172,7 @@ test("updates issue metadata without changing a verified status", async () => {
   assert.match(String(audits[0]?.summary), /发现时间/);
   assert.equal("status" in (issueWrites[0] ?? {}), false);
   assert.deepEqual(transactionResult(), { issueId: "is-1", changed: true });
+  assert.deepEqual(refreshCalls, ["is-1"]);
 });
 
 test("clears an issue object association and only decrements the old counter", async () => {
@@ -242,8 +255,8 @@ test("rejects incomplete ISO foundAt values before starting a transaction", asyn
   assert.equal(transactionCalls(), 0);
 });
 
-test("performs no issue, audit, or counter writes for an unchanged normalized save", async () => {
-  const { service, counterWrites, audits, issueWrites, transactionResult } = createMetadataFixture({
+test("performs no issue, audit, counter, or card writes for an unchanged normalized save", async () => {
+  const { service, counterWrites, audits, issueWrites, transactionResult, refreshCalls } = createMetadataFixture({
     category: "占道经营",
     foundAt: new Date("2026-07-08T01:35:00.000Z"),
   });
@@ -260,4 +273,58 @@ test("performs no issue, audit, or counter writes for an unchanged normalized sa
   assert.deepEqual(issueWrites, []);
   assert.deepEqual(audits, []);
   assert.deepEqual(transactionResult(), { issueId: "is-1", changed: false });
+  assert.deepEqual(refreshCalls, []);
+});
+
+test("returns committed metadata when card refresh fails after recording its failure", async () => {
+  const cardAudits: Array<Record<string, unknown>> = [];
+  const { service, audits, refreshCalls } = createMetadataFixture({}, async (id) => {
+    cardAudits.push({ action: "issue.card.failed", targetId: id });
+    throw new Error("card refresh failed");
+  });
+
+  const result = await runAsMember(() => service.updateMetadata("is-1", { category: "占道经营" }));
+
+  assert.equal(result?.category, "占道经营");
+  assert.deepEqual(refreshCalls, ["is-1"]);
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0]?.action, "issue.metadata.update");
+  assert.deepEqual(cardAudits, [{ action: "issue.card.failed", targetId: "is-1" }]);
+});
+
+test("versions every issue summary card URL with the business updatedAt epoch", async () => {
+  const updatedAt = new Date("2026-07-14T02:03:04.567Z");
+  const record = {
+    id: "is-card",
+    projectId: "quyang",
+    title: "道路堆物",
+    objectId: null,
+    object: null,
+    category: "市容环境",
+    status: "pending",
+    severity: "normal",
+    foundAt: new Date("2026-07-08T01:35:00.000Z"),
+    description: null,
+    locationName: null,
+    cardStoragePath: "storage/issues/cards/is-card.png",
+    updatedAt,
+  };
+  const database = {
+    issue: {
+      findMany: async () => [record],
+      findUnique: async () => record,
+      updateMany: async () => ({ count: 1 }),
+    },
+  };
+  const repository = new InspectionReadRepository(database as never);
+
+  const [listed, detailed, statusUpdated] = await runAsMember(async () => {
+    const [listedIssue] = await repository.issues();
+    return [listedIssue, await repository.issue(record.id), await repository.updateIssueStatus(record.id, "processing")];
+  });
+  const expected = `/api/v1/issues/${record.id}/card.png?v=${updatedAt.getTime()}`;
+
+  assert.equal(listed?.cardImageUrl, expected);
+  assert.equal(detailed?.cardImageUrl, expected);
+  assert.equal(statusUpdated?.cardImageUrl, expected);
 });

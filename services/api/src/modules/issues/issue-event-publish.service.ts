@@ -8,7 +8,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
@@ -29,6 +29,7 @@ interface IssueCardRecord {
   sourceTaskPhotoId: string | null;
   sourceAnnotationVersion: number | null;
   cardStoragePath: string | null;
+  updatedAt: Date;
 }
 
 interface IssuePhotoRecord {
@@ -40,6 +41,7 @@ interface IssuePhotoRecord {
 export class IssueEventPublishService {
   private readonly storageRoot: string;
   private readonly cardRenderer: CardRenderer;
+  private readonly cardRefreshes = new Map<string, Promise<void>>();
 
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
@@ -108,8 +110,51 @@ export class IssueEventPublishService {
       return created;
     });
 
-    await this.generateCard(issue, photo, annotationDocument.annotationJson, projectId, identity.username);
+    const written = await this.generateCard(issue, photo, annotationDocument.annotationJson, projectId, identity.username);
+    if (!written) await this.refreshCard(issue.id);
     return this.result(id);
+  }
+
+  async refreshCard(issueId: string): Promise<void> {
+    const identity = requireCurrentIdentity();
+    const projectId = currentProjectId();
+    const previous = this.cardRefreshes.get(issueId) ?? Promise.resolve();
+    const refresh = previous
+      .catch(() => undefined)
+      .then(() => this.refreshCurrentCard(issueId, projectId, identity.username));
+    this.cardRefreshes.set(issueId, refresh);
+    try {
+      await refresh;
+    } finally {
+      if (this.cardRefreshes.get(issueId) === refresh) this.cardRefreshes.delete(issueId);
+    }
+  }
+
+  private async refreshCurrentCard(issueId: string, projectId: string, actor: string): Promise<void> {
+    while (true) {
+      const issue = await this.database.issue.findUnique({ where: { id: issueId, projectId } });
+      if (!issue?.cardStoragePath || !issue.sourceTaskPhotoId || !issue.sourceAnnotationVersion) return;
+
+      const photo = await this.requirePhoto(issue.sourceTaskPhotoId, projectId);
+      if (!photo.annotationDocument) return;
+      const annotationJson = await this.readAnnotationVersion(photo, issue.sourceAnnotationVersion);
+      const written = await this.generateCard(issue, photo, annotationJson, projectId, actor);
+      if (written) return;
+    }
+  }
+
+  async ensureFreshCard(issueId: string): Promise<void> {
+    const projectId = currentProjectId();
+    const issue = await this.database.issue.findUnique({ where: { id: issueId, projectId } });
+    if (!issue?.cardStoragePath) return;
+
+    const cardPath = this.resolveStoragePath(issue.cardStoragePath);
+    const cardStat = await stat(cardPath).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    });
+    if (cardStat && cardStat.mtimeMs >= issue.updatedAt.getTime()) return;
+    await this.refreshCard(issueId);
   }
 
   private async ensureCard(issue: IssueCardRecord, projectId: string, actor: string) {
@@ -120,7 +165,8 @@ export class IssueEventPublishService {
     const photo = await this.requirePhoto(issue.sourceTaskPhotoId, projectId);
     if (!photo.annotationDocument) throw new ConflictException("问题的原始标注已不存在");
     const annotationJson = await this.readAnnotationVersion(photo, issue.sourceAnnotationVersion);
-    await this.generateCard(issue, photo, annotationJson, projectId, actor);
+    const written = await this.generateCard(issue, photo, annotationJson, projectId, actor);
+    if (!written) await this.refreshCard(issue.id);
   }
 
   private async requirePhoto(photoId: string, projectId: string) {
@@ -163,11 +209,25 @@ export class IssueEventPublishService {
       });
       await mkdir(dirname(finalPath), { recursive: true });
       await writeFile(tempPath, png);
-      await rename(tempPath, finalPath);
-      await this.database.issue.update({
+      const current = await this.database.issue.findUnique({
         where: { id: issue.id, projectId },
-        data: { cardStoragePath: finalStoragePath, cardMimeType: "image/png", cardFileSize: png.length },
+        select: { updatedAt: true },
       });
+      if (!current || current.updatedAt.getTime() !== issue.updatedAt.getTime()) {
+        await rm(tempPath, { force: true });
+        return false;
+      }
+      await rename(tempPath, finalPath);
+      const persisted = await this.database.issue.updateMany({
+        where: { id: issue.id, projectId, updatedAt: issue.updatedAt },
+        data: {
+          cardStoragePath: finalStoragePath,
+          cardMimeType: "image/png",
+          cardFileSize: png.length,
+          updatedAt: issue.updatedAt,
+        },
+      });
+      return persisted.count === 1;
     } catch (error) {
       await rm(tempPath, { force: true }).catch(() => undefined);
       await this.database.auditLog.create({
@@ -181,7 +241,7 @@ export class IssueEventPublishService {
           summary: `问题卡生成失败：${error instanceof Error ? error.message : "unknown"}`,
         },
       });
-      throw new InternalServerErrorException("问题已创建，但分享卡生成失败，请重试");
+      throw new InternalServerErrorException("问题卡刷新失败，请重试");
     }
   }
 

@@ -142,7 +142,7 @@ export class InspectionReadRepository {
       foundAt: issue.foundAt.toISOString(),
       description: issue.description,
       locationName: issue.locationName,
-      cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png` : null,
+      cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png?v=${issue.updatedAt.getTime()}` : null,
     }));
   }
 
@@ -165,7 +165,7 @@ export class InspectionReadRepository {
       foundAt: issue.foundAt.toISOString(),
       description: issue.description,
       locationName: issue.locationName,
-      cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png` : null,
+      cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png?v=${issue.updatedAt.getTime()}` : null,
     };
   }
 
@@ -194,7 +194,7 @@ export class InspectionReadRepository {
       foundAt: issue.foundAt.toISOString(),
       description: issue.description,
       locationName: issue.locationName,
-      cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png` : null,
+      cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png?v=${issue.updatedAt.getTime()}` : null,
     };
   }
 

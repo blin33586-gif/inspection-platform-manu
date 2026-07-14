@@ -5,6 +5,7 @@ import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
 import { AuditService } from "../audit/audit.service.js";
 import { currentProjectId, requireCurrentIdentity } from "../auth/project-context.js";
+import { IssueEventPublishService } from "./issue-event-publish.service.js";
 
 interface CreateIssueInput {
   title?: string;
@@ -33,6 +34,7 @@ export class IssueWriteService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository,
     @Inject(AuditService) private readonly auditService: AuditService,
+    @Inject(IssueEventPublishService) private readonly publisher: IssueEventPublishService,
   ) {}
 
   async create(input: CreateIssueInput) {
@@ -196,6 +198,9 @@ export class IssueWriteService {
     });
 
     if (!metadataUpdate.issueId) return null;
+    if (metadataUpdate.changed) {
+      await this.publisher.refreshCard(metadataUpdate.issueId).catch(() => undefined);
+    }
     return this.readRepository.issue(metadataUpdate.issueId);
   }
 }

@@ -11,6 +11,7 @@ import { sendInlineStoredFile, sendStoredFile } from "../../shared/file-download
 import { DatabaseService } from "../../database/database.service.js";
 import { currentProjectId } from "../auth/project-context.js";
 import { IssueRectificationService, type UploadedFileLike } from "./issue-rectification.service.js";
+import { IssueEventPublishService } from "./issue-event-publish.service.js";
 
 const allowedStatuses: IssueStatus[] = ["pending", "processing", "rectified", "verified", "ignored", "archived"];
 const rectificationUploadOptions = {
@@ -27,6 +28,7 @@ export class IssuesController {
     @Inject(IssueAttachmentService) private readonly attachmentService: IssueAttachmentService,
     @Inject(IssueRectificationService) private readonly rectificationService: IssueRectificationService,
     @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(IssueEventPublishService) private readonly publisher: IssueEventPublishService,
   ) {}
 
   @Get()
@@ -43,6 +45,7 @@ export class IssuesController {
 
   @Get(":id/card.png")
   async card(@Param("id") id: string, @Res() response: Response) {
+    await this.publisher.ensureFreshCard(id);
     const issue = await this.database.issue.findUnique({
       where: { id, projectId: currentProjectId() },
       select: { cardStoragePath: true, cardMimeType: true },
