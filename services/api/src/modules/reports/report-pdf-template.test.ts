@@ -33,6 +33,14 @@ test("escapes report text and sanitizes the download name", () => {
   assert.equal(safePdfFileName('巡检/报告:*?'), "巡检_报告.pdf");
 });
 
+test("limits the PDF filename by UTF-8 bytes without splitting characters", () => {
+  const fileName = safePdfFileName("超长巡检报告".repeat(100));
+
+  assert.ok(Buffer.byteLength(fileName, "utf8") <= 180);
+  assert.match(fileName, /\.pdf$/);
+  assert.doesNotMatch(fileName, /�/);
+});
+
 test("renders the shared video time, coordinates, and footer on each PDF page", () => {
   const html = renderReportPdfHtml(report);
 
@@ -51,4 +59,7 @@ test("keeps the cover to one A4 page with a bounded long-title region", () => {
   assert.match(html, /\.report-cover\s*\{[^}]*overflow:\s*hidden/);
   assert.match(html, /\.report-title\s*\{[^}]*max-height:/);
   assert.match(html, /\.report-title\s*\{[^}]*overflow:\s*hidden/);
+  assert.match(html, /\.report-title\s*\{[^}]*-webkit-line-clamp:\s*6/);
+  assert.match(html, /\.report-summary\s*\{[^}]*-webkit-line-clamp:\s*6/);
+  assert.match(html, /text-overflow:\s*ellipsis/);
 });

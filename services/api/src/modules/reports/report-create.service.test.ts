@@ -74,6 +74,19 @@ test("rejects duplicate report photo selections", async () => {
   );
 });
 
+test("rejects a report title longer than 200 characters before writing", async () => {
+  const service = new ReportCreateService({} as never, {} as never);
+
+  await assert.rejects(
+    runAsMember(() => service.submit({
+      taskId: "task-1",
+      title: "超".repeat(201),
+      reportDate: "2026-07-11",
+    })),
+    /报告名称不能超过 200 个字符/,
+  );
+});
+
 test("rejects photos that do not belong to the selected task", async () => {
   const transaction = {
     inspectionTask: { findUnique: async () => ({ id: "task-1", name: "7月巡检" }) },

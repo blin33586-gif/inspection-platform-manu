@@ -282,3 +282,126 @@ corepack pnpm --filter @xunjianbao/admin-web typecheck
 ```
 
 结果：报告模块 20/20 通过；前端相关测试 7/7 通过；shared、API、admin-web 三端类型检查均退出码 0。
+
+## 第二轮复核：受控图片预览
+
+实现内容：
+
+- 单张源图片最大 10 MiB，累计输入最大 50 MiB，解码像素最大 20,000,000。
+- 所有图片格式在嵌入 HTML 前统一经过 sharp：自动旋转、最长边 2000px、禁止放大、JPEG 质量 82。
+- 浏览器可直接显示的 PNG、WebP、GIF、SVG 等格式也不再绕过预览流水线。
+
+RED：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf.service.test.ts
+```
+
+结果：退出码 1；缺少单图、像素和预览边长常量。补齐测试后，原实现还会直接嵌入 SVG 而不是生成受控 JPEG，符合预期。
+
+GREEN：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf.service.test.ts
+```
+
+结果：图片资源、门控和路径测试合计 13/13 通过；测试实际解码生成的预览并确认格式为 JPEG、宽高均不超过 2000px。
+
+## 第二轮复核：有界导出队列
+
+实现内容：
+
+- 进程级实际 PDF 导出并发由 2 降为 1。
+- 默认等待队列最多 3 个请求，队列满立即返回中文 429。
+- 默认等待时间最长 15 秒，超时从队列移除并返回中文 503。
+
+RED：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf.service.test.ts
+```
+
+结果：退出码 1；`REPORT_PDF_EXPORT_CONCURRENCY` 未导出，原门控也忽略队列上限和等待超时配置。
+
+GREEN：
+
+同一聚焦命令中，单并发、队列满 429、等待超时 503 和槽位释放测试全部通过。
+
+## 第二轮复核：realpath 路径约束
+
+RED：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf.service.test.ts
+```
+
+结果：12/13 通过；storage 内指向外部临时目录的符号链接被错误读取，测试报 `Missing expected rejection`。
+
+GREEN：
+
+读取前先 `realpath`，再以绝对真实路径重新验证 storage 根。聚焦测试 13/13 通过，符号链接逃逸以“报告照片真实路径不在 storage 目录内”拒绝。
+
+## 第二轮复核：长文本与 UTF-8 文件名
+
+实现内容：
+
+- 任务报告写入前拒绝超过 200 个 Unicode 字符的标题。
+- 封面标题和摘要使用 Chromium 多行省略号；标题 6 行，摘要按 48mm 实际高度调整为 6 行，避免先被高度静默裁切。
+- PDF 文件名按 UTF-8 完整字符截断，总长度不超过 180 字节并完整保留 `.pdf`。
+
+RED：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf-template.test.ts src/modules/reports/report-create.service.test.ts
+```
+
+结果：3 个目标失败，分别为超长标题进入数据库流程、文件名超过 180 字节、模板缺少多行省略规则。摘要行数校准测试另观察到 8 行超过 48mm 区域，随后改为 6 行。
+
+GREEN：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf-template.test.ts src/modules/reports/report-create.service.test.ts
+```
+
+结果：9/9 通过；摘要行数校准后模板聚焦测试 5/5 通过。
+
+## 第二轮复核：Nest HTTP 鉴权路由
+
+新增最小 Nest HTTP 测试应用，使用真实 `AuthGuard`、`ProjectContextInterceptor` 和 `ReportsController` 路由，验证：
+
+- 无令牌：401。
+- 有效令牌但无项目头：400。
+- 成员选择无权项目：403。
+- 有效令牌和 `X-Project-Id: quyang`：200，项目上下文为 `quyang`，返回 `application/pdf`、attachment 和 `%PDF` 字节。
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/reports.controller.test.ts
+```
+
+结果：2/2 通过。首次执行的唯一失败是测试错误地预期 PDF 附带 charset；按 Express 实际且正确的 `application/pdf` 修正断言后通过，未为测试修改生产响应。
+
+## 第二轮真实 Chromium 验证
+
+使用本机 Google Chrome 渲染重复 240 次的标题、重复 300 次的摘要和 1 张照片：
+
+```text
+title:   clientHeight=246, scrollHeight=6529, lineClamp=6, textOverflow=ellipsis
+summary: clientHeight=113, scrollHeight=3208, lineClamp=6, textOverflow=ellipsis
+Pages: 2
+Page size: 594.96 x 841.92 pts (A4)
+File size: 152,989 bytes
+```
+
+验证长文本确实发生溢出并由显式省略规则处理，封面仍固定 1 页，整份 PDF 为封面 1 页加照片 1 页。
+
+## 第二轮最终验证
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec sh -c 'tsx --test src/modules/reports/*.test.ts'
+corepack pnpm --filter @xunjianbao/api exec tsx --test ../../apps/admin-web/src/api/file-download.test.ts ../../apps/admin-web/src/pages/report-export.test.ts
+corepack pnpm --filter @xunjianbao/shared typecheck
+corepack pnpm --filter @xunjianbao/api typecheck
+corepack pnpm --filter @xunjianbao/admin-web typecheck
+```
+
+结果：报告模块 30/30 通过；前端既有导出逻辑测试 7/7 通过；shared、API、admin-web 类型检查均退出码 0。

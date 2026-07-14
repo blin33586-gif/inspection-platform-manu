@@ -1,6 +1,13 @@
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
-import { readFile, stat } from "node:fs/promises";
-import { extname, isAbsolute, resolve, sep } from "node:path";
+import {
+  BadRequestException,
+  HttpException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from "@nestjs/common";
+import { readFile, realpath, stat } from "node:fs/promises";
+import { isAbsolute, resolve, sep } from "node:path";
 import { launch as launchPuppeteer } from "puppeteer-core";
 import sharp from "sharp";
 import { buildReportPhotoPageModel } from "@xunjianbao/shared";
@@ -13,9 +20,14 @@ export const REPORT_PDF_BROWSER_LAUNCHER = "REPORT_PDF_BROWSER_LAUNCHER";
 export const REPORT_PDF_EXPORT_GATE = "REPORT_PDF_EXPORT_GATE";
 export const REPORT_PDF_FILE_READER = "REPORT_PDF_FILE_READER";
 export const REPORT_PDF_MAX_PHOTOS = 100;
-export const REPORT_PDF_MAX_INPUT_BYTES = 100 * 1024 * 1024;
+export const REPORT_PDF_MAX_SINGLE_IMAGE_BYTES = 10 * 1024 * 1024;
+export const REPORT_PDF_MAX_INPUT_BYTES = 50 * 1024 * 1024;
+export const REPORT_PDF_MAX_PIXELS = 20_000_000;
+export const REPORT_PDF_PREVIEW_MAX_EDGE = 2000;
 const REPORT_PDF_IMAGE_CONCURRENCY = 2;
-const REPORT_PDF_EXPORT_CONCURRENCY = 2;
+export const REPORT_PDF_EXPORT_CONCURRENCY = 1;
+const REPORT_PDF_EXPORT_MAX_QUEUE = 3;
+const REPORT_PDF_EXPORT_WAIT_TIMEOUT_MS = 15_000;
 
 interface PdfBrowserLauncher {
   launch(options: {
@@ -32,6 +44,7 @@ interface PdfBrowserLauncher {
 }
 
 interface ReportPdfFileReader {
+  realpath(path: string): Promise<string>;
   stat(path: string): Promise<{ size: number }>;
   readFile(path: string): Promise<Buffer>;
 }
@@ -40,26 +53,65 @@ export interface ReportPdfConcurrencyGate {
   run<T>(task: () => Promise<T>): Promise<T>;
 }
 
+interface ReportPdfConcurrencyGateOptions {
+  maxQueue: number;
+  waitTimeoutMs: number;
+}
+
 const defaultBrowserLauncher: PdfBrowserLauncher = {
   launch: (options) => launchPuppeteer(options),
 };
 
-const defaultFileReader: ReportPdfFileReader = { stat, readFile };
+const defaultFileReader: ReportPdfFileReader = { realpath, stat, readFile };
 
-export function createConcurrencyGate(limit: number): ReportPdfConcurrencyGate {
+export function createConcurrencyGate(
+  limit: number,
+  options: ReportPdfConcurrencyGateOptions = {
+    maxQueue: REPORT_PDF_EXPORT_MAX_QUEUE,
+    waitTimeoutMs: REPORT_PDF_EXPORT_WAIT_TIMEOUT_MS,
+  },
+): ReportPdfConcurrencyGate {
   if (!Number.isInteger(limit) || limit < 1) throw new Error("并发上限必须是正整数");
+  if (!Number.isInteger(options.maxQueue) || options.maxQueue < 0) throw new Error("等待队列上限不能为负数");
+  if (!Number.isFinite(options.waitTimeoutMs) || options.waitTimeoutMs < 1) throw new Error("等待超时必须大于 0");
   let active = 0;
-  const waiters: Array<() => void> = [];
+  const waiters: Array<{ grant(): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }> = [];
+
+  async function acquire() {
+    if (active < limit) {
+      active += 1;
+      return;
+    }
+    if (waiters.length >= options.maxQueue) {
+      throw new HttpException("PDF 导出队列已满，请稍后重试", 429);
+    }
+    await new Promise<void>((resolveWaiter, rejectWaiter) => {
+      const waiter = {
+        grant: () => {
+          clearTimeout(waiter.timer);
+          resolveWaiter();
+        },
+        reject: rejectWaiter,
+        timer: undefined as unknown as ReturnType<typeof setTimeout>,
+      };
+      waiter.timer = setTimeout(() => {
+        const index = waiters.indexOf(waiter);
+        if (index >= 0) waiters.splice(index, 1);
+        waiter.reject(new HttpException("等待导出超时，请稍后重试", 503));
+      }, options.waitTimeoutMs);
+      waiters.push(waiter);
+    });
+  }
 
   return {
     async run<T>(task: () => Promise<T>) {
-      if (active >= limit) await new Promise<void>((resolveWaiter) => waiters.push(resolveWaiter));
-      active += 1;
+      await acquire();
       try {
         return await task();
       } finally {
-        active -= 1;
-        waiters.shift()?.();
+        const next = waiters.shift();
+        if (next) next.grant();
+        else active -= 1;
       }
     },
   };
@@ -67,20 +119,20 @@ export function createConcurrencyGate(limit: number): ReportPdfConcurrencyGate {
 
 const globalReportPdfExportGate = createConcurrencyGate(REPORT_PDF_EXPORT_CONCURRENCY);
 
-const browserImageMimeTypes = new Set([
-  "image/avif",
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/svg+xml",
-  "image/webp",
-]);
-
 export function resolveReportStoragePath(storagePath: string, cwd = process.cwd()) {
   const storageRoot = resolve(cwd, "storage");
   const candidate = resolve(cwd, storagePath);
   if (isAbsolute(storagePath) || !candidate.startsWith(`${storageRoot}${sep}`)) {
     throw new BadRequestException("报告照片存储路径无效");
+  }
+  return candidate;
+}
+
+export function assertReportStorageRealPath(realPath: string, cwd = process.cwd()) {
+  const storageRoot = resolve(cwd, "storage");
+  const candidate = resolve(realPath);
+  if (!candidate.startsWith(`${storageRoot}${sep}`)) {
+    throw new BadRequestException("报告照片真实路径不在 storage 目录内");
   }
   return candidate;
 }
@@ -143,9 +195,14 @@ export class ReportPdfService {
 
       let totalInputBytes = 0;
       for (const source of sources) {
-        totalInputBytes += (await this.fileReader.stat(source.resolvedPath)).size;
+        source.resolvedPath = assertReportStorageRealPath(await this.fileReader.realpath(source.resolvedPath));
+        const sourceBytes = (await this.fileReader.stat(source.resolvedPath)).size;
+        if (sourceBytes > REPORT_PDF_MAX_SINGLE_IMAGE_BYTES) {
+          throw new BadRequestException("单张报告照片不能超过 10 MB");
+        }
+        totalInputBytes += sourceBytes;
         if (totalInputBytes > REPORT_PDF_MAX_INPUT_BYTES) {
-          throw new BadRequestException("报告照片文件总大小不能超过 100 MB");
+          throw new BadRequestException("报告照片文件总大小不能超过 50 MB");
         }
       }
 
@@ -161,7 +218,7 @@ export class ReportPdfService {
           latitude: taskPhoto.annotationDocument?.latitude ?? taskPhoto.latitude,
           longitude: taskPhoto.annotationDocument?.longitude ?? taskPhoto.longitude,
         }),
-        imageDataUrl: await this.readImageDataUrl(resolvedPath, source.path, source.mimeType),
+        imageDataUrl: await this.readImageDataUrl(resolvedPath),
       }));
       const html = renderReportPdfHtml({
         title: report.title,
@@ -188,14 +245,26 @@ export class ReportPdfService {
     });
   }
 
-  private async readImageDataUrl(resolvedPath: string, storagePath: string, declaredMimeType: string | null) {
-    let bytes = await this.fileReader.readFile(resolvedPath);
-    let mimeType = declaredMimeType || mimeTypeFromPath(storagePath);
-    if (!browserImageMimeTypes.has(mimeType)) {
-      bytes = await sharp(bytes).jpeg().toBuffer();
-      mimeType = "image/jpeg";
+  private async readImageDataUrl(resolvedPath: string) {
+    const bytes = await this.fileReader.readFile(resolvedPath);
+    try {
+      const preview = await sharp(bytes, { limitInputPixels: REPORT_PDF_MAX_PIXELS })
+        .rotate()
+        .resize({
+          width: REPORT_PDF_PREVIEW_MAX_EDGE,
+          height: REPORT_PDF_PREVIEW_MAX_EDGE,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+      return `data:image/jpeg;base64,${preview.toString("base64")}`;
+    } catch (error) {
+      if (error instanceof Error && /pixel limit|exceeds.*pixel/i.test(error.message)) {
+        throw new BadRequestException(`报告照片像素不能超过 ${REPORT_PDF_MAX_PIXELS.toLocaleString("en-US")}`);
+      }
+      throw new BadRequestException("报告照片无法生成受控预览");
     }
-    return `data:${mimeType};base64,${bytes.toString("base64")}`;
   }
 }
 
@@ -211,17 +280,4 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, map: (item: T
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
   return results;
-}
-
-function mimeTypeFromPath(filePath: string) {
-  switch (extname(filePath).toLowerCase()) {
-    case ".avif": return "image/avif";
-    case ".gif": return "image/gif";
-    case ".jpeg":
-    case ".jpg": return "image/jpeg";
-    case ".png": return "image/png";
-    case ".svg": return "image/svg+xml";
-    case ".webp": return "image/webp";
-    default: return "application/octet-stream";
-  }
 }

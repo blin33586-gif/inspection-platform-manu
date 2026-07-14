@@ -38,6 +38,7 @@ export class ReportCreateService {
 
     const title = input.title?.trim();
     if (!title) throw new BadRequestException("请输入报告名称");
+    if (Array.from(title).length > 200) throw new BadRequestException("报告名称不能超过 200 个字符");
     const reportDate = parseReportDate(input.reportDate);
     const issueCount = Number.isInteger(input.issueCount) && input.issueCount! >= 0 ? input.issueCount! : 0;
     const common = {

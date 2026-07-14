@@ -19,13 +19,13 @@ const styles = `
   body { margin: 0; color: #1d1d1f; font-family: "Noto Sans CJK SC", "PingFang SC", sans-serif; }
   .report-cover, .report-photo-page { width: 210mm; height: 297mm; overflow: hidden; padding: 18mm; break-after: page; page-break-after: always; }
   .report-cover { height: 297mm; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 86mm) auto minmax(0, 48mm); align-content: center; }
-  .report-title { max-height: 86mm; margin: 7mm 0 14mm; overflow: hidden; font-size: clamp(28px, 4.8vw, 46px); line-height: 1.18; overflow-wrap: anywhere; word-break: break-word; }
+  .report-title { display: -webkit-box; max-height: 86mm; margin: 7mm 0 14mm; overflow: hidden; font-size: clamp(28px, 4.8vw, 46px); line-height: 1.18; overflow-wrap: anywhere; word-break: break-word; text-overflow: ellipsis; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
   .report-kicker, .photo-index { color: #1677ff; font-size: 14px; font-weight: 700; letter-spacing: 0.08em; }
   .report-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8mm; margin: 0; }
   .report-meta div { border-top: 1px solid #d9e2ec; padding-top: 3mm; }
   .report-meta dt { color: #667085; font-size: 12px; }
   .report-meta dd { margin: 2mm 0 0; font-size: 18px; font-weight: 650; }
-  .report-summary { max-height: 48mm; margin-top: 14mm; overflow: hidden; color: #475467; font-size: 16px; line-height: 1.7; white-space: pre-wrap; }
+  .report-summary { display: -webkit-box; max-height: 48mm; margin-top: 14mm; overflow: hidden; color: #475467; font-size: 16px; line-height: 1.7; white-space: pre-wrap; text-overflow: ellipsis; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
   .report-photo-page { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto; gap: 4mm; }
   .photo-title { margin: 3mm 0 8mm; font-size: 28px; line-height: 1.25; overflow-wrap: anywhere; word-break: break-word; }
   .report-photo { width: 100%; max-height: 178mm; object-fit: contain; background: #eef3f8; }
@@ -53,7 +53,18 @@ export function safePdfFileName(title: string) {
     .replace(/_+/g, "_")
     .replace(/^_|_$/g, "")
     .trim();
-  return `${clean || "巡检报告"}.pdf`;
+  const baseName = truncateUtf8(clean || "巡检报告", 176);
+  return `${baseName || "巡检报告"}.pdf`;
+}
+
+function truncateUtf8(value: string, maxBytes: number) {
+  const encoder = new TextEncoder();
+  let result = "";
+  for (const character of value) {
+    if (encoder.encode(result + character).byteLength > maxBytes) break;
+    result += character;
+  }
+  return result;
 }
 
 export function renderReportPdfHtml(report: ReportPdfDocument) {
