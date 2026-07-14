@@ -98,6 +98,23 @@ export interface IssueAttachmentSummary {
   createdAt: string;
 }
 
+export interface IssueRectificationPhotoSummary {
+  id: string;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: number;
+  imageUrl: string;
+}
+
+export interface IssueRectificationRecordSummary {
+  id: string;
+  issueId: string;
+  description: string;
+  createdBy: string;
+  createdAt: string;
+  photos: IssueRectificationPhotoSummary[];
+}
+
 export interface ReportSummary {
   id: string;
   taskId?: string | null;

@@ -34,7 +34,7 @@ export class IssueAttachmentService {
   async list(issueId: string) {
     await this.ensureIssue(issueId);
     const attachments = await this.database.issueAttachment.findMany({
-      where: { issueId },
+      where: { issueId, rectificationRecordId: null },
       orderBy: { createdAt: "desc" },
     });
 

@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
+import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor, FilesInterceptor } from "@nestjs/platform-express";
 import type { IssueStatus, Severity } from "@xunjianbao/shared";
 import type { Response } from "express";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
@@ -10,16 +10,13 @@ import { IssueAttachmentService } from "./issue-attachment.service.js";
 import { sendInlineStoredFile, sendStoredFile } from "../../shared/file-download.js";
 import { DatabaseService } from "../../database/database.service.js";
 import { currentProjectId } from "../auth/project-context.js";
-
-interface UploadedFileLike {
-  filename: string;
-  originalname: string;
-  mimetype: string;
-  path: string;
-  size: number;
-}
+import { IssueRectificationService, type UploadedFileLike } from "./issue-rectification.service.js";
 
 const allowedStatuses: IssueStatus[] = ["pending", "processing", "rectified", "verified", "ignored", "archived"];
+const rectificationUploadOptions = {
+  dest: "storage/issues/tmp",
+  limits: { fileSize: 20 * 1024 * 1024 },
+};
 
 @Controller("issues")
 export class IssuesController {
@@ -28,6 +25,7 @@ export class IssuesController {
     @Inject(AuditService) private readonly auditService: AuditService,
     @Inject(IssueWriteService) private readonly issueWriteService: IssueWriteService,
     @Inject(IssueAttachmentService) private readonly attachmentService: IssueAttachmentService,
+    @Inject(IssueRectificationService) private readonly rectificationService: IssueRectificationService,
     @Inject(DatabaseService) private readonly database: DatabaseService,
   ) {}
 
@@ -64,6 +62,31 @@ export class IssuesController {
     return ok(item);
   }
 
+  @Get(":id/rectifications")
+  async rectifications(@Param("id") id: string) {
+    return ok(await this.rectificationService.list(id));
+  }
+
+  @Post(":id/rectifications")
+  @UseInterceptors(FilesInterceptor("files", 6, rectificationUploadOptions))
+  async createRectification(
+    @Param("id") id: string,
+    @UploadedFiles() files: UploadedFileLike[],
+    @Body() body: { description?: string },
+  ) {
+    return ok(await this.rectificationService.create(id, files ?? [], body));
+  }
+
+  @Patch(":id/close")
+  async close(@Param("id") id: string) {
+    return ok(await this.rectificationService.close(id));
+  }
+
+  @Get("rectifications/photos/:photoId/file")
+  async rectificationPhoto(@Param("photoId") photoId: string, @Res() response: Response) {
+    return sendInlineStoredFile(response, await this.rectificationService.photo(photoId));
+  }
+
   @Post()
   async create(@Body() body: { title?: string; category?: string; status?: IssueStatus; severity?: Severity; foundAt?: string; objectId?: string }) {
     return ok(await this.issueWriteService.create(body));
@@ -97,9 +120,18 @@ export class IssuesController {
     if (!body.status || !allowedStatuses.includes(body.status)) {
       throw new BadRequestException("Invalid issue status");
     }
+    if (body.status === "verified") {
+      throw new BadRequestException("请通过确认闭环接口将问题设为已闭环");
+    }
 
     const item = await this.readRepository.updateIssueStatus(id, body.status);
-    if (!item) throw new NotFoundException("Issue not found");
+    if (!item) {
+      const current = await this.readRepository.issue(id);
+      if (current?.status === "verified") {
+        throw new BadRequestException("已闭环问题不能重新打开");
+      }
+      throw new NotFoundException("Issue not found");
+    }
     await this.auditService.record({
       action: "issue.status.update",
       targetType: "issue",
