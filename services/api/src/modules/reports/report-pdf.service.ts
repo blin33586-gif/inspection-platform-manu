@@ -128,13 +128,26 @@ export function resolveReportStoragePath(storagePath: string, cwd = process.cwd(
   return candidate;
 }
 
-export function assertReportStorageRealPath(realPath: string, cwd = process.cwd()) {
-  const storageRoot = resolve(cwd, "storage");
+export function assertReportStorageRealPath(realPath: string, realStorageRoot: string) {
+  const storageRoot = resolve(realStorageRoot);
   const candidate = resolve(realPath);
   if (!candidate.startsWith(`${storageRoot}${sep}`)) {
     throw new BadRequestException("报告照片真实路径不在 storage 目录内");
   }
   return candidate;
+}
+
+export async function resolveStoredPath(
+  storagePath: string,
+  cwd = process.cwd(),
+  resolveRealPath: (path: string) => Promise<string> = realpath,
+) {
+  const lexicalPath = resolveReportStoragePath(storagePath, cwd);
+  const [realStorageRoot, realFilePath] = await Promise.all([
+    resolveRealPath(resolve(cwd, "storage")),
+    resolveRealPath(lexicalPath),
+  ]);
+  return assertReportStorageRealPath(realFilePath, realStorageRoot);
 }
 
 @Injectable()
@@ -190,12 +203,12 @@ export class ReportPdfService {
           : taskPhoto.mediaAsset.previewStoragePath
             ? { path: taskPhoto.mediaAsset.previewStoragePath, mimeType: taskPhoto.mediaAsset.previewMimeType }
             : { path: taskPhoto.mediaAsset.storagePath, mimeType: taskPhoto.mediaAsset.mimeType };
-        return { taskPhoto, issue, source, resolvedPath: resolveReportStoragePath(source.path) };
+        return { taskPhoto, issue, source, resolvedPath: source.path };
       });
 
       let totalInputBytes = 0;
       for (const source of sources) {
-        source.resolvedPath = assertReportStorageRealPath(await this.fileReader.realpath(source.resolvedPath));
+        source.resolvedPath = await resolveStoredPath(source.source.path, process.cwd(), (path) => this.fileReader.realpath(path));
         const sourceBytes = (await this.fileReader.stat(source.resolvedPath)).size;
         if (sourceBytes > REPORT_PDF_MAX_SINGLE_IMAGE_BYTES) {
           throw new BadRequestException("单张报告照片不能超过 10 MB");

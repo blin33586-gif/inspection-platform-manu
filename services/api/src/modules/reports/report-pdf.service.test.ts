@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -15,6 +15,7 @@ import {
   REPORT_PDF_PREVIEW_MAX_EDGE,
   ReportPdfService,
   resolveReportStoragePath,
+  resolveStoredPath,
 } from "./report-pdf.service.js";
 
 test("uses lower per-image, cumulative byte, and pixel budgets", () => {
@@ -35,6 +36,23 @@ test("only resolves database paths inside the storage root", () => {
   assert.throws(() => resolveReportStoragePath("/tmp/photo.jpg", cwd), /存储路径无效/);
   assert.throws(() => resolveReportStoragePath("storage/../../etc/passwd", cwd), /存储路径无效/);
   assert.throws(() => resolveReportStoragePath("media/photo.jpg", cwd), /存储路径无效/);
+});
+
+test("allows a legitimate file when the entire storage root is a symlink", async () => {
+  const fakeCwd = await mkdtemp(join(tmpdir(), "report-pdf-cwd-"));
+  const mediaRepository = await mkdtemp(join(tmpdir(), "report-pdf-media-"));
+  const reportsDirectory = join(mediaRepository, "reports");
+  const photoPath = join(reportsDirectory, "photo.png");
+  await mkdir(reportsDirectory, { recursive: true });
+  await writeFile(photoPath, "photo");
+  await symlink(mediaRepository, join(fakeCwd, "storage"));
+
+  try {
+    assert.equal(await resolveStoredPath("storage/reports/photo.png", fakeCwd), await realpath(photoPath));
+  } finally {
+    await rm(fakeCwd, { recursive: true, force: true });
+    await rm(mediaRepository, { recursive: true, force: true });
+  }
 });
 
 test("rejects a storage symlink whose real path escapes the storage root", async () => {

@@ -405,3 +405,25 @@ corepack pnpm --filter @xunjianbao/admin-web typecheck
 ```
 
 结果：报告模块 30/30 通过；前端既有导出逻辑测试 7/7 通过；shared、API、admin-web 类型检查均退出码 0。
+
+## 整合环境修复：storage 根目录符号链接
+
+根因：整合环境的 worktree `storage` 本身指向原项目媒体仓库。旧实现对照片执行 `realpath` 后，却仍与未解析的 worktree `storage` 字符串比较，因此合法媒体被误判为越界。
+
+修复：新增异步 `resolveStoredPath`，先对数据库相对路径做词法约束，再分别 `realpath(storageRoot)` 和 `realpath(file)`，最后在同一 canonical 路径空间比较。内部符号链接逃逸仍由相同边界拒绝。
+
+RED：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf.service.test.ts
+```
+
+结果：退出码 1；新增测试引用的 `resolveStoredPath` 尚不存在。实现初次运行还暴露 macOS `/var` canonical 为 `/private/var` 及包装记录取值错误，按真实 `realpath` 结果和数据结构做最小校正。
+
+GREEN：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf.service.test.ts
+```
+
+结果：14/14 通过；覆盖 storage 根 symlink 内合法文件允许，以及 storage 内部 symlink 指向外部仍拒绝。
