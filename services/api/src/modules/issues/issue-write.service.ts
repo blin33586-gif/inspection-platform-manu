@@ -16,6 +16,7 @@ interface CreateIssueInput {
 }
 
 const allowedStatuses: IssueStatus[] = ["pending", "processing", "rectified", "verified", "ignored", "archived"];
+const readOnlyTerminalStatuses = new Set<IssueStatus>(["verified", "ignored", "archived"]);
 const allowedSeverities: Severity[] = ["normal", "medium", "high"];
 
 @Injectable()
@@ -31,6 +32,9 @@ export class IssueWriteService {
     const projectId = currentProjectId();
     if (!input.title?.trim()) throw new BadRequestException("Issue title is required");
     if (!input.category?.trim()) throw new BadRequestException("Issue category is required");
+    if (input.status && readOnlyTerminalStatuses.has(input.status)) {
+      throw new BadRequestException("新建问题不能使用已闭环、暂不处理或已归档状态");
+    }
 
     const status = input.status && allowedStatuses.includes(input.status) ? input.status : "pending";
     const severity = input.severity && allowedSeverities.includes(input.severity) ? input.severity : "normal";
