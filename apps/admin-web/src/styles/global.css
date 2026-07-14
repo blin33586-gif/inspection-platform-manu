@@ -240,6 +240,15 @@ button {
   box-shadow: 0 14px 32px rgba(20, 49, 88, 0.14);
 }
 
+.account-dropdown::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  right: 0;
+  left: 0;
+  height: 8px;
+}
+
 .account-dropdown a {
   min-height: 36px;
   padding: 9px 10px;

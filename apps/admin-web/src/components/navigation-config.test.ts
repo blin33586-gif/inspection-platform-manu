@@ -96,6 +96,16 @@ test("account dropdown uses the compact white navigation style", () => {
   assert.equal(item["font-size"], "13px");
 });
 
+test("account dropdown bridges the visual offset so hover can reach the menu", () => {
+  const hoverBridge = cssDeclarations(globalStyles, ".account-dropdown::before");
+  assert.equal(hoverBridge.content, '""');
+  assert.equal(hoverBridge.position, "absolute");
+  assert.equal(hoverBridge.top, "-8px");
+  assert.equal(hoverBridge.left, "0");
+  assert.equal(hoverBridge.right, "0");
+  assert.equal(hoverBridge.height, "8px");
+});
+
 test("task center omits decorative and inert controls", () => {
   for (const token of ["Bell", "ChevronDown", "ListChecks", "media-notice", "按上传时间排序"]) {
     assert.equal(mediaLibrarySource.includes(token), false, `unexpected task-center token: ${token}`);
