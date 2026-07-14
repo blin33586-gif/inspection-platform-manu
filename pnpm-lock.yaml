@@ -126,6 +126,9 @@ importers:
       pg:
         specifier: ^8.22.0
         version: 8.22.0
+      puppeteer-core:
+        specifier: ^24.15.0
+        version: 24.15.0
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
