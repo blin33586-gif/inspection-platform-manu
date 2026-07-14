@@ -2,7 +2,7 @@ FROM node:24-alpine
 
 WORKDIR /app
 
-RUN corepack enable
+RUN corepack enable && apk add --no-cache chromium font-noto-cjk
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/tsconfig.json ./packages/shared/
@@ -23,6 +23,7 @@ WORKDIR /app/services/api
 
 ENV API_PORT=3010
 ENV NODE_ENV=production
+ENV PDF_BROWSER_EXECUTABLE=/usr/bin/chromium
 
 EXPOSE 3010
 

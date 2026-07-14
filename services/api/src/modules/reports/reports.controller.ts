@@ -8,6 +8,7 @@ import { ok, paged } from "../../shared/api-response.js";
 import { sendStoredFile } from "../../shared/file-download.js";
 import { ReportUploadService } from "./report-upload.service.js";
 import { ReportCreateService, type SubmitTaskReportInput } from "./report-create.service.js";
+import { ReportPdfService } from "./report-pdf.service.js";
 import { currentProjectId } from "../auth/project-context.js";
 
 interface UploadedFileLike {
@@ -25,6 +26,7 @@ export class ReportsController {
     @Inject(InspectionReadRepository) private readonly readRepository: InspectionReadRepository,
     @Inject(ReportUploadService) private readonly uploadService: ReportUploadService,
     @Inject(ReportCreateService) private readonly createService: ReportCreateService,
+    @Inject(ReportPdfService) private readonly pdfService: ReportPdfService,
   ) {}
 
   @Get()
@@ -66,6 +68,14 @@ export class ReportsController {
       select: { storagePath: true, originalFileName: true, fileName: true },
     });
     return sendStoredFile(response, item);
+  }
+
+  @Get(":id/pdf")
+  async pdf(@Param("id") id: string, @Res() response: Response) {
+    const result = await this.pdfService.create(id);
+    response.type("application/pdf");
+    response.setHeader("Content-Disposition", `attachment; filename="report.pdf"; filename*=UTF-8''${encodeURIComponent(result.fileName)}`);
+    return response.send(Buffer.from(result.buffer));
   }
 
   @Get(":id")
