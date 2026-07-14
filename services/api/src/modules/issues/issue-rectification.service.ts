@@ -141,6 +141,43 @@ export class IssueRectificationService {
     return this.toSummary(created);
   }
 
+  async close(issueId: string) {
+    const actor = requireCurrentIdentity().username;
+    const projectId = currentProjectId();
+    return this.database.$transaction(async (transaction) => {
+      const issue = await transaction.issue.findUnique({ where: { id: issueId, projectId } });
+      if (!issue) throw new NotFoundException("Issue not found");
+      const recordCount = await transaction.issueRectificationRecord.count({
+        where: { issueId, issue: { projectId } },
+      });
+      if (recordCount < 1) throw new BadRequestException("请至少提交一条整改记录后再闭环");
+
+      const closed = await transaction.issue.update({
+        where: { id: issueId, projectId },
+        data: { status: "verified" },
+      });
+      await transaction.auditLog.create({
+        data: {
+          projectId,
+          id: `audit-${randomUUID()}`,
+          actor,
+          action: "issue.close",
+          targetType: "issue",
+          targetId: issueId,
+          summary: `确认闭环问题「${issue.title}」`,
+        },
+      });
+      return closed;
+    });
+  }
+
+  async photo(photoId: string) {
+    return this.database.issueAttachment.findFirst({
+      where: { id: photoId, rectificationRecordId: { not: null }, issue: { projectId: currentProjectId() } },
+      select: { storagePath: true, originalFileName: true, fileName: true, mimeType: true },
+    });
+  }
+
   private toSummary(record: RectificationRecord) {
     return {
       id: record.id,
