@@ -42,6 +42,24 @@ export async function getApi<T>(path: string, signal?: AbortSignal): Promise<T> 
   return body.data;
 }
 
+export async function downloadApiFile(path: string, fallbackFileName: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}${path}`, { headers: authHeaders() });
+  if (!response.ok) throw await parseApiError(response);
+
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = fallbackFileName;
+  anchor.hidden = true;
+  document.body.append(anchor);
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export async function postFormApi<T>(path: string, formData: FormData, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: "POST",

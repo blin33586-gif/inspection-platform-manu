@@ -1,13 +1,14 @@
-import { useMemo } from "react";
-import { Button } from "antd";
+import { useMemo, useState } from "react";
+import { Button, message } from "antd";
 import { ArrowLeft, Printer } from "lucide-react";
 import { useParams } from "react-router-dom";
 import type { ReportSummary } from "@xunjianbao/shared";
-import { getApiUrl } from "../api/client";
+import { downloadApiFile, getApiUrl } from "../api/client";
 import { reports } from "../data";
 import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
+import { getReportDownloadName } from "./report-export";
 
 function fallbackReport(id: string | undefined): ReportSummary {
   return reports.find((item) => item.id === id) ?? { ...reports[0], photos: [] };
@@ -23,6 +24,19 @@ export function ReportDetailPage() {
   const { id } = useParams();
   const fallback = useMemo(() => fallbackReport(id), [id]);
   const { data: report, error, reload } = useApiResource<ReportSummary>(`/reports/${id}`, fallback);
+  const [exporting, setExporting] = useState(false);
+
+  async function exportPdf() {
+    if (!id) return;
+    setExporting(true);
+    try {
+      await downloadApiFile(`/reports/${id}/pdf`, getReportDownloadName(report.title));
+    } catch (downloadError) {
+      message.error(downloadError instanceof Error ? downloadError.message : "PDF 导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   if (error) return <ApiResourceError error={error} onRetry={reload} />;
 
@@ -33,7 +47,8 @@ export function ReportDetailPage() {
         actions={(
           <>
             <Button href="/reports" icon={<ArrowLeft size={16} />}>返回报告库</Button>
-            <Button type="primary" icon={<Printer size={16} />} onClick={() => window.print()}>打印 / 导出 PDF</Button>
+            <Button loading={exporting} type="primary" onClick={() => void exportPdf()}>导出 PDF</Button>
+            <Button icon={<Printer size={16} />} onClick={() => window.print()}>打印</Button>
           </>
         )}
       />
