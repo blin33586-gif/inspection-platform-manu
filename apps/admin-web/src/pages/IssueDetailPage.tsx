@@ -19,6 +19,8 @@ import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
 import {
   canCloseIssue,
+  formatShanghaiDateTime,
+  fromShanghaiDateTimeInput,
   getIssueDetailStatusLabel,
   issueSeverityLabel,
   isIssueReadOnly,
@@ -77,8 +79,7 @@ export function IssueDetailPage() {
   const { data: managedObjects } = managedObjectsResource;
   const resourceError = issueResource.error
     ?? attachmentResource.error
-    ?? rectificationResource.error
-    ?? managedObjectsResource.error;
+    ?? rectificationResource.error;
   const [submitting, setSubmitting] = useState(false);
   const [closing, setClosing] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -94,6 +95,7 @@ export function IssueDetailPage() {
   };
 
   const beginEditing = () => {
+    if (!issueResource.hasLoaded || issueResource.loading) return;
     metadataForm.setFieldsValue({
       objectId: issue.objectId,
       category: issue.category,
@@ -109,7 +111,7 @@ export function IssueDetailPage() {
   };
 
   const saveMetadata = async () => {
-    if (!id) return;
+    if (!id || !issueResource.hasLoaded || issueResource.loading) return;
     const values = await metadataForm.validateFields().catch(() => null);
     if (!values) return;
 
@@ -119,7 +121,7 @@ export function IssueDetailPage() {
         objectId: values.objectId ?? null,
         category: values.category.trim(),
         severity: values.severity,
-        foundAt: new Date(values.foundAt).toISOString(),
+        foundAt: fromShanghaiDateTimeInput(values.foundAt),
       });
       message.success("问题信息已更新");
       setEditing(false);
@@ -200,9 +202,14 @@ export function IssueDetailPage() {
             </div>
             {editing ? (
               <Form form={metadataForm} layout="vertical" className="issue-metadata-form">
-                <Form.Item name="objectId" label="关联对象">
+                <Form.Item
+                  name="objectId"
+                  label="关联对象"
+                  extra={managedObjectsResource.error ? "关联对象加载失败，暂不能修改关联对象" : undefined}
+                >
                   <Select
                     allowClear
+                    disabled={Boolean(managedObjectsResource.error)}
                     loading={managedObjectsResource.loading}
                     options={managedObjects.map((item) => ({ label: item.name, value: item.id }))}
                     optionFilterProp="label"
@@ -233,12 +240,19 @@ export function IssueDetailPage() {
                 <div><dt>关联对象</dt><dd>{issue.objectName || "未关联"}</dd></div>
                 <div><dt>问题类型</dt><dd>{issue.category}</dd></div>
                 <div><dt>严重程度</dt><dd>{issueSeverityLabel(issue.severity)}</dd></div>
-                <div><dt>发现时间</dt><dd>{new Date(issue.foundAt).toLocaleString("zh-CN", { hour12: false })}</dd></div>
+                <div><dt>发现时间</dt><dd>{formatShanghaiDateTime(issue.foundAt)}</dd></div>
               </dl>
             )}
           </div>
           <div className="issue-detail-close-action">
-            {!editing ? <Button onClick={beginEditing}>编辑信息</Button> : null}
+            {!editing ? (
+              <Button
+                disabled={!issueResource.hasLoaded || issueResource.loading}
+                onClick={beginEditing}
+              >
+                编辑信息
+              </Button>
+            ) : null}
             <Popconfirm
               title="确认闭环该问题？"
               description="闭环后将锁定整改记录，请确认已完成复核。"

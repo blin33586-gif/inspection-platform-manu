@@ -6,6 +6,7 @@ import { getApiUrl, withQuery } from "../api/client";
 import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
+import { formatShanghaiDateTime } from "./issue-detail-presenter";
 import { issueLibraryStatus, type IssueLibraryStatus } from "./issue-library-presenter";
 
 const emptyIssues: PageResult<IssueSummary> = { items: [], page: 1, pageSize: 20, total: 0 };
@@ -75,7 +76,7 @@ export function IssuesPage() {
                   <div className="issue-library-card-body">
                     <strong>{issue.title}</strong>
                     <span>{issue.locationName || issue.objectName} · {issue.category}</span>
-                    <time dateTime={issue.foundAt}>{new Date(issue.foundAt).toLocaleString("zh-CN", { hour12: false })}</time>
+                    <time dateTime={issue.foundAt}>{formatShanghaiDateTime(issue.foundAt)}</time>
                     <div>
                       <Button onClick={() => navigate(`/issues/${issue.id}`)}>详情</Button>
                     </div>

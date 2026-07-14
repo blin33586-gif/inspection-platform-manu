@@ -33,6 +33,17 @@ export function issueSeverityLabel(value: Severity) {
 
 export function toLocalDateTimeInput(iso: string) {
   const date = new Date(iso);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+  const shanghai = new Date(date.getTime() + 8 * 60 * 60_000);
+  return shanghai.toISOString().slice(0, 16);
+}
+
+export function fromShanghaiDateTimeInput(value: string) {
+  return new Date(`${value}:00+08:00`).toISOString();
+}
+
+export function formatShanghaiDateTime(iso: string) {
+  const shanghai = new Date(new Date(iso).getTime() + 8 * 60 * 60_000).toISOString();
+  const [date, time] = shanghai.split("T");
+  const [year, month, day] = date.split("-");
+  return `${year}/${Number(month)}/${Number(day)} ${time.slice(0, 8)}`;
 }
