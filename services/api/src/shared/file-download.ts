@@ -31,6 +31,7 @@ export async function sendInlineStoredFile(response: Response, file: Downloadabl
   });
 
   if (file.mimeType) response.type(file.mimeType);
+  response.setHeader("X-Content-Type-Options", "nosniff");
   response.setHeader("Content-Disposition", "inline");
   return response.sendFile(filePath);
 }

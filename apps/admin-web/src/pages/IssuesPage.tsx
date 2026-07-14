@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { Button, Input, message, Select, Tag } from "antd";
-import { CheckCircle2, RotateCcw } from "lucide-react";
+import { Button, Input, Select, Tag } from "antd";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { IssueSummary, PageResult } from "@xunjianbao/shared";
-import { getApiUrl, patchJsonApi, withQuery } from "../api/client";
+import { getApiUrl, withQuery } from "../api/client";
 import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
-import { issueLibraryStatus, issueStatusPatch, type IssueLibraryStatus } from "./issue-library-presenter";
+import { issueLibraryStatus, type IssueLibraryStatus } from "./issue-library-presenter";
 
 const emptyIssues: PageResult<IssueSummary> = { items: [], page: 1, pageSize: 20, total: 0 };
 
@@ -18,7 +17,6 @@ export function IssuesPage() {
   const [keyword, setKeyword] = useState("");
   const [workflowStatus, setWorkflowStatus] = useState<IssueLibraryStatus | undefined>(initialStatus ?? undefined);
   const [page, setPage] = useState(1);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const resource = useApiResource(withQuery("/issues", {
     keyword,
     workflowStatus,
@@ -26,19 +24,6 @@ export function IssuesPage() {
     page,
     pageSize: 20,
   }), emptyIssues);
-
-  const updateStatus = async (issue: IssueSummary, next: IssueLibraryStatus) => {
-    setUpdatingId(issue.id);
-    try {
-      await patchJsonApi(`/issues/${issue.id}/status`, { status: issueStatusPatch(next) });
-      message.success(next === "processed" ? "问题已标记为已处理" : "问题已恢复为待处理");
-      resource.reload();
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : "状态更新失败");
-    } finally {
-      setUpdatingId(null);
-    }
-  };
 
   if (resource.error) return <ApiResourceError error={resource.error} onRetry={resource.reload} />;
 
@@ -89,11 +74,6 @@ export function IssuesPage() {
                     <span>{issue.locationName || issue.objectName} · {issue.category}</span>
                     <time>{issue.foundAt}</time>
                     <div>
-                      {status === "pending" ? (
-                        <Button type="primary" icon={<CheckCircle2 size={15} />} loading={updatingId === issue.id} onClick={() => void updateStatus(issue, "processed")}>标记已处理</Button>
-                      ) : (
-                        <Button icon={<RotateCcw size={15} />} loading={updatingId === issue.id} onClick={() => void updateStatus(issue, "pending")}>恢复待处理</Button>
-                      )}
                       <Button onClick={() => navigate(`/issues/${issue.id}`)}>详情</Button>
                     </div>
                   </div>

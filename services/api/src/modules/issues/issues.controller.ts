@@ -120,9 +120,18 @@ export class IssuesController {
     if (!body.status || !allowedStatuses.includes(body.status)) {
       throw new BadRequestException("Invalid issue status");
     }
+    if (body.status === "verified") {
+      throw new BadRequestException("请通过确认闭环接口将问题设为已闭环");
+    }
 
     const item = await this.readRepository.updateIssueStatus(id, body.status);
-    if (!item) throw new NotFoundException("Issue not found");
+    if (!item) {
+      const current = await this.readRepository.issue(id);
+      if (current?.status === "verified") {
+        throw new BadRequestException("已闭环问题不能重新打开");
+      }
+      throw new NotFoundException("Issue not found");
+    }
     await this.auditService.record({
       action: "issue.status.update",
       targetType: "issue",

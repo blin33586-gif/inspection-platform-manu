@@ -160,14 +160,17 @@ export class InspectionReadRepository {
 
   async updateIssueStatus(id: string, status: IssueStatus): Promise<IssueSummary | null> {
     const projectId = currentProjectId();
-    const exists = await this.database.issue.findUnique({ where: { id, projectId } });
-    if (!exists) return null;
-
-    const issue = await this.database.issue.update({
-      where: { id, projectId },
+    const updated = await this.database.issue.updateMany({
+      where: { id, projectId, status: { not: "verified" } },
       data: { status },
+    });
+    if (updated.count === 0) return null;
+
+    const issue = await this.database.issue.findUnique({
+      where: { id, projectId },
       include: { object: true },
     });
+    if (!issue) return null;
 
     return {
       id: issue.id,
