@@ -39,6 +39,9 @@ const imageFormats = {
   png: { extension: ".png", mimeType: "image/png" },
   webp: { extension: ".webp", mimeType: "image/webp" },
 } as const;
+const MAX_RECTIFICATION_IMAGE_PIXELS = 40_000_000;
+const RECTIFICATION_THUMBNAIL_WIDTH = 480;
+const RECTIFICATION_THUMBNAIL_HEIGHT = 360;
 
 @Injectable()
 export class IssueRectificationService {
@@ -73,18 +76,21 @@ export class IssueRectificationService {
       if (files.length < 1) throw new BadRequestException("至少上传 1 张整改照片");
       if (files.length > 6) throw new BadRequestException("一次最多上传 6 张整改照片");
       const validatedFiles = await Promise.all(files.map(async (file) => {
-        let format: string | undefined;
+        let metadata: Awaited<ReturnType<ReturnType<typeof sharp>["metadata"]>>;
         try {
-          format = (await sharp(file.path).metadata()).format;
+          metadata = await sharp(file.path, { limitInputPixels: MAX_RECTIFICATION_IMAGE_PIXELS }).metadata();
         } catch {
           throw new BadRequestException("无法识别整改照片");
         }
-        const detected = imageFormats[format as keyof typeof imageFormats];
+        if (!metadata.width || !metadata.height || metadata.width * metadata.height > MAX_RECTIFICATION_IMAGE_PIXELS) {
+          throw new BadRequestException("整改照片像素过高");
+        }
+        const detected = imageFormats[metadata.format as keyof typeof imageFormats];
         if (!detected) throw new BadRequestException("仅支持 JPEG、PNG 和 WebP 图片");
         return { ...file, extension: detected.extension, detectedMimeType: detected.mimeType };
       }));
       const issue = await this.ensureIssue(issueId, projectId);
-      if (issue.status === "verified") throw new BadRequestException("问题已闭环，不能继续提交整改记录");
+      this.assertWritable(issue.status);
 
       await mkdir(this.finalDir, { recursive: true });
       for (const file of validatedFiles) {
@@ -106,9 +112,7 @@ export class IssueRectificationService {
             FOR UPDATE
           `;
           if (!lockedIssue) throw new NotFoundException("Issue not found");
-          if (lockedIssue.status === "verified") {
-            throw new BadRequestException("问题已闭环，不能继续提交整改记录");
-          }
+          this.assertWritable(lockedIssue.status);
           const record = await transaction.issueRectificationRecord.create({
             data: { id, issueId, description, createdBy: actor },
           });
@@ -184,13 +188,14 @@ export class IssueRectificationService {
         if (!alreadyClosed) throw new NotFoundException("Issue not found");
         return alreadyClosed;
       }
+      this.assertWritable(issue.status);
       const recordCount = await transaction.issueRectificationRecord.count({
         where: { issueId, issue: { projectId } },
       });
       if (recordCount < 1) throw new BadRequestException("请至少提交一条整改记录后再闭环");
 
       const updated = await transaction.issue.updateMany({
-        where: { id: issueId, projectId, status: { not: "verified" } },
+        where: { id: issueId, projectId, status: { notIn: ["verified", "ignored", "archived"] } },
         data: { status: "verified" },
       });
       if (updated.count === 0) {
@@ -222,6 +227,25 @@ export class IssueRectificationService {
     });
   }
 
+  async thumbnail(photoId: string) {
+    const photo = await this.photo(photoId);
+    if (!photo?.storagePath) throw new NotFoundException("File not found");
+    try {
+      return await sharp(resolve(process.cwd(), photo.storagePath), { limitInputPixels: MAX_RECTIFICATION_IMAGE_PIXELS })
+        .rotate()
+        .resize({
+          width: RECTIFICATION_THUMBNAIL_WIDTH,
+          height: RECTIFICATION_THUMBNAIL_HEIGHT,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: 76, progressive: true })
+        .toBuffer();
+    } catch {
+      throw new NotFoundException("File not found");
+    }
+  }
+
   private toSummary(record: RectificationRecord) {
     return {
       id: record.id,
@@ -235,6 +259,7 @@ export class IssueRectificationService {
         mimeType: photo.mimeType,
         fileSize: photo.fileSize,
         imageUrl: `/issues/rectifications/photos/${photo.id}/file`,
+        thumbnailUrl: `/issues/rectifications/photos/${photo.id}/thumbnail`,
       })),
     };
   }
@@ -243,6 +268,13 @@ export class IssueRectificationService {
     const issue = await this.database.issue.findUnique({ where: { id: issueId, projectId } });
     if (!issue) throw new NotFoundException("Issue not found");
     return issue;
+  }
+
+  private assertWritable(status: string) {
+    if (status === "verified") throw new BadRequestException("问题已闭环，不能继续提交整改记录");
+    if (status === "ignored" || status === "archived") {
+      throw new BadRequestException("当前状态不能提交整改记录或确认闭环");
+    }
   }
 
   private async removeFiles(paths: string[]) {

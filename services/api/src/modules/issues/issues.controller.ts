@@ -87,6 +87,14 @@ export class IssuesController {
     return sendInlineStoredFile(response, await this.rectificationService.photo(photoId));
   }
 
+  @Get("rectifications/photos/:photoId/thumbnail")
+  async rectificationThumbnail(@Param("photoId") photoId: string, @Res() response: Response) {
+    response.type("image/jpeg");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    response.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+    return response.send(await this.rectificationService.thumbnail(photoId));
+  }
+
   @Post()
   async create(@Body() body: { title?: string; category?: string; status?: IssueStatus; severity?: Severity; foundAt?: string; objectId?: string }) {
     return ok(await this.issueWriteService.create(body));

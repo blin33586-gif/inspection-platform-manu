@@ -18,6 +18,8 @@ function createFakeDatabase(options: FakeDatabaseOptions = {}) {
   const issues = new Map([
     ["is-1", { id: "is-1", projectId: "quyang", title: "占道堆物", status: "pending" }],
     ["is-closed", { id: "is-closed", projectId: "quyang", title: "已闭环问题", status: "verified" }],
+    ["is-ignored", { id: "is-ignored", projectId: "quyang", title: "已忽略问题", status: "ignored" }],
+    ["is-archived", { id: "is-archived", projectId: "quyang", title: "已归档问题", status: "archived" }],
   ]);
   const records: Array<Record<string, any>> = [];
   const photos: Array<Record<string, any>> = [];
@@ -133,6 +135,20 @@ test("validates rectification input and closed issue state before storing files"
   );
 });
 
+test("rejects new rectification records for every read-only issue status", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-rectification-terminal-"));
+  const { database } = createFakeDatabase();
+  const service = new IssueRectificationService(database, storageRoot);
+
+  for (const issueId of ["is-ignored", "is-archived"]) {
+    const file = await createImageFile(storageRoot, `${issueId}.jpg`);
+    await assert.rejects(
+      () => runAsMember(() => service.create(issueId, [file], { description: "整改完成" })),
+      /当前状态不能提交整改记录或确认闭环/,
+    );
+  }
+});
+
 test("rejects a non-image disguised as jpg and removes its temporary file", async () => {
   const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-rectification-fake-image-"));
   const path = join(storageRoot, "fake.jpg");
@@ -204,10 +220,38 @@ test("creates a rectification record, linked photos, and audit atomically", asyn
   assert.equal(createdRecord.createdBy, memberTestIdentity.username);
   assert.equal(createdRecord.photos.length, 1);
   assert.match(createdRecord.photos[0].imageUrl, /^\/issues\/rectifications\/photos\/.+\/file$/);
+  assert.match(createdRecord.photos[0].thumbnailUrl, /^\/issues\/rectifications\/photos\/.+\/thumbnail$/);
   assert.equal(records.length, 1);
   assert.equal(photos[0].attachmentType, "整改照片");
   assert.equal(photos[0].rectificationRecordId, createdRecord.id);
   assert.equal(audits[0].action, "issue.rectification.create");
+});
+
+test("renders a bounded JPEG thumbnail without replacing the original photo", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-rectification-thumbnail-"));
+  const originalPath = join(storageRoot, "wide.png");
+  await sharp({
+    create: { width: 1600, height: 900, channels: 3, background: "#2d6cdf" },
+  }).png().toFile(originalPath);
+  const database = {
+    issueAttachment: {
+      findFirst: async () => ({
+        storagePath: originalPath,
+        originalFileName: "wide.png",
+        fileName: "wide.png",
+        mimeType: "image/png",
+      }),
+    },
+  };
+  const service = new IssueRectificationService(database as never, storageRoot);
+
+  const thumbnail = await runAsMember(() => service.thumbnail("ia-photo"));
+  const metadata = await sharp(thumbnail).metadata();
+
+  assert.equal(metadata.format, "jpeg");
+  assert.ok((metadata.width ?? 0) <= 480);
+  assert.ok((metadata.height ?? 0) <= 360);
+  assert.equal((await sharp(originalPath).metadata()).format, "png");
 });
 
 test("removes every moved photo when the transaction fails", async () => {

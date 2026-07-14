@@ -104,6 +104,7 @@ export interface IssueRectificationPhotoSummary {
   mimeType: string;
   fileSize: number;
   imageUrl: string;
+  thumbnailUrl: string;
 }
 
 export interface IssueRectificationRecordSummary {

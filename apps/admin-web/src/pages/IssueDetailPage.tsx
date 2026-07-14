@@ -207,8 +207,9 @@ export function IssueDetailPage() {
                     {record.photos.map((photo) => (
                       <Image
                         key={photo.id}
-                        src={getApiUrl(photo.imageUrl)}
+                        src={getApiUrl(photo.thumbnailUrl)}
                         alt={photo.originalFileName}
+                        loading="lazy"
                         preview={{ src: getApiUrl(photo.imageUrl) }}
                       />
                     ))}

@@ -64,9 +64,27 @@ test("closes an issue and records an audit inside the project boundary", async (
 
   assert.equal(result.status, "verified");
   assert.equal(result.projectId, "quyang");
-  assert.deepEqual(calls().updateCall?.where, { id: "is-2", projectId: "quyang", status: { not: "verified" } });
+  assert.deepEqual(calls().updateCall?.where, { id: "is-2", projectId: "quyang", status: { notIn: ["verified", "ignored", "archived"] } });
   assert.equal(calls().updateCall?.data.status, "verified");
   assert.equal(calls().audit?.action, "issue.close");
+});
+
+test("rejects closure for ignored or archived issues", async () => {
+  for (const status of ["ignored", "archived"]) {
+    const issue = { id: `is-${status}`, projectId: "quyang", title: "终态问题", status };
+    const database: any = {
+      issue: { findUnique: async () => issue },
+      $transaction: async (callback: (transaction: any) => Promise<unknown>) => callback({
+        $queryRaw: async () => [issue],
+      }),
+    };
+    const service = new IssueRectificationService(database);
+
+    await assert.rejects(
+      () => runAsMember(() => service.close(issue.id)),
+      /当前状态不能提交整改记录或确认闭环/,
+    );
+  }
 });
 
 test("serializes concurrent closure and writes exactly one closure audit", async () => {

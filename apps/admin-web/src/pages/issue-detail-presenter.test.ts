@@ -32,6 +32,9 @@ test("builds the compact rectification workspace contract", async () => {
   assert.match(page, /<Popconfirm/);
   assert.match(page, /确认闭环/);
   assert.match(page, /<Image\.PreviewGroup>/);
+  assert.match(page, /src=\{getApiUrl\(photo\.thumbnailUrl\)\}/);
+  assert.match(page, /preview=\{\{ src: getApiUrl\(photo\.imageUrl\) \}\}/);
+  assert.match(page, /loading="lazy"/);
   assert.match(page, /该问题已闭环，整改记录已锁定/);
   assert.match(styles, /\.issue-detail-overview\s*\{/);
   assert.match(styles, /\.rectification-feed\s*\{/);
