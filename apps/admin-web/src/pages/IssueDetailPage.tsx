@@ -1,21 +1,21 @@
 import { useMemo, useState } from "react";
-import { Button, Form, Input, message, Select, Space, Table, Tag, Upload } from "antd";
+import { Button, Form, Image, Input, message, Popconfirm, Table, Tag, Upload } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { UploadFile } from "antd/es/upload/interface";
 import { useParams } from "react-router-dom";
-import type { IssueAttachmentSummary, IssueStatus, IssueSummary, PageResult } from "@xunjianbao/shared";
+import type {
+  IssueAttachmentSummary,
+  IssueRectificationRecordSummary,
+  IssueStatus,
+  IssueSummary,
+  PageResult,
+} from "@xunjianbao/shared";
 import { getApiUrl, patchJsonApi, postFormApi } from "../api/client";
 import { issues } from "../data";
 import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
-
-const allowedNextStatuses: Array<{ label: string; value: IssueStatus }> = [
-  { label: "处理中", value: "processing" },
-  { label: "已整改", value: "rectified" },
-  { label: "复查通过", value: "verified" },
-  { label: "忽略", value: "ignored" },
-];
+import { canCloseIssue, getIssueDetailStatusLabel, isIssueReadOnly } from "./issue-detail-presenter";
 
 const fallbackAttachments: PageResult<IssueAttachmentSummary> = {
   items: [],
@@ -28,15 +28,6 @@ function fallbackIssue(id: string | undefined): IssueSummary {
   return issues.find((item) => item.id === id) ?? issues[0];
 }
 
-function statusLabel(value: IssueStatus) {
-  if (value === "pending") return "待处理";
-  if (value === "processing") return "处理中";
-  if (value === "rectified") return "已整改";
-  if (value === "verified") return "复查通过";
-  if (value === "ignored") return "忽略";
-  return "归档";
-}
-
 function statusColor(value: IssueStatus) {
   if (value === "pending") return "orange";
   if (value === "verified" || value === "rectified") return "green";
@@ -46,67 +37,72 @@ function statusColor(value: IssueStatus) {
 
 export function IssueDetailPage() {
   const { id } = useParams();
-  const [form] = Form.useForm<{ attachmentType?: string; remark?: string; file?: UploadFile[] }>();
+  const [form] = Form.useForm<{ description?: string; files?: UploadFile[] }>();
   const fallback = useMemo(() => fallbackIssue(id), [id]);
   const issueResource = useApiResource<IssueSummary>(`/issues/${id}`, fallback);
   const attachmentResource = useApiResource<PageResult<IssueAttachmentSummary>>(
     `/issues/${id}/attachments`,
     fallbackAttachments,
   );
-  const { data: issue, reload } = issueResource;
-  const { data: attachments, loading: attachmentsLoading, reload: reloadAttachments } = attachmentResource;
-  const resourceError = issueResource.error ?? attachmentResource.error;
-  const [updatingStatus, setUpdatingStatus] = useState<IssueStatus | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const rectificationResource = useApiResource<IssueRectificationRecordSummary[]>(`/issues/${id}/rectifications`, []);
+  const { data: issue } = issueResource;
+  const { data: attachments, loading: attachmentsLoading } = attachmentResource;
+  const { data: rectifications, loading: rectificationsLoading } = rectificationResource;
+  const resourceError = issueResource.error ?? attachmentResource.error ?? rectificationResource.error;
+  const [submitting, setSubmitting] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const readOnly = isIssueReadOnly(issue.status);
+  const closeAllowed = canCloseIssue(issue.status, rectifications.length);
 
   const reloadAllResources = () => {
     issueResource.reload();
     attachmentResource.reload();
+    rectificationResource.reload();
   };
 
-  const updateStatus = async (status: IssueStatus) => {
+  const submitRectification = async () => {
     if (!id) return;
-    setUpdatingStatus(status);
-    try {
-      await patchJsonApi<IssueSummary>(`/issues/${id}/status`, { status });
-      message.success("状态已更新");
-      reload();
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : "更新失败");
-    } finally {
-      setUpdatingStatus(null);
-    }
-  };
-
-  const uploadAttachment = async () => {
-    if (!id) return;
-    const values = await form.validateFields();
-    const uploadFile = values.file?.[0]?.originFileObj;
-    if (!uploadFile) {
-      message.warning("请先选择要上传的文件");
+    const values = await form.validateFields().catch(() => null);
+    if (!values) return;
+    const files = values.files?.flatMap((file) => file.originFileObj ? [file.originFileObj] : []) ?? [];
+    if (files.length === 0) {
+      message.warning("请至少选择 1 张整改照片");
       return;
     }
 
     const formData = new FormData();
-    formData.append("file", uploadFile);
-    if (values.attachmentType) formData.append("attachmentType", values.attachmentType);
-    if (values.remark) formData.append("remark", values.remark);
+    formData.append("description", values.description?.trim() ?? "");
+    files.forEach((file) => formData.append("files", file));
 
-    setUploading(true);
+    setSubmitting(true);
     try {
-      await postFormApi<IssueAttachmentSummary>(`/issues/${id}/attachments`, formData);
-      message.success("附件已上传");
+      await postFormApi<IssueRectificationRecordSummary>(`/issues/${id}/rectifications`, formData);
+      message.success("整改记录已提交");
       form.resetFields();
-      reloadAttachments();
+      rectificationResource.reload();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "上传失败");
+      message.error(error instanceof Error ? error.message : "整改记录提交失败");
     } finally {
-      setUploading(false);
+      setSubmitting(false);
+    }
+  };
+
+  const closeIssue = async () => {
+    if (!id || !closeAllowed) return;
+    setClosing(true);
+    try {
+      await patchJsonApi<IssueSummary>(`/issues/${id}/close`, {});
+      message.success("问题已确认闭环");
+      reloadAllResources();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "确认闭环失败");
+    } finally {
+      setClosing(false);
     }
   };
 
   const attachmentColumns: ColumnsType<IssueAttachmentSummary> = [
-    { title: "类型", dataIndex: "attachmentType", render: (value: string) => <Tag color={value.includes("整改") ? "green" : "blue"}>{value}</Tag> },
+    { title: "类型", dataIndex: "attachmentType", render: (value: string) => <Tag color="blue">{value}</Tag> },
     { title: "文件名", dataIndex: "originalFileName" },
     { title: "说明", dataIndex: "remark", render: (value?: string | null) => value || "-" },
     { title: "上传时间", dataIndex: "createdAt", render: (value: string) => new Date(value).toLocaleString() },
@@ -122,51 +118,41 @@ export function IssueDetailPage() {
 
   return (
     <>
-      <PageHeader eyebrow="ISSUE DETAIL" title={issue.title} actions={<Button href="/issues">返回问题台账</Button>} />
+      <PageHeader title={issue.title} actions={<Button href="/issues">返回问题库</Button>} />
 
-      <section className="content-section">
-        <div className="detail-layout">
-          <article className="detail-hero">
-            <div className="detail-title">
-              <Tag color={statusColor(issue.status)}>{statusLabel(issue.status)}</Tag>
-              <h4>{issue.objectName}</h4>
-              <p>{issue.category}问题，发现时间 {issue.foundAt}。后续可继续补现场照片、处置说明、复查记录和责任单位。</p>
+      <section className="content-section issue-detail-page">
+        <article className="issue-detail-overview">
+          <div>
+            <div className="issue-detail-overview-title">
+              <Tag color={statusColor(issue.status)}>{getIssueDetailStatusLabel(issue.status)}</Tag>
+              <strong>{issue.objectName}</strong>
             </div>
-            <div className="detail-kpis">
-              <div><span>问题类型</span><strong>{issue.category}</strong></div>
-              <div><span>严重程度</span><strong>{issue.severity}</strong></div>
-              <div><span>当前状态</span><strong>{statusLabel(issue.status)}</strong></div>
-              <div><span>发现日期</span><strong>{issue.foundAt.slice(5)}</strong></div>
-            </div>
-          </article>
+            <dl className="issue-detail-meta">
+              <div><dt>关联对象</dt><dd>{issue.objectName}</dd></div>
+              <div><dt>问题类型</dt><dd>{issue.category}</dd></div>
+              <div><dt>严重程度</dt><dd>{issue.severity}</dd></div>
+              <div><dt>发现时间</dt><dd>{new Date(issue.foundAt).toLocaleString()}</dd></div>
+            </dl>
+          </div>
+          <div className="issue-detail-close-action">
+            <Popconfirm
+              title="确认闭环该问题？"
+              description="闭环后将锁定整改记录，请确认已完成复核。"
+              okText="确认闭环"
+              cancelText="取消"
+              disabled={!closeAllowed}
+              onConfirm={() => void closeIssue()}
+            >
+              <span title={!closeAllowed && rectifications.length === 0 ? "请先提交至少一条整改记录" : undefined}>
+                <Button type="primary" disabled={!closeAllowed} loading={closing}>确认闭环</Button>
+              </span>
+            </Popconfirm>
+          </div>
+        </article>
 
-          <aside className="timeline-panel">
-            <h4>状态推进</h4>
-            <Space direction="vertical" className="status-action-list">
-              {allowedNextStatuses.map((item) => (
-                <Button
-                  block
-                  disabled={issue.status === item.value}
-                  key={item.value}
-                  loading={updatingStatus === item.value}
-                  onClick={() => updateStatus(item.value)}
-                  type={item.value === "verified" ? "primary" : "default"}
-                >
-                  {item.label}
-                </Button>
-              ))}
-            </Space>
-          </aside>
-        </div>
-      </section>
-
-      <section className="content-section split-section">
-        <article>
-          <div className="section-head">
-            <div>
-              <p className="eyebrow">ATTACHMENTS</p>
-              <h3>现场照片与附件</h3>
-            </div>
+        <article className="issue-detail-panel issue-detail-attachments">
+          <div className="issue-detail-section-head">
+            <div><h3>原始现场资料</h3><p>保留问题发现时的照片与附件</p></div>
           </div>
           <Table
             rowKey="id"
@@ -178,40 +164,56 @@ export function IssueDetailPage() {
           />
         </article>
 
-        <article>
-          <div className="section-head">
-            <div>
-              <p className="eyebrow">UPLOAD</p>
-              <h3>上传资料</h3>
-            </div>
+        <article className="issue-detail-panel">
+          <div className="issue-detail-section-head">
+            <div><h3>整改记录</h3><p>按时间保留整改说明和现场照片</p></div>
+            <span>{rectifications.length} 条记录</span>
           </div>
-          <Form form={form} layout="vertical" className="attachment-form" initialValues={{ attachmentType: "现场照片" }}>
-            <Form.Item name="attachmentType" label="资料类型">
-              <Select
-                options={[
-                  { label: "现场照片", value: "现场照片" },
-                  { label: "整改照片", value: "整改照片" },
-                  { label: "复查照片", value: "复查照片" },
-                  { label: "附件", value: "附件" },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item name="remark" label="说明">
-              <Input.TextArea rows={3} placeholder="例如：3 号楼外立面飞线位置" />
-            </Form.Item>
-            <Form.Item
-              name="file"
-              label="文件"
-              valuePropName="fileList"
-              getValueFromEvent={(event: { fileList?: UploadFile[] }) => event.fileList ?? []}
-              rules={[{ required: true, message: "请选择文件" }]}
-            >
-              <Upload accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx" beforeUpload={() => false} maxCount={1}>
-                <Button>选择文件</Button>
-              </Upload>
-            </Form.Item>
-            <Button type="primary" loading={uploading} onClick={uploadAttachment}>上传资料</Button>
-          </Form>
+
+          {readOnly ? <div className="issue-detail-locked">该问题已闭环，整改记录已锁定</div> : (
+            <Form form={form} layout="vertical" className="rectification-form">
+              <Form.Item name="description" label="整改说明" rules={[{ required: true, whitespace: true, message: "请填写整改说明" }]}>
+                <Input.TextArea rows={3} maxLength={500} showCount placeholder="说明采取的整改措施和完成情况" />
+              </Form.Item>
+              <Form.Item
+                name="files"
+                label="整改照片"
+                valuePropName="fileList"
+                getValueFromEvent={(event: { fileList?: UploadFile[] }) => event.fileList ?? []}
+                rules={[{ required: true, message: "请至少选择 1 张整改照片" }]}
+              >
+                <Upload accept=".png,.jpg,.jpeg,.webp" beforeUpload={() => false} multiple maxCount={6} listType="picture-card">
+                  <span>选择照片</span>
+                </Upload>
+              </Form.Item>
+              <Button type="primary" loading={submitting} onClick={() => void submitRectification()}>提交整改记录</Button>
+            </Form>
+          )}
+
+          <div className="rectification-feed" aria-busy={rectificationsLoading}>
+            {rectifications.map((record) => (
+              <section className="rectification-record" key={record.id}>
+                <header>
+                  <strong>{record.createdBy}</strong>
+                  <time dateTime={record.createdAt}>{new Date(record.createdAt).toLocaleString()}</time>
+                </header>
+                <p>{record.description}</p>
+                <Image.PreviewGroup>
+                  <div className="rectification-photo-grid">
+                    {record.photos.map((photo) => (
+                      <Image
+                        key={photo.id}
+                        src={getApiUrl(photo.imageUrl)}
+                        alt={photo.originalFileName}
+                        preview={{ src: getApiUrl(photo.imageUrl) }}
+                      />
+                    ))}
+                  </div>
+                </Image.PreviewGroup>
+              </section>
+            ))}
+            {!rectificationsLoading && rectifications.length === 0 ? <p className="rectification-empty">暂无整改记录</p> : null}
+          </div>
         </article>
       </section>
     </>
