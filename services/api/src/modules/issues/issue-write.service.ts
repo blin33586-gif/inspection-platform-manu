@@ -25,6 +25,7 @@ export interface UpdateIssueMetadataInput {
 const allowedStatuses: IssueStatus[] = ["pending", "processing", "rectified", "verified", "ignored", "archived"];
 const readOnlyTerminalStatuses = new Set<IssueStatus>(["verified", "ignored", "archived"]);
 const allowedSeverities: Severity[] = ["normal", "medium", "high"];
+const fullIsoFoundAtPattern = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:(?:0\d|1[0-3]):[0-5]\d|14:00))$/;
 
 @Injectable()
 export class IssueWriteService {
@@ -115,8 +116,20 @@ export class IssueWriteService {
       if (typeof input.foundAt !== "string" || !input.foundAt.trim()) {
         throw new BadRequestException("发现时间无效");
       }
-      foundAt = new Date(input.foundAt.trim());
-      if (Number.isNaN(foundAt.getTime())) {
+      const normalizedFoundAt = input.foundAt.trim();
+      const match = fullIsoFoundAtPattern.exec(normalizedFoundAt);
+      const calendarDate = new Date("2000-01-01T00:00:00.000Z");
+      if (match) {
+        calendarDate.setUTCFullYear(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      }
+      foundAt = new Date(normalizedFoundAt);
+      if (
+        !match
+        || calendarDate.getUTCFullYear() !== Number(match[1])
+        || calendarDate.getUTCMonth() !== Number(match[2]) - 1
+        || calendarDate.getUTCDate() !== Number(match[3])
+        || Number.isNaN(foundAt.getTime())
+      ) {
         throw new BadRequestException("发现时间无效");
       }
     }

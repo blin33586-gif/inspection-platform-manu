@@ -222,6 +222,26 @@ test("rejects invalid severity and time before starting a transaction", async ()
   assert.equal(transactionCalls(), 0);
 });
 
+test("rejects incomplete ISO foundAt values before starting a transaction", async () => {
+  const { service, transactionCalls } = createMetadataFixture();
+  const incompleteTimes = [
+    "2026-07-08",
+    "2026-07-08T09:35",
+    "2026-07-08T09:35:00",
+    "2026-07-08T09:35+08:00",
+    "2026-07-08 09:35:00+08:00",
+  ];
+
+  for (const foundAt of incompleteTimes) {
+    await assert.rejects(
+      () => runAsMember(() => service.updateMetadata("is-1", { foundAt })),
+      /发现时间|found date/i,
+    );
+  }
+
+  assert.equal(transactionCalls(), 0);
+});
+
 test("performs no issue, audit, or counter writes for an unchanged normalized save", async () => {
   const { service, counterWrites, audits, issueWrites, transactionResult } = createMetadataFixture({
     category: "占道经营",
@@ -232,7 +252,7 @@ test("performs no issue, audit, or counter writes for an unchanged normalized sa
     objectId: " old ",
     category: "  占道经营  ",
     severity: "normal",
-    foundAt: "2026-07-08T09:35:00+08:00",
+    foundAt: "2026-07-08T01:35:00.000Z",
   }));
 
   assert.equal(result?.status, "verified");
