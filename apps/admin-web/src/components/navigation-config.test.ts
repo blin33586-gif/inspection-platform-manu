@@ -68,6 +68,34 @@ test("shell renders the role-aware account navigation and member label", () => {
   assert.doesNotMatch(shellSource, /只读/);
 });
 
+test("account menu follows hover and focus without a persistent click toggle", () => {
+  const accountMenuSource = shellSource.slice(
+    shellSource.indexOf('className={`account-menu'),
+    shellSource.indexOf('<button className="logout-button"'),
+  );
+
+  assert.match(accountMenuSource, /onMouseEnter=\{\(\) => setIsAccountMenuOpen\(true\)\}/);
+  assert.match(accountMenuSource, /onMouseLeave=\{\(\) => setIsAccountMenuOpen\(false\)\}/);
+  assert.match(accountMenuSource, /onFocus=\{\(\) => setIsAccountMenuOpen\(true\)\}/);
+  assert.match(accountMenuSource, /onBlur=\{\(event\) => \{/);
+  assert.doesNotMatch(accountMenuSource, /setIsAccountMenuOpen\(\(value\) => !value\)/);
+  assert.doesNotMatch(globalStyles, /\.account-menu:focus-within \.account-dropdown/);
+  assert.match(globalStyles, /\.account-menu\.open \.account-menu-trigger/);
+});
+
+test("account dropdown uses the compact white navigation style", () => {
+  const dropdown = cssDeclarations(globalStyles, ".account-dropdown");
+  assert.equal(dropdown["min-width"], "148px");
+  assert.equal(dropdown.padding, "6px");
+  assert.equal(dropdown["border-radius"], "14px");
+  assert.equal(dropdown.background, "#ffffff");
+
+  const item = cssDeclarations(globalStyles, ".account-dropdown a");
+  assert.equal(item.padding, "9px 10px");
+  assert.equal(item["border-radius"], "9px");
+  assert.equal(item["font-size"], "13px");
+});
+
 test("task center omits decorative and inert controls", () => {
   for (const token of ["Bell", "ChevronDown", "ListChecks", "media-notice", "按上传时间排序"]) {
     assert.equal(mediaLibrarySource.includes(token), false, `unexpected task-center token: ${token}`);

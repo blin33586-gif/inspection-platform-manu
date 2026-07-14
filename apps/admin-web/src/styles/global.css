@@ -232,11 +232,30 @@ button {
 .account-dropdown {
   top: calc(100% + 7px);
   right: 0;
-  min-width: 132px;
+  min-width: 148px;
+  padding: 6px;
+  border: 1px solid rgba(33, 74, 121, 0.12);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgba(20, 49, 88, 0.14);
+}
+
+.account-dropdown a {
+  min-height: 36px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: #303642;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.account-dropdown a:hover,
+.account-dropdown a.active {
+  color: var(--blue-700);
+  background: rgba(0, 113, 227, 0.08);
 }
 
 .account-menu:hover .account-dropdown,
-.account-menu:focus-within .account-dropdown,
 .account-menu.open .account-dropdown {
   opacity: 1;
   pointer-events: auto;
@@ -244,7 +263,7 @@ button {
 }
 
 .account-menu:hover .account-menu-trigger,
-.account-menu:focus-within .account-menu-trigger,
+.account-menu.open .account-menu-trigger,
 .account-menu.active .account-menu-trigger {
   color: var(--blue-700);
   background: rgba(0, 113, 227, 0.1);

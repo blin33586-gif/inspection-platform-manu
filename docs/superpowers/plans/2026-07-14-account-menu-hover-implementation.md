@@ -36,7 +36,7 @@
 - Consumes: `accountNavigation(role)` 返回的现有导航项；`isAccountMenuOpen: boolean`。
 - Produces: 由 `onMouseEnter`、`onMouseLeave`、`onFocus`、`onBlur` 驱动的 `account-menu open` 状态；CSS 选择器 `.account-dropdown` 与 `.account-dropdown a`。
 
-- [ ] **Step 1: 写入失败的交互和样式测试**
+- [x] **Step 1: 写入失败的交互和样式测试**
 
 在 `navigation-config.test.ts` 中增加：
 
@@ -68,7 +68,7 @@ test("account dropdown uses the compact white navigation style", () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试并确认按预期失败**
+- [x] **Step 2: 运行测试并确认按预期失败**
 
 Run:
 
@@ -78,7 +78,7 @@ pnpm --filter @xunjianbao/api exec tsx --test /Users/bolin/Documents/巡检宝/a
 
 Expected: FAIL；交互测试提示缺少 `onMouseEnter`，样式测试提示当前 `min-width` 或 `padding` 不符合新设计。
 
-- [ ] **Step 3: 实现最小交互改动**
+- [x] **Step 3: 实现最小交互改动**
 
 将 `Shell.tsx` 的账号菜单容器改为：
 
@@ -105,7 +105,7 @@ Expected: FAIL；交互测试提示缺少 `onMouseEnter`，样式测试提示当
 >
 ```
 
-- [ ] **Step 4: 实现紧凑白色菜单样式**
+- [x] **Step 4: 实现紧凑白色菜单样式**
 
 在 `global.css` 中用以下声明覆盖账号菜单：
 
@@ -137,9 +137,9 @@ Expected: FAIL；交互测试提示缺少 `onMouseEnter`，样式测试提示当
 }
 ```
 
-保留 `.account-menu.open .account-dropdown`、`:focus-within` 和现有 825px 右对齐规则。
+保留 `.account-menu.open .account-dropdown` 和现有 825px 右对齐规则。移除账号菜单直接显示用的 `:focus-within` 选择器，键盘展开改由 `onFocus` 写入的 `open` 状态负责，避免点击后鼠标移开仍被按钮焦点锁住。
 
-- [ ] **Step 5: 运行局部测试并确认通过**
+- [x] **Step 5: 运行局部测试并确认通过**
 
 Run:
 
@@ -149,7 +149,7 @@ pnpm --filter @xunjianbao/api exec tsx --test /Users/bolin/Documents/巡检宝/a
 
 Expected: PASS；导航配置、悬浮交互、紧凑样式和 825px 边界全部通过。
 
-- [ ] **Step 6: 运行管理端回归和类型检查**
+- [x] **Step 6: 运行管理端回归和类型检查**
 
 Run:
 
@@ -161,7 +161,7 @@ git diff --check
 
 Expected: 管理端测试全部 PASS，TypeScript 退出码为 0，`git diff --check` 无输出。
 
-- [ ] **Step 7: 在当前页面验证交互**
+- [x] **Step 7: 在当前页面验证交互**
 
 在 `http://127.0.0.1:5183/` 验证：
 
@@ -171,10 +171,9 @@ Expected: 管理端测试全部 PASS，TypeScript 退出码为 0，`git diff --c
 4. “切换项目、地图、操作日志、人员管理”仍按权限显示并可导航。
 5. 825px 宽度下菜单右对齐且不超出视口。
 
-- [ ] **Step 8: 提交实现**
+- [x] **Step 8: 提交实现**
 
 ```bash
 git add apps/admin-web/src/components/Shell.tsx apps/admin-web/src/styles/global.css apps/admin-web/src/components/navigation-config.test.ts
 git commit -m "fix: unify account menu hover behavior"
 ```
-

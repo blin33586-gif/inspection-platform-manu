@@ -85,13 +85,20 @@ export function Shell() {
               <span>{project?.shortName ?? "未选择项目"}</span>
               <strong>{user?.name ?? "用户"} · {canManagePlatform(user?.role) ? "平台管理员" : "项目成员"}</strong>
             </div>
-            <div className={`account-menu ${isAccountActive ? "active" : ""} ${isAccountMenuOpen ? "open" : ""}`}>
+            <div
+              className={`account-menu ${isAccountActive ? "active" : ""} ${isAccountMenuOpen ? "open" : ""}`}
+              onMouseEnter={() => setIsAccountMenuOpen(true)}
+              onMouseLeave={() => setIsAccountMenuOpen(false)}
+              onFocus={() => setIsAccountMenuOpen(true)}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setIsAccountMenuOpen(false);
+              }}
+            >
               <button
                 aria-expanded={isAccountMenuOpen}
                 aria-haspopup="menu"
                 className="account-menu-trigger"
                 type="button"
-                onClick={() => setIsAccountMenuOpen((value) => !value)}
               >
                 更多
                 <span aria-hidden="true">⌄</span>
