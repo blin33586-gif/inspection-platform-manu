@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import type { IssueStatus, Severity } from "@xunjianbao/shared";
+import type { IssueStatus, IssueSummary, Severity } from "@xunjianbao/shared";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { InspectionReadRepository } from "../../database/inspection-read.repository.js";
@@ -13,6 +13,13 @@ interface CreateIssueInput {
   severity?: Severity;
   foundAt?: string;
   objectId?: string;
+}
+
+export interface UpdateIssueMetadataInput {
+  objectId?: string | null;
+  category?: string;
+  severity?: Severity;
+  foundAt?: string;
 }
 
 const allowedStatuses: IssueStatus[] = ["pending", "processing", "rectified", "verified", "ignored", "archived"];
@@ -77,5 +84,105 @@ export class IssueWriteService {
 
     const summary = await this.readRepository.issue(issue.id);
     return summary;
+  }
+
+  async updateMetadata(id: string, input: UpdateIssueMetadataInput): Promise<IssueSummary | null> {
+    let objectId = input.objectId;
+    if (objectId !== undefined && objectId !== null) {
+      if (typeof objectId !== "string" || !objectId.trim()) {
+        throw new BadRequestException("关联对象无效");
+      }
+      objectId = objectId.trim();
+    }
+
+    let category = input.category;
+    if (category !== undefined) {
+      if (typeof category !== "string" || !category.trim()) {
+        throw new BadRequestException("问题类别不能为空");
+      }
+      category = category.trim();
+      if (Array.from(category).length > 100) {
+        throw new BadRequestException("问题类别不能超过 100 个字符");
+      }
+    }
+
+    if (input.severity !== undefined && !allowedSeverities.includes(input.severity)) {
+      throw new BadRequestException("严重程度无效");
+    }
+
+    let foundAt: Date | undefined;
+    if (input.foundAt !== undefined) {
+      if (typeof input.foundAt !== "string" || !input.foundAt.trim()) {
+        throw new BadRequestException("发现时间无效");
+      }
+      foundAt = new Date(input.foundAt.trim());
+      if (Number.isNaN(foundAt.getTime())) {
+        throw new BadRequestException("发现时间无效");
+      }
+    }
+
+    const actor = requireCurrentIdentity().username;
+    const projectId = currentProjectId();
+    const metadataUpdate = await this.database.$transaction(async (transaction) => {
+      const issue = await transaction.issue.findUnique({ where: { id, projectId } });
+      if (!issue) return { issueId: null, changed: false };
+
+      if (objectId !== undefined && objectId !== null) {
+        const object = await transaction.managedObject.findUnique({ where: { id: objectId, projectId } });
+        if (!object) throw new NotFoundException("关联对象不存在");
+      }
+
+      const data: { objectId?: string | null; category?: string; severity?: Severity; foundAt?: Date } = {};
+      const changedLabels: string[] = [];
+      if (objectId !== undefined && objectId !== issue.objectId) {
+        data.objectId = objectId;
+        changedLabels.push("关联对象");
+      }
+      if (category !== undefined && category !== issue.category) {
+        data.category = category;
+        changedLabels.push("问题类别");
+      }
+      if (input.severity !== undefined && input.severity !== issue.severity) {
+        data.severity = input.severity;
+        changedLabels.push("严重程度");
+      }
+      if (foundAt !== undefined && foundAt.getTime() !== issue.foundAt.getTime()) {
+        data.foundAt = foundAt;
+        changedLabels.push("发现时间");
+      }
+      if (changedLabels.length === 0) return { issueId: issue.id, changed: false };
+
+      if (data.objectId !== undefined) {
+        if (issue.objectId) {
+          await transaction.managedObject.updateMany({
+            where: { id: issue.objectId, projectId, issueCount: { gt: 0 } },
+            data: { issueCount: { decrement: 1 } },
+          });
+        }
+        if (data.objectId) {
+          await transaction.managedObject.update({
+            where: { id: data.objectId, projectId },
+            data: { issueCount: { increment: 1 } },
+          });
+        }
+      }
+
+      await transaction.issue.update({ where: { id, projectId }, data });
+      await transaction.auditLog.create({
+        data: {
+          projectId,
+          id: `audit-${randomUUID()}`,
+          actor,
+          action: "issue.metadata.update",
+          targetType: "issue",
+          targetId: id,
+          summary: `更新问题「${issue.title}」基础信息：${changedLabels.join("、")}`,
+        },
+      });
+      return { issueId: issue.id, changed: true };
+    });
+
+    if (!metadataUpdate.issueId) return null;
+    return this.readRepository.issue(metadataUpdate.issueId);
   }
 }

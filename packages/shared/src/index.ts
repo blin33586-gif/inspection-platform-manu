@@ -76,6 +76,7 @@ export interface PointSummary {
 export interface IssueSummary {
   id: string;
   title: string;
+  objectId: string | null;
   objectName: string;
   category: string;
   status: IssueStatus;

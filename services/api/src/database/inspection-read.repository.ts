@@ -60,6 +60,15 @@ export class InspectionReadRepository {
     return objects.map((object) => this.toManagedObjectSummary(object));
   }
 
+  async allManagedObjects(): Promise<ManagedObjectSummary[]> {
+    const objects = await this.database.managedObject.findMany({
+      where: { projectId: currentProjectId() },
+      orderBy: [{ objectType: "asc" }, { name: "asc" }],
+    });
+
+    return objects.map((object) => this.toManagedObjectSummary(object));
+  }
+
   async managedObject(id: string, objectType?: string): Promise<ManagedObjectSummary | null> {
     const object = await this.database.managedObject.findUnique({ where: { id, projectId: currentProjectId() } });
     if (objectType && object?.objectType !== objectType) return null;
@@ -125,11 +134,12 @@ export class InspectionReadRepository {
     return issues.map((issue) => ({
       id: issue.id,
       title: issue.title,
+      objectId: issue.objectId,
       objectName: issue.object?.name ?? "未关联对象",
       category: issue.category,
       status: issue.status as IssueSummary["status"],
       severity: issue.severity as IssueSummary["severity"],
-      foundAt: formatDate(issue.foundAt),
+      foundAt: issue.foundAt.toISOString(),
       description: issue.description,
       locationName: issue.locationName,
       cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png` : null,
@@ -147,11 +157,12 @@ export class InspectionReadRepository {
     return {
       id: issue.id,
       title: issue.title,
+      objectId: issue.objectId,
       objectName: issue.object?.name ?? "未关联对象",
       category: issue.category,
       status: issue.status as IssueSummary["status"],
       severity: issue.severity as IssueSummary["severity"],
-      foundAt: formatDate(issue.foundAt),
+      foundAt: issue.foundAt.toISOString(),
       description: issue.description,
       locationName: issue.locationName,
       cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png` : null,
@@ -175,11 +186,12 @@ export class InspectionReadRepository {
     return {
       id: issue.id,
       title: issue.title,
+      objectId: issue.objectId,
       objectName: issue.object?.name ?? "未关联对象",
       category: issue.category,
       status: issue.status as IssueSummary["status"],
       severity: issue.severity as IssueSummary["severity"],
-      foundAt: formatDate(issue.foundAt),
+      foundAt: issue.foundAt.toISOString(),
       description: issue.description,
       locationName: issue.locationName,
       cardImageUrl: issue.cardStoragePath ? `/api/v1/issues/${issue.id}/card.png` : null,
