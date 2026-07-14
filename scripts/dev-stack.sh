@@ -55,6 +55,7 @@ start_screen() {
 start_stack() {
   local api_dir_q admin_dir_q worker_dir_q database_url_q
   cd "$ROOT_DIR"
+  DATABASE_URL="$DATABASE_URL" corepack pnpm db:generate
   DATABASE_URL="$DATABASE_URL" corepack pnpm db:deploy
   printf -v api_dir_q '%q' "$ROOT_DIR/services/api"
   printf -v admin_dir_q '%q' "$ROOT_DIR/apps/admin-web"
