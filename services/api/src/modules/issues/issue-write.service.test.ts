@@ -49,6 +49,8 @@ function createMetadataFixture(
   let transactionResult: unknown;
 
   const transaction = {
+    $queryRaw: async (_strings: TemplateStringsArray, id: string, projectId: string) =>
+      issue.id === id && issue.projectId === projectId ? [{ id: issue.id }] : [],
     issue: {
       findUnique: async ({ where }: { where: { id: string; projectId: string } }) =>
         issue.id === where.id && issue.projectId === where.projectId ? issue : null,
@@ -129,6 +131,123 @@ function createMetadataFixture(
   };
 }
 
+function createConcurrentAssociationFixture() {
+  let issue: IssueRecord = {
+    id: "is-concurrent",
+    projectId: "quyang",
+    title: "并发关联测试",
+    objectId: "old",
+    category: "市容环境",
+    status: "pending",
+    severity: "normal",
+    foundAt: new Date("2026-07-14T01:00:00.000Z"),
+    description: null,
+    locationName: null,
+    cardStoragePath: null,
+  };
+  const objects = new Map([
+    ["old", { id: "old", projectId: "quyang", name: "旧对象", issueCount: 1 }],
+    ["target-b", { id: "target-b", projectId: "quyang", name: "目标 B", issueCount: 0 }],
+    ["target-c", { id: "target-c", projectId: "quyang", name: "目标 C", issueCount: 0 }],
+  ]);
+  let unlockedReads = 0;
+  let releaseUnlockedReads: (() => void) | undefined;
+  const unlockedReadBarrier = new Promise<void>((resolve) => { releaseUnlockedReads = resolve; });
+  let lockTail = Promise.resolve();
+  let lockCalls = 0;
+  const audits: Array<Record<string, unknown>> = [];
+
+  const database = {
+    $transaction: async (callback: (transaction: any) => Promise<unknown>) => {
+      let hasIssueLock = false;
+      let releaseIssueLock: (() => void) | undefined;
+      const transaction = {
+        $queryRaw: async (_strings: TemplateStringsArray, lockedIssueId: string, lockedProjectId: string) => {
+          const previous = lockTail;
+          lockTail = new Promise<void>((resolve) => { releaseIssueLock = resolve; });
+          await previous;
+          hasIssueLock = true;
+          lockCalls += 1;
+          return issue.id === lockedIssueId && issue.projectId === lockedProjectId ? [{ id: issue.id }] : [];
+        },
+        issue: {
+          findUnique: async ({ where }: { where: { id: string; projectId: string } }) => {
+            if (issue.id !== where.id || issue.projectId !== where.projectId) return null;
+            if (hasIssueLock) return { ...issue };
+            const staleSnapshot = { ...issue };
+            unlockedReads += 1;
+            if (unlockedReads === 2) releaseUnlockedReads?.();
+            await unlockedReadBarrier;
+            return staleSnapshot;
+          },
+          update: async ({ data }: { data: Partial<IssueRecord> }) => {
+            issue = { ...issue, ...data };
+            return { ...issue };
+          },
+        },
+        managedObject: {
+          findUnique: async ({ where }: { where: { id: string; projectId: string } }) => {
+            const object = objects.get(where.id);
+            return object?.projectId === where.projectId ? { ...object } : null;
+          },
+          updateMany: async ({ where }: { where: { id: string; projectId: string; issueCount: { gt: number } } }) => {
+            const object = objects.get(where.id);
+            if (!object || object.projectId !== where.projectId || object.issueCount <= where.issueCount.gt) return { count: 0 };
+            object.issueCount -= 1;
+            return { count: 1 };
+          },
+          update: async ({ where }: { where: { id: string; projectId: string } }) => {
+            const object = objects.get(where.id);
+            if (!object || object.projectId !== where.projectId) throw new Error("managed object not found");
+            object.issueCount += 1;
+            return { ...object };
+          },
+        },
+        auditLog: {
+          create: async ({ data }: { data: Record<string, unknown> }) => {
+            audits.push(data);
+            return data;
+          },
+        },
+      };
+      try {
+        return await callback(transaction);
+      } finally {
+        releaseIssueLock?.();
+      }
+    },
+  };
+  const readRepository = {
+    issue: async () => ({
+      id: issue.id,
+      title: issue.title,
+      objectId: issue.objectId,
+      objectName: issue.objectId ? objects.get(issue.objectId)?.name ?? "未关联对象" : "未关联对象",
+      category: issue.category,
+      status: issue.status,
+      severity: issue.severity,
+      foundAt: issue.foundAt.toISOString(),
+      description: issue.description,
+      locationName: issue.locationName,
+      cardImageUrl: null,
+    }),
+  };
+  const service = new IssueWriteService(
+    database as never,
+    readRepository as never,
+    {} as never,
+    { refreshCard: async () => undefined } as never,
+  );
+
+  return {
+    service,
+    issue: () => ({ ...issue }),
+    counts: () => Object.fromEntries(Array.from(objects, ([id, object]) => [id, object.issueCount])),
+    lockCalls: () => lockCalls,
+    audits,
+  };
+}
+
 test("rejects read-only terminal statuses when creating an issue", async () => {
   let transactionCalls = 0;
   const database = {
@@ -173,6 +292,39 @@ test("updates issue metadata without changing a verified status", async () => {
   assert.equal("status" in (issueWrites[0] ?? {}), false);
   assert.deepEqual(transactionResult(), { issueId: "is-1", changed: true });
   assert.deepEqual(refreshCalls, ["is-1"]);
+});
+
+test("serializes concurrent association changes to different targets and keeps every counter consistent", async () => {
+  const fixture = createConcurrentAssociationFixture();
+
+  await Promise.all([
+    runAsMember(() => fixture.service.updateMetadata("is-concurrent", { objectId: "target-b" })),
+    runAsMember(() => fixture.service.updateMetadata("is-concurrent", { objectId: "target-c" })),
+  ]);
+
+  const finalObjectId = fixture.issue().objectId;
+  const counts = fixture.counts();
+  assert.ok(finalObjectId === "target-b" || finalObjectId === "target-c");
+  assert.deepEqual(counts, {
+    old: 0,
+    "target-b": finalObjectId === "target-b" ? 1 : 0,
+    "target-c": finalObjectId === "target-c" ? 1 : 0,
+  });
+  assert.equal(fixture.lockCalls(), 2);
+});
+
+test("does not increment the same target twice under concurrent association changes", async () => {
+  const fixture = createConcurrentAssociationFixture();
+
+  await Promise.all([
+    runAsMember(() => fixture.service.updateMetadata("is-concurrent", { objectId: "target-b" })),
+    runAsMember(() => fixture.service.updateMetadata("is-concurrent", { objectId: "target-b" })),
+  ]);
+
+  assert.equal(fixture.issue().objectId, "target-b");
+  assert.deepEqual(fixture.counts(), { old: 0, "target-b": 1, "target-c": 0 });
+  assert.equal(fixture.lockCalls(), 2);
+  assert.equal(fixture.audits.length, 1);
 });
 
 test("clears an issue object association and only decrements the old counter", async () => {

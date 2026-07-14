@@ -139,6 +139,13 @@ export class IssueWriteService {
     const actor = requireCurrentIdentity().username;
     const projectId = currentProjectId();
     const metadataUpdate = await this.database.$transaction(async (transaction) => {
+      const [lockedIssue] = await transaction.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "Issue"
+        WHERE "id" = ${id} AND "projectId" = ${projectId}
+        FOR UPDATE
+      `;
+      if (!lockedIssue) return { issueId: null, changed: false };
       const issue = await transaction.issue.findUnique({ where: { id, projectId } });
       if (!issue) return { issueId: null, changed: false };
 

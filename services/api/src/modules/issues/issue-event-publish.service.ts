@@ -148,7 +148,16 @@ export class IssueEventPublishService {
   }
 
   async ensureFreshCard(issueId: string): Promise<void> {
+    const identity = requireCurrentIdentity();
     const projectId = currentProjectId();
+    await this.ensureFreshCardInProject(issueId, projectId, identity.username);
+  }
+
+  async ensureFreshCardForProject(issueId: string, projectId: string): Promise<void> {
+    await this.ensureFreshCardInProject(issueId, projectId, "public-share");
+  }
+
+  private async ensureFreshCardInProject(issueId: string, projectId: string, actor: string): Promise<void> {
     const issue = await this.database.issue.findUnique({ where: { id: issueId, projectId } });
     if (!issue?.cardStoragePath) return;
 
@@ -158,7 +167,7 @@ export class IssueEventPublishService {
       throw error;
     });
     if (cardStat && cardStat.mtimeMs >= issue.updatedAt.getTime()) return;
-    await this.refreshCard(issueId);
+    await this.queueCardRefresh(issueId, projectId, actor, false);
   }
 
   private async ensureCard(issue: IssueCardRecord, projectId: string, actor: string) {
@@ -237,13 +246,6 @@ export class IssueEventPublishService {
       if (persisted.count !== 1) {
         await rm(candidatePath, { force: true });
         return false;
-      }
-      if (issue.cardStoragePath && issue.cardStoragePath !== candidateStoragePath) {
-        try {
-          await rm(this.resolveStoragePath(issue.cardStoragePath), { force: true });
-        } catch {
-          // The database pointer already references the immutable candidate. Old-file cleanup is best effort.
-        }
       }
       return true;
     } catch (error) {

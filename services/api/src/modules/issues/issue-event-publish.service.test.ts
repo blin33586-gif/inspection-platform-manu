@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdir, mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IssueEventPublishService } from "./issue-event-publish.service.js";
+import { IssuePublicController } from "./issue-public.controller.js";
+import { IssuePublicReadService } from "./issue-public-read.service.js";
+import { hashShareToken } from "./issue-share-token.js";
+import { IssueWriteService } from "./issue-write.service.js";
 import { IssuesController } from "./issues.controller.js";
 import { runAsMember } from "../../test-support/auth-context.js";
 
@@ -290,6 +295,47 @@ test("ensureFreshCard retries an existing card whose file is older than the busi
   );
 });
 
+test("keeps the previous immutable card readable after switching the database pointer", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-issue-retain-old-card-"));
+  const oldStoragePath = "storage/issues/cards/issue-1-retained.png";
+  const oldCardPath = join(storageRoot, "issues", "cards", "issue-1-retained.png");
+  await mkdir(join(storageRoot, "media"), { recursive: true });
+  await mkdir(join(storageRoot, "issues", "cards"), { recursive: true });
+  await writeFile(join(storageRoot, "media", "photo.jpg"), "photo");
+  await writeFile(oldCardPath, "old-reader-card");
+  let current: Record<string, any> = publishedIssue({ cardStoragePath: oldStoragePath });
+  const database = {
+    issue: {
+      findUnique: async () => ({ ...current }),
+      updateMany: async ({ where, data }: { where: { updatedAt: Date; cardStoragePath: string }; data: Record<string, unknown> }) => {
+        if (current.updatedAt.getTime() !== where.updatedAt.getTime() || current.cardStoragePath !== where.cardStoragePath) {
+          return { count: 0 };
+        }
+        current = { ...current, ...data };
+        return { count: 1 };
+      },
+    },
+    taskPhoto: { findUnique: async () => issuePhoto() },
+    photoAnnotationVersion: { findUnique: async () => ({ annotationJson: "{}" }) },
+    auditLog: { create: async ({ data }: { data: Record<string, unknown> }) => data },
+  };
+  const service = new IssueEventPublishService(
+    database as never,
+    {} as never,
+    storageRoot,
+    (async () => Buffer.from("new-reader-card")) as never,
+  );
+
+  await runAsMember(() => service.refreshCard("issue-1"));
+
+  assert.notEqual(current.cardStoragePath, oldStoragePath);
+  assert.deepEqual(await readFile(oldCardPath), Buffer.from("old-reader-card"));
+  assert.deepEqual(
+    await readFile(join(storageRoot, current.cardStoragePath.replace(/^storage\//, ""))),
+    Buffer.from("new-reader-card"),
+  );
+});
+
 test("discards an older concurrent render instead of overwriting the newest card", async () => {
   const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-issue-refresh-race-"));
   const cardPath = join(storageRoot, "issues", "cards", "issue-1.png");
@@ -513,6 +559,148 @@ test("finishes the newest card when a first publish loses its initial version ra
     await readFile(join(storageRoot, current.cardStoragePath.replace(/^storage\//, ""))),
     Buffer.from("new-card"),
   );
+});
+
+test("public preview and download each recover the first stale card read after a committed refresh failure", async () => {
+  for (const route of ["card", "downloadCard"] as const) {
+    const uniqueId = `is-public-recovery-${randomUUID()}`;
+    const token = `token-${randomUUID()}`;
+    const sandboxRoot = await mkdtemp(join(tmpdir(), "xunjianbao-public-card-route-"));
+    const storageRoot = join(sandboxRoot, "storage");
+    const sourceStoragePath = `storage/issues/public-recovery-${uniqueId}/photo.jpg`;
+    const oldStoragePath = `storage/issues/cards/${uniqueId}-old.png`;
+    const sourcePath = join(sandboxRoot, sourceStoragePath);
+    const oldCardPath = join(sandboxRoot, oldStoragePath);
+    await mkdir(join(sourcePath, ".."), { recursive: true });
+    await mkdir(join(oldCardPath, ".."), { recursive: true });
+    await writeFile(sourcePath, "photo");
+    await writeFile(oldCardPath, "old-public-card");
+    await utimes(oldCardPath, new Date("2026-07-14T01:00:00.000Z"), new Date("2026-07-14T01:00:00.000Z"));
+
+    const photo = {
+      id: "photo-public",
+      mediaAsset: {
+        storagePath: sourceStoragePath,
+        previewStoragePath: null,
+        mimeType: "image/jpeg",
+        previewMimeType: null,
+        originalFileName: "photo.jpg",
+      },
+      annotationDocument: {
+        id: "document-public",
+        currentVersion: 1,
+        annotationJson: "{}",
+      },
+    };
+    const updatedAt = new Date("2026-07-14T02:00:00.000Z");
+    let current: Record<string, any> = publishedIssue({
+      id: uniqueId,
+      projectId: "quyang",
+      category: "旧公开类型",
+      sourceTaskPhotoId: photo.id,
+      cardStoragePath: oldStoragePath,
+      shareTokenHash: hashShareToken(token),
+      shareEnabled: true,
+      updatedAt: new Date("2026-07-14T01:30:00.000Z"),
+    });
+    let renderAttempts = 0;
+    const audits: Array<Record<string, unknown>> = [];
+    const projectQueries: string[] = [];
+    const database: any = {
+      issue: {
+        findUnique: async ({ where, select }: { where: Record<string, unknown>; select?: Record<string, boolean> }) => {
+          if (where.shareTokenHash) {
+            return where.shareTokenHash === current.shareTokenHash ? { ...current, sourceTaskPhoto: photo } : null;
+          }
+          projectQueries.push(String(where.projectId));
+          if (where.id !== current.id || where.projectId !== current.projectId) return null;
+          return select?.updatedAt ? { updatedAt: current.updatedAt } : { ...current };
+        },
+        updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+          if (
+            where.id !== current.id
+            || where.projectId !== current.projectId
+            || (where.updatedAt as Date).getTime() !== current.updatedAt.getTime()
+            || where.cardStoragePath !== current.cardStoragePath
+          ) return { count: 0 };
+          current = { ...current, ...data };
+          return { count: 1 };
+        },
+        update: async ({ data }: { data: Record<string, unknown> }) => {
+          current = { ...current, ...data, updatedAt };
+          return { ...current };
+        },
+      },
+      managedObject: { findUnique: async () => null },
+      taskPhoto: { findUnique: async () => photo },
+      photoAnnotationVersion: { findUnique: async () => ({ annotationJson: "{}" }) },
+      auditLog: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          audits.push(data);
+          return data;
+        },
+      },
+    };
+    database.$queryRaw = async (_strings: TemplateStringsArray, issueId: string, projectId: string) =>
+      issueId === current.id && projectId === current.projectId ? [{ id: current.id }] : [];
+    database.$transaction = async (callback: (transaction: typeof database) => Promise<unknown>) => callback(database);
+    const publisher = new IssueEventPublishService(
+      database as never,
+      {} as never,
+      storageRoot,
+      (async () => {
+        renderAttempts += 1;
+        if (renderAttempts === 1) throw new Error("initial metadata refresh failed");
+        return Buffer.from("new-public-card");
+      }) as never,
+    );
+    const reader = new IssuePublicReadService(database as never, publisher as never);
+    const controller = new IssuePublicController(reader);
+    const writeService = new IssueWriteService(
+      database as never,
+      {
+        issue: async () => ({
+          id: current.id,
+          title: current.title,
+          objectId: current.objectId,
+          objectName: "未关联对象",
+          category: current.category,
+          status: current.status,
+          severity: current.severity,
+          foundAt: current.foundAt.toISOString(),
+          description: current.description,
+          locationName: current.locationName,
+          cardImageUrl: `/api/v1/issues/${current.id}/card.png?v=${current.updatedAt.getTime()}`,
+        }),
+      } as never,
+      {} as never,
+      publisher,
+    );
+    let delivered: Buffer | undefined;
+    const response: Record<string, any> = {
+      type: () => response,
+      setHeader: () => undefined,
+      sendFile: async (path: string) => { delivered = await readFile(path); return delivered; },
+      download: async (path: string) => { delivered = await readFile(path); return delivered; },
+    };
+    const originalCwd = process.cwd();
+
+    process.chdir(sandboxRoot);
+    try {
+      const saved = await runAsMember(() => writeService.updateMetadata(uniqueId, { category: "更新后的公开类型" }));
+      assert.equal(saved?.category, "更新后的公开类型");
+      await controller[route](token, response as never);
+
+      assert.deepEqual(delivered, Buffer.from("new-public-card"));
+      assert.equal(renderAttempts, 2);
+      assert.deepEqual(audits.map((audit) => audit.action), ["issue.metadata.update", "issue.card.failed"]);
+      assert.ok(projectQueries.length > 0);
+      assert.ok(projectQueries.every((projectId) => projectId === "quyang"));
+    } finally {
+      process.chdir(originalCwd);
+      await rm(sandboxRoot, { recursive: true, force: true });
+    }
+  }
 });
 
 test("protected card reads request freshness before resolving the stored file", async () => {
