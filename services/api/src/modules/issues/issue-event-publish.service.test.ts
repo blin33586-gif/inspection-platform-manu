@@ -13,6 +13,7 @@ test("retries a missing share card without creating a duplicate issue", async ()
   await writeFile(join(storageRoot, "media", "photo.jpg"), "photo");
   let createCount = 0;
   let renderedAnnotation = "";
+  let persistedStoragePath = "";
   const existingIssue = {
     id: "issue-1",
     title: "施工车辆",
@@ -29,7 +30,10 @@ test("retries a missing share card without creating a duplicate issue", async ()
     issue: {
       findUnique: async () => existingIssue,
       create: async () => { createCount++; return existingIssue; },
-      updateMany: async () => ({ count: 1 }),
+      updateMany: async ({ data }: { data: { cardStoragePath: string } }) => {
+        persistedStoragePath = data.cardStoragePath;
+        return { count: 1 };
+      },
     },
     taskPhoto: {
       findUnique: async () => ({
@@ -70,7 +74,11 @@ test("retries a missing share card without creating a duplicate issue", async ()
   assert.equal(result.issueId, "issue-1");
   assert.equal(createCount, 0);
   assert.match(renderedAnnotation, /推送时标注/);
-  assert.deepEqual(await readFile(join(storageRoot, "issues", "cards", "issue-1.png")), Buffer.from("png-card"));
+  assert.match(persistedStoragePath, /^storage\/issues\/cards\/issue-1-\d+-[0-9a-f-]+\.png$/);
+  assert.deepEqual(
+    await readFile(join(storageRoot, persistedStoragePath.replace(/^storage\//, ""))),
+    Buffer.from("png-card"),
+  );
 });
 
 test("rolls back a newly published issue when its audit row cannot be written", async () => {
@@ -182,9 +190,13 @@ test("refreshes an existing card from authoritative metadata and preserves its b
   assert.equal(rendered?.category, "新的问题类型");
   assert.equal(rendered?.foundAt, "2026/7/8 09:35:00");
   assert.match(String(rendered?.annotationJson), /published/);
-  assert.deepEqual(await readFile(join(storageRoot, "issues", "cards", "issue-1.png")), Buffer.from("new-card"));
+  assert.deepEqual(
+    await readFile(join(storageRoot, String(persistedData?.cardStoragePath).replace(/^storage\//, ""))),
+    Buffer.from("new-card"),
+  );
   assert.deepEqual(persistedData?.updatedAt, issue.updatedAt);
   assert.deepEqual(persistedWhere?.updatedAt, issue.updatedAt);
+  assert.equal(persistedWhere?.cardStoragePath, issue.cardStoragePath);
   assert.equal(audits.length, 0);
 });
 
@@ -244,12 +256,18 @@ test("ensureFreshCard retries an existing card whose file is older than the busi
   await writeFile(join(storageRoot, "media", "photo.jpg"), "photo");
   await writeFile(cardPath, "old-card");
   await utimes(cardPath, new Date("2026-07-14T01:00:00.000Z"), new Date("2026-07-14T01:00:00.000Z"));
-  const issue = publishedIssue();
+  let issue: Record<string, any> = publishedIssue();
   let renders = 0;
   const database = {
     issue: {
       findUnique: async () => issue,
-      updateMany: async () => ({ count: 1 }),
+      updateMany: async ({ where, data }: { where: { updatedAt: Date; cardStoragePath: string }; data: Record<string, unknown> }) => {
+        if (issue.updatedAt.getTime() !== where.updatedAt.getTime() || issue.cardStoragePath !== where.cardStoragePath) {
+          return { count: 0 };
+        }
+        issue = { ...issue, ...data };
+        return { count: 1 };
+      },
     },
     taskPhoto: { findUnique: async () => issuePhoto() },
     photoAnnotationVersion: { findUnique: async () => ({ annotationJson: "{}" }) },
@@ -266,7 +284,10 @@ test("ensureFreshCard retries an existing card whose file is older than the busi
   await runAsMember(() => service.ensureFreshCard("issue-1"));
 
   assert.equal(renders, 1);
-  assert.deepEqual(await readFile(cardPath), Buffer.from("fresh-card"));
+  assert.deepEqual(
+    await readFile(join(storageRoot, issue.cardStoragePath.replace(/^storage\//, ""))),
+    Buffer.from("fresh-card"),
+  );
 });
 
 test("discards an older concurrent render instead of overwriting the newest card", async () => {
@@ -319,10 +340,179 @@ test("discards an older concurrent render instead of overwriting the newest card
   releaseOld?.(Buffer.from("old-card"));
   await Promise.all([olderRefresh, newerRefresh]);
 
-  assert.notDeepEqual(await readFile(cardPath), Buffer.from("old-card"));
+  assert.notDeepEqual(
+    await readFile(join(storageRoot, current.cardStoragePath.replace(/^storage\//, ""))),
+    Buffer.from("old-card"),
+  );
   assert.equal(renderedCategories[0], "旧类型");
   assert.ok(renderedCategories.slice(1).every((category) => category === "新类型"));
   assert.equal(maxConcurrentRenders, 1);
+});
+
+test("keeps the active card immutable when an older service loses the pointer switch race", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-issue-cross-instance-race-"));
+  const initialStoragePath = "storage/issues/cards/issue-1-initial.png";
+  await mkdir(join(storageRoot, "media"), { recursive: true });
+  await mkdir(join(storageRoot, "issues", "cards"), { recursive: true });
+  await writeFile(join(storageRoot, "media", "photo.jpg"), "photo");
+  await writeFile(join(storageRoot, "issues", "cards", "issue-1-initial.png"), "initial-card");
+
+  const oldVersion = new Date("2026-07-14T02:00:00.000Z");
+  const newVersion = new Date("2026-07-14T03:00:00.000Z");
+  let current = publishedIssue({ category: "旧类型", cardStoragePath: initialStoragePath, updatedAt: oldVersion });
+  let releaseOldVersionCheck: (() => void) | undefined;
+  let markOldVersionChecked: (() => void) | undefined;
+  const oldVersionChecked = new Promise<void>((resolve) => { markOldVersionChecked = resolve; });
+  const oldVersionGate = new Promise<void>((resolve) => { releaseOldVersionCheck = resolve; });
+  let releaseOldSwitch: (() => void) | undefined;
+  let markOldSwitchReached: (() => void) | undefined;
+  const oldSwitchReached = new Promise<void>((resolve) => { markOldSwitchReached = resolve; });
+  const oldSwitchGate = new Promise<void>((resolve) => { releaseOldSwitch = resolve; });
+  let firstVersionCheck = true;
+  let oldCandidateStoragePath: string | undefined;
+  let oldSwitchWhere: Record<string, unknown> | undefined;
+
+  const database = {
+    issue: {
+      findUnique: async ({ select }: { select?: { updatedAt?: boolean } }) => {
+        if (select?.updatedAt && firstVersionCheck) {
+          firstVersionCheck = false;
+          const checked = { updatedAt: current.updatedAt };
+          markOldVersionChecked?.();
+          await oldVersionGate;
+          return checked;
+        }
+        return { ...current };
+      },
+      updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        const expectedVersion = where.updatedAt as Date;
+        if (expectedVersion.getTime() === oldVersion.getTime()) {
+          oldSwitchWhere = where;
+          oldCandidateStoragePath = data.cardStoragePath as string;
+          markOldSwitchReached?.();
+          await oldSwitchGate;
+        }
+        const expectedPath = where.cardStoragePath;
+        if (current.updatedAt.getTime() !== expectedVersion.getTime()) return { count: 0 };
+        if (expectedPath !== undefined && current.cardStoragePath !== expectedPath) return { count: 0 };
+        current = { ...current, ...data };
+        return { count: 1 };
+      },
+    },
+    taskPhoto: { findUnique: async () => issuePhoto() },
+    photoAnnotationVersion: { findUnique: async () => ({ annotationJson: "{}" }) },
+    auditLog: { create: async ({ data }: { data: Record<string, unknown> }) => data },
+  };
+  const renderer = async ({ category }: { category: string }) => Buffer.from(category === "旧类型" ? "old-card" : "new-card");
+  const olderService = new IssueEventPublishService(database as never, {} as never, storageRoot, renderer as never);
+  const newerService = new IssueEventPublishService(database as never, {} as never, storageRoot, renderer as never);
+
+  const olderRefresh = runAsMember(() => olderService.refreshCard("issue-1"));
+  await oldVersionChecked;
+  current = publishedIssue({ category: "新类型", cardStoragePath: initialStoragePath, updatedAt: newVersion });
+  await runAsMember(() => newerService.refreshCard("issue-1"));
+  const newestStoragePath = current.cardStoragePath;
+  releaseOldVersionCheck?.();
+  await oldSwitchReached;
+
+  const activeCardWhileOldSwitchIsBlocked = await readFile(join(storageRoot, newestStoragePath.replace(/^storage\//, "")));
+  releaseOldSwitch?.();
+  await olderRefresh;
+
+  assert.deepEqual(activeCardWhileOldSwitchIsBlocked, Buffer.from("new-card"));
+  assert.equal(oldSwitchWhere?.cardStoragePath, initialStoragePath);
+  assert.notEqual(oldCandidateStoragePath, newestStoragePath);
+  await assert.rejects(
+    () => readFile(join(storageRoot, String(oldCandidateStoragePath).replace(/^storage\//, ""))),
+    (error: NodeJS.ErrnoException) => error.code === "ENOENT",
+  );
+  assert.deepEqual(
+    await readFile(join(storageRoot, current.cardStoragePath.replace(/^storage\//, ""))),
+    Buffer.from("new-card"),
+  );
+});
+
+test("finishes the newest card when a first publish loses its initial version race", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "xunjianbao-issue-first-publish-race-"));
+  await mkdir(join(storageRoot, "media"), { recursive: true });
+  await writeFile(join(storageRoot, "media", "photo.jpg"), "photo");
+  const oldVersion = new Date("2026-07-14T02:00:00.000Z");
+  const newVersion = new Date("2026-07-14T03:00:00.000Z");
+  let current: ReturnType<typeof publishedIssue> | undefined;
+  let releaseFirstRender: (() => void) | undefined;
+  let markFirstRenderStarted: (() => void) | undefined;
+  const firstRenderStarted = new Promise<void>((resolve) => { markFirstRenderStarted = resolve; });
+  const firstRenderGate = new Promise<void>((resolve) => { releaseFirstRender = resolve; });
+  const renderedCategories: string[] = [];
+  const photo = {
+    ...issuePhoto(),
+    annotationDocument: {
+      ...issuePhoto().annotationDocument,
+      currentVersion: 1,
+      longitude: null,
+      latitude: null,
+    },
+  };
+  const database: any = {
+    issue: {
+      findUnique: async ({ where, select }: { where: Record<string, unknown>; select?: Record<string, boolean> }) => {
+        if (where.publishIdempotencyKey) return null;
+        if (!current) return null;
+        return select?.updatedAt ? { updatedAt: current.updatedAt } : { ...current };
+      },
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        current = publishedIssue({
+          ...data,
+          id: data.id,
+          category: data.category,
+          cardStoragePath: null,
+          cardMimeType: null,
+          cardFileSize: null,
+          updatedAt: oldVersion,
+        });
+        return { ...current };
+      },
+      updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        if (!current || current.updatedAt.getTime() !== (where.updatedAt as Date).getTime()) return { count: 0 };
+        if (where.cardStoragePath !== undefined && current.cardStoragePath !== where.cardStoragePath) return { count: 0 };
+        current = { ...current, ...data };
+        return { count: 1 };
+      },
+    },
+    taskPhoto: { findUnique: async () => photo },
+    photoAnnotationVersion: { findUnique: async () => ({ annotationJson: "{}" }) },
+    auditLog: { create: async ({ data }: { data: Record<string, unknown> }) => data },
+  };
+  database.$transaction = async (callback: (transaction: typeof database) => Promise<unknown>) => callback(database);
+  const renderer = async ({ category }: { category: string }) => {
+    renderedCategories.push(category);
+    if (renderedCategories.length === 1) {
+      markFirstRenderStarted?.();
+      await firstRenderGate;
+    }
+    return Buffer.from(category === "旧类型" ? "old-card" : "new-card");
+  };
+  const service = new IssueEventPublishService(database, {} as never, storageRoot, renderer as never);
+
+  const publishing = runAsMember(() => service.publish("photo-1", {
+    idempotencyKey: "first-publish-race",
+    expectedAnnotationVersion: 1,
+    locationName: "曲阳路",
+    foundAt: "2026-07-14T10:00:00+08:00",
+    category: "旧类型",
+    description: "发现施工车辆",
+  }));
+  await firstRenderStarted;
+  current = publishedIssue({ ...current, category: "新类型", cardStoragePath: null, updatedAt: newVersion });
+  releaseFirstRender?.();
+  await publishing;
+
+  assert.deepEqual(renderedCategories, ["旧类型", "新类型"]);
+  assert.ok(current?.cardStoragePath);
+  assert.deepEqual(
+    await readFile(join(storageRoot, current.cardStoragePath.replace(/^storage\//, ""))),
+    Buffer.from("new-card"),
+  );
 });
 
 test("protected card reads request freshness before resolving the stored file", async () => {

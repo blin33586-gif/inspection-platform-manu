@@ -8,7 +8,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
@@ -111,17 +111,21 @@ export class IssueEventPublishService {
     });
 
     const written = await this.generateCard(issue, photo, annotationDocument.annotationJson, projectId, identity.username);
-    if (!written) await this.refreshCard(issue.id);
+    if (!written) await this.queueCardRefresh(issue.id, projectId, identity.username, true);
     return this.result(id);
   }
 
   async refreshCard(issueId: string): Promise<void> {
     const identity = requireCurrentIdentity();
     const projectId = currentProjectId();
+    await this.queueCardRefresh(issueId, projectId, identity.username, false);
+  }
+
+  private async queueCardRefresh(issueId: string, projectId: string, actor: string, cardRequired: boolean): Promise<void> {
     const previous = this.cardRefreshes.get(issueId) ?? Promise.resolve();
     const refresh = previous
       .catch(() => undefined)
-      .then(() => this.refreshCurrentCard(issueId, projectId, identity.username));
+      .then(() => this.refreshCurrentCard(issueId, projectId, actor, cardRequired));
     this.cardRefreshes.set(issueId, refresh);
     try {
       await refresh;
@@ -130,10 +134,10 @@ export class IssueEventPublishService {
     }
   }
 
-  private async refreshCurrentCard(issueId: string, projectId: string, actor: string): Promise<void> {
+  private async refreshCurrentCard(issueId: string, projectId: string, actor: string, cardRequired: boolean): Promise<void> {
     while (true) {
       const issue = await this.database.issue.findUnique({ where: { id: issueId, projectId } });
-      if (!issue?.cardStoragePath || !issue.sourceTaskPhotoId || !issue.sourceAnnotationVersion) return;
+      if (!issue || (!cardRequired && !issue.cardStoragePath) || !issue.sourceTaskPhotoId || !issue.sourceAnnotationVersion) return;
 
       const photo = await this.requirePhoto(issue.sourceTaskPhotoId, projectId);
       if (!photo.annotationDocument) return;
@@ -166,7 +170,7 @@ export class IssueEventPublishService {
     if (!photo.annotationDocument) throw new ConflictException("问题的原始标注已不存在");
     const annotationJson = await this.readAnnotationVersion(photo, issue.sourceAnnotationVersion);
     const written = await this.generateCard(issue, photo, annotationJson, projectId, actor);
-    if (!written) await this.refreshCard(issue.id);
+    if (!written) await this.queueCardRefresh(issue.id, projectId, actor, true);
   }
 
   private async requirePhoto(photoId: string, projectId: string) {
@@ -192,9 +196,8 @@ export class IssueEventPublishService {
 
   private async generateCard(issue: IssueCardRecord, photo: IssuePhotoRecord, annotationJson: string, projectId: string, actor: string) {
     const token = this.token(issue.id);
-    const finalStoragePath = `storage/issues/cards/${issue.id}.png`;
-    const finalPath = this.resolveStoragePath(finalStoragePath);
-    const tempPath = `${finalPath}.${randomUUID()}.tmp`;
+    const candidateStoragePath = `storage/issues/cards/${issue.id}-${issue.updatedAt.getTime()}-${randomUUID()}.png`;
+    const candidatePath = this.resolveStoragePath(candidateStoragePath);
     try {
       const sourceStoragePath = photo.mediaAsset.previewStoragePath || photo.mediaAsset.storagePath;
       const source = await readFile(this.resolveStoragePath(sourceStoragePath));
@@ -207,29 +210,44 @@ export class IssueEventPublishService {
         description: issue.description ?? issue.title,
         shareUrl: this.shareUrl(token),
       });
-      await mkdir(dirname(finalPath), { recursive: true });
-      await writeFile(tempPath, png);
+      await mkdir(dirname(candidatePath), { recursive: true });
+      await writeFile(candidatePath, png);
       const current = await this.database.issue.findUnique({
         where: { id: issue.id, projectId },
         select: { updatedAt: true },
       });
       if (!current || current.updatedAt.getTime() !== issue.updatedAt.getTime()) {
-        await rm(tempPath, { force: true });
+        await rm(candidatePath, { force: true });
         return false;
       }
-      await rename(tempPath, finalPath);
       const persisted = await this.database.issue.updateMany({
-        where: { id: issue.id, projectId, updatedAt: issue.updatedAt },
+        where: {
+          id: issue.id,
+          projectId,
+          updatedAt: issue.updatedAt,
+          cardStoragePath: issue.cardStoragePath,
+        },
         data: {
-          cardStoragePath: finalStoragePath,
+          cardStoragePath: candidateStoragePath,
           cardMimeType: "image/png",
           cardFileSize: png.length,
           updatedAt: issue.updatedAt,
         },
       });
-      return persisted.count === 1;
+      if (persisted.count !== 1) {
+        await rm(candidatePath, { force: true });
+        return false;
+      }
+      if (issue.cardStoragePath && issue.cardStoragePath !== candidateStoragePath) {
+        try {
+          await rm(this.resolveStoragePath(issue.cardStoragePath), { force: true });
+        } catch {
+          // The database pointer already references the immutable candidate. Old-file cleanup is best effort.
+        }
+      }
+      return true;
     } catch (error) {
-      await rm(tempPath, { force: true }).catch(() => undefined);
+      await rm(candidatePath, { force: true }).catch(() => undefined);
       await this.database.auditLog.create({
         data: {
           projectId,
