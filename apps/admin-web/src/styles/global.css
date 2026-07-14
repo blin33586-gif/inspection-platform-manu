@@ -5589,7 +5589,10 @@ h4 {
 .issue-detail-meta div { min-height: 70px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfdff; }
 .issue-detail-meta dt { margin-bottom: 6px; color: #6b7c8f; font-size: 12px; }
 .issue-detail-meta dd { margin: 0; color: #17324d; font-weight: 700; }
-.issue-detail-close-action { display: flex; align-items: flex-start; }
+.issue-metadata-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; margin-top: 16px; }
+.issue-metadata-form .ant-form-item { margin-bottom: 12px; }
+.issue-metadata-actions { display: flex; grid-column: 1 / -1; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.issue-detail-close-action { display: flex; align-items: flex-start; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .issue-detail-close-action > span, .issue-detail-close-action .ant-popover-open { display: inline-flex; }
 .issue-detail-panel { padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .issue-detail-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
@@ -5615,4 +5618,5 @@ h4 {
 }
 @media (max-width: 600px) {
   .issue-detail-meta { grid-template-columns: 1fr; }
+  .issue-metadata-form { grid-template-columns: 1fr; }
 }

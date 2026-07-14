@@ -6,6 +6,7 @@ import { getApiUrl, withQuery } from "../api/client";
 import { ApiResourceError } from "../components/ApiResourceError";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
+import { formatShanghaiDateTime } from "./issue-detail-presenter";
 import { issueLibraryStatus, type IssueLibraryStatus } from "./issue-library-presenter";
 
 const emptyIssues: PageResult<IssueSummary> = { items: [], page: 1, pageSize: 20, total: 0 };
@@ -66,13 +67,16 @@ export function IssuesPage() {
               return (
                 <article className="issue-library-card" key={issue.id}>
                   <button className="issue-library-image" type="button" onClick={() => navigate(`/issues/${issue.id}`)}>
-                    <img src={getApiUrl(`/issues/${issue.id}/card.png`)} alt={issue.title} />
+                    <img
+                      src={getApiUrl(issue.cardImageUrl?.replace("/api/v1", "") ?? `/issues/${issue.id}/card.png`)}
+                      alt={issue.title}
+                    />
                     <Tag color={status === "pending" ? "orange" : "green"}>{status === "pending" ? "待处理" : "已处理"}</Tag>
                   </button>
                   <div className="issue-library-card-body">
                     <strong>{issue.title}</strong>
                     <span>{issue.locationName || issue.objectName} · {issue.category}</span>
-                    <time>{issue.foundAt}</time>
+                    <time dateTime={issue.foundAt}>{formatShanghaiDateTime(issue.foundAt)}</time>
                     <div>
                       <Button onClick={() => navigate(`/issues/${issue.id}`)}>详情</Button>
                     </div>
