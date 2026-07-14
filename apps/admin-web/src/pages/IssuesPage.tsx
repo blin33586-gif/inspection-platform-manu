@@ -66,13 +66,16 @@ export function IssuesPage() {
               return (
                 <article className="issue-library-card" key={issue.id}>
                   <button className="issue-library-image" type="button" onClick={() => navigate(`/issues/${issue.id}`)}>
-                    <img src={getApiUrl(`/issues/${issue.id}/card.png`)} alt={issue.title} />
+                    <img
+                      src={getApiUrl(issue.cardImageUrl?.replace("/api/v1", "") ?? `/issues/${issue.id}/card.png`)}
+                      alt={issue.title}
+                    />
                     <Tag color={status === "pending" ? "orange" : "green"}>{status === "pending" ? "待处理" : "已处理"}</Tag>
                   </button>
                   <div className="issue-library-card-body">
                     <strong>{issue.title}</strong>
                     <span>{issue.locationName || issue.objectName} · {issue.category}</span>
-                    <time>{issue.foundAt}</time>
+                    <time dateTime={issue.foundAt}>{new Date(issue.foundAt).toLocaleString("zh-CN", { hour12: false })}</time>
                     <div>
                       <Button onClick={() => navigate(`/issues/${issue.id}`)}>详情</Button>
                     </div>

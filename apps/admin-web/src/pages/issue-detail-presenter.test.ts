@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { canCloseIssue, getIssueDetailStatusLabel, isIssueReadOnly } from "./issue-detail-presenter.js";
+import {
+  canCloseIssue,
+  getIssueDetailStatusLabel,
+  issueSeverityLabel,
+  isIssueReadOnly,
+  toLocalDateTimeInput,
+} from "./issue-detail-presenter.js";
 
 test("maps verified to the user-facing closed state", () => {
   assert.equal(getIssueDetailStatusLabel("verified"), "已闭环");
@@ -16,6 +22,16 @@ test("requires a record before closure", () => {
 test("makes closed issues read-only", () => {
   assert.equal(isIssueReadOnly("verified"), true);
   assert.equal(isIssueReadOnly("pending"), false);
+});
+
+test("maps issue severities to user-facing labels", () => {
+  assert.equal(issueSeverityLabel("high"), "严重");
+  assert.equal(issueSeverityLabel("medium"), "重要");
+  assert.equal(issueSeverityLabel("normal"), "轻微");
+});
+
+test("converts an ISO timestamp to a local datetime input value", () => {
+  assert.equal(toLocalDateTimeInput("2026-07-08T01:35:00.000Z"), "2026-07-08T09:35");
 });
 
 test("builds the compact rectification workspace contract", async () => {
@@ -40,4 +56,23 @@ test("builds the compact rectification workspace contract", async () => {
   assert.match(styles, /\.rectification-feed\s*\{/);
   assert.match(styles, /@media \(max-width: 900px\)[\s\S]*\.issue-detail-meta\s*\{\s*grid-template-columns:\s*repeat\(2,/);
   assert.match(styles, /@media \(max-width: 600px\)[\s\S]*\.issue-detail-meta\s*\{\s*grid-template-columns:\s*1fr/);
+});
+
+test("builds the unified issue metadata editor contract", async () => {
+  const page = await readFile(new URL("./IssueDetailPage.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /编辑信息/);
+  assert.match(page, /保存修改/);
+  assert.match(page, /取消/);
+  assert.match(page, /useApiResource<ManagedObjectSummary\[\]>\("\/managed-objects"/);
+  assert.match(page, /patchJsonApi<[^>]+>\(`\/issues\/\$\{id\}`/);
+  assert.match(page, /severityOptions/);
+  assert.match(page, /<Input type="datetime-local"/);
+});
+
+test("uses synchronized issue metadata in the issue library", async () => {
+  const page = await readFile(new URL("./IssuesPage.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /issue\.cardImageUrl/);
+  assert.match(page, /new Date\(issue\.foundAt\)\.toLocaleString\("zh-CN", \{ hour12: false \}\)/);
 });
