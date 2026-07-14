@@ -30,10 +30,10 @@ export const reports: ReportSummary[] = [
 ];
 
 export const issues: IssueSummary[] = [
-  { id: "is-001", title: "3 号楼外立面飞线充电", objectName: "玉田新村", category: "飞线", status: "pending", severity: "medium", foundAt: "2026-06-24" },
-  { id: "is-002", title: "沿街门头广告牌松动", objectName: "曲阳路", category: "广告牌", status: "processing", severity: "normal", foundAt: "2026-06-22" },
-  { id: "is-003", title: "路口占道经营复发", objectName: "密云路", category: "占道经营", status: "pending", severity: "medium", foundAt: "2026-06-19" },
-  { id: "is-004", title: "楼顶疑似违规搭建", objectName: "运光小区", category: "违建", status: "verified", severity: "normal", foundAt: "2026-06-18" },
+  { id: "is-001", title: "3 号楼外立面飞线充电", objectId: "c-yutian", objectName: "玉田新村", category: "飞线", status: "pending", severity: "medium", foundAt: "2026-06-24T00:00:00.000Z" },
+  { id: "is-002", title: "沿街门头广告牌松动", objectId: "r-quyang", objectName: "曲阳路", category: "广告牌", status: "processing", severity: "normal", foundAt: "2026-06-22T00:00:00.000Z" },
+  { id: "is-003", title: "路口占道经营复发", objectId: "r-miyun", objectName: "密云路", category: "占道经营", status: "pending", severity: "medium", foundAt: "2026-06-19T00:00:00.000Z" },
+  { id: "is-004", title: "楼顶疑似违规搭建", objectId: "c-yunguang", objectName: "运光小区", category: "违建", status: "verified", severity: "normal", foundAt: "2026-06-18T00:00:00.000Z" },
 ];
 
 export const issueDistribution = [
