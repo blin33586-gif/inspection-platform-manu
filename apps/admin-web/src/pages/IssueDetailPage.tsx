@@ -23,6 +23,7 @@ const fallbackAttachments: PageResult<IssueAttachmentSummary> = {
   pageSize: 20,
   total: 0,
 };
+const fallbackRectifications: IssueRectificationRecordSummary[] = [];
 
 function fallbackIssue(id: string | undefined): IssueSummary {
   return issues.find((item) => item.id === id) ?? issues[0];
@@ -44,7 +45,10 @@ export function IssueDetailPage() {
     `/issues/${id}/attachments`,
     fallbackAttachments,
   );
-  const rectificationResource = useApiResource<IssueRectificationRecordSummary[]>(`/issues/${id}/rectifications`, []);
+  const rectificationResource = useApiResource<IssueRectificationRecordSummary[]>(
+    `/issues/${id}/rectifications`,
+    fallbackRectifications,
+  );
   const { data: issue } = issueResource;
   const { data: attachments, loading: attachmentsLoading } = attachmentResource;
   const { data: rectifications, loading: rectificationsLoading } = rectificationResource;

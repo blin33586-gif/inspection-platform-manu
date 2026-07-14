@@ -5599,7 +5599,11 @@ h4 {
 .rectification-photo-grid img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; }
 .rectification-empty { margin: 0; padding: 28px; color: #718096; text-align: center; background: #f8fafc; border-radius: 8px; }
 @media (max-width: 900px) {
-  .issue-detail-overview, .issue-detail-meta { grid-template-columns: 1fr; }
+  .issue-detail-overview { grid-template-columns: 1fr; }
+  .issue-detail-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .issue-detail-close-action .ant-btn { width: 100%; }
   .issue-detail-close-action, .issue-detail-close-action > span { width: 100%; }
+}
+@media (max-width: 600px) {
+  .issue-detail-meta { grid-template-columns: 1fr; }
 }

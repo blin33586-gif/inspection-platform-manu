@@ -22,6 +22,8 @@ test("builds the compact rectification workspace contract", async () => {
   const page = await readFile(new URL("./IssueDetailPage.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../styles/global.css", import.meta.url), "utf8");
 
+  assert.match(page, /const fallbackRectifications: IssueRectificationRecordSummary\[\] = \[\];/);
+  assert.doesNotMatch(page, /useApiResource<IssueRectificationRecordSummary\[\]>\([^\n]+, \[\]\)/);
   assert.doesNotMatch(page, /eyebrow="ISSUE DETAIL"/);
   assert.match(page, /IssueRectificationRecordSummary/);
   assert.match(page, /\/issues\/\$\{id\}\/rectifications/);
@@ -33,5 +35,6 @@ test("builds the compact rectification workspace contract", async () => {
   assert.match(page, /该问题已闭环，整改记录已锁定/);
   assert.match(styles, /\.issue-detail-overview\s*\{/);
   assert.match(styles, /\.rectification-feed\s*\{/);
-  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*\.issue-detail-overview/);
+  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*\.issue-detail-meta\s*\{\s*grid-template-columns:\s*repeat\(2,/);
+  assert.match(styles, /@media \(max-width: 600px\)[\s\S]*\.issue-detail-meta\s*\{\s*grid-template-columns:\s*1fr/);
 });
