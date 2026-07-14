@@ -1,7 +1,7 @@
 # 报告 PDF 导出与长标题排版交付报告
 
-工作区：`/Users/bolin/Documents/巡检宝/.worktrees/report-pdf`  
-分支：`codex/report-pdf`  
+工作区：`/Users/bolin/Documents/巡检宝/.worktrees/report-pdf`
+分支：`codex/report-pdf`
 执行日期：2026-07-14
 
 ## 前置检查
@@ -151,3 +151,134 @@ corepack pnpm --filter @xunjianbao/api typecheck && corepack pnpm --filter @xunj
 - 按任务边界，未在共享开发栈登录、未请求真实报告 `rp-55895eee-827c-42fd-b327-77086d27f46b`；真实鉴权下载、响应大于 1 KB 的端到端验收由主代理完成。
 - 未做共享前端 825px 真实浏览器截图验收；主代理需确认顶栏与 A4 预览中的长标题均不越界，且导出、打印按钮可见。
 - 已验证本机 Chrome 生成链路，但未执行 API Docker 镜像构建；Alpine Chromium 与 `font-noto-cjk` 的仓库可用性仍应由部署流水线验证。
+
+## 复核修复：资源、路径与并发保护
+
+实现内容：
+
+- 报告最多 100 张照片，超限在读图前以“报告照片不能超过 100 张”拒绝。
+- 所有源照片累计最多 100 MiB，先读取文件元数据再开始读图，超限以“报告照片文件总大小不能超过 100 MB”拒绝。
+- 图片读取/转换使用固定 2 路 worker，不再对全部照片直接 `Promise.all`。
+- 进程级 PDF 导出门控固定为 2 路，限制图片处理和 Chromium 生成链路的总体并发。
+- 数据库存储路径只接受 `process.cwd()/storage` 下的相对路径；绝对路径、非 `storage/` 路径和 `..` 逃逸均以中文错误拒绝。
+
+RED：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf.service.test.ts
+```
+
+首次路径测试退出码 1，报 `resolveReportStoragePath` 未导出；资源测试退出码 1，报上限和门控导出不存在，符合预期。
+
+GREEN：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf.service.test.ts
+```
+
+结果：6 tests，6 pass，0 fail。覆盖 storage 根约束、超照片页数、超累计字节、全局导出门控、最多两路图片处理、项目范围查询和生成 HTML 元数据。
+
+## 复核修复：共享报告模型与 PDF 内容一致性
+
+实现内容：
+
+- 新增 `@xunjianbao/shared` 报告文案常量和照片页模型。
+- Web 页面与服务端 PDF 共同消费标题回退、问题序号、视频时间、六位经纬度、默认说明、页脚及封面/字段文案。
+- 服务端查询将 `videoTimestampMs`、标注优先的经纬度和问题说明传入共享模型；PDF HTML 输出对应字段和页脚。
+
+RED：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-presentation.test.ts
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf-template.test.ts
+```
+
+共享模型测试先以模块不存在退出码 1；PDF 模板测试随后因缺少“视频时间点”字段失败，文案常量测试因 `REPORT_DOCUMENT_COPY` 未导出失败，均符合预期。
+
+GREEN：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-presentation.test.ts src/modules/reports/report-pdf-template.test.ts
+```
+
+结果：7 tests，7 pass，0 fail。服务测试另验证数据库字段实际进入最终 PDF HTML。
+
+## 复核修复：固定封面与真实 Chromium
+
+实现内容：
+
+- 封面和照片页固定为 `210mm × 297mm`，封面超出内容隐藏，不再由极端长标题撑出额外页。
+- 标题预留区固定最大 86mm，保持任意位置换行并限制纵向溢出；摘要区也设置有界高度。
+
+RED：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf-template.test.ts
+```
+
+结果：退出码 1；长标题测试未找到封面固定 297mm 高度和标题有界区域，符合预期。
+
+GREEN 与真实浏览器验证：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/report-pdf-template.test.ts
+corepack pnpm --filter @xunjianbao/api exec tsx -e '<使用本机 Google Chrome 渲染重复 240 次的极端长标题及 1 张照片>'
+pdfinfo /tmp/report-pdf-long-title-review.pdf | rg '^(Pages|Page size|File size)'
+```
+
+结果：模板 4/4 通过；真实 Chrome PDF 为 2 页（封面 1 页 + 照片 1 页），`594.96 × 841.92 pt (A4)`，134,477 字节。
+
+## 复核修复：控制器响应契约
+
+RED：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/reports.controller.test.ts
+```
+
+结果：退出码 1；响应只有 `filename*`，缺少 ASCII `filename` 下载回退。
+
+GREEN：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test src/modules/reports/reports.controller.test.ts src/modules/reports/report-pdf.service.test.ts
+```
+
+结果：6 tests，6 pass，0 fail。覆盖 `{ id, projectId }` 查询、`application/pdf`、attachment `Content-Disposition`、UTF-8 文件名和非空 `%PDF` 字节。
+
+## 复核修复：前端下载交互
+
+实现内容：
+
+- 下载文件名优先解析响应 `Content-Disposition` 的 RFC 5987 `filename*`，再回退普通 `filename` 和页面标题。
+- 下载请求继续复用 Bearer 鉴权头和 `X-Project-Id` 项目头。
+- 单飞执行器防止瞬时重复导出，保持原始错误向上传递；报告 `hasLoaded` 前按钮禁用。
+- 临时 anchor 与对象 URL 在成功、点击异常或挂载异常时均由 `finally` 清理。
+
+RED：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test ../../apps/admin-web/src/api/file-download.test.ts ../../apps/admin-web/src/pages/report-export.test.ts
+```
+
+首次退出码 1，缺少下载边界模块及单飞/加载状态导出；异常清理补充测试随后以对象 URL 未释放失败，符合预期。
+
+GREEN：
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec tsx --test ../../apps/admin-web/src/api/file-download.test.ts ../../apps/admin-web/src/pages/report-export.test.ts
+```
+
+结果：7 tests，7 pass，0 fail。
+
+## 复核修复最终验证
+
+```sh
+corepack pnpm --filter @xunjianbao/api exec sh -c 'tsx --test src/modules/reports/*.test.ts'
+corepack pnpm --filter @xunjianbao/api exec tsx --test ../../apps/admin-web/src/api/file-download.test.ts ../../apps/admin-web/src/pages/report-export.test.ts
+corepack pnpm --filter @xunjianbao/shared typecheck
+corepack pnpm --filter @xunjianbao/api typecheck
+corepack pnpm --filter @xunjianbao/admin-web typecheck
+```
+
+结果：报告模块 20/20 通过；前端相关测试 7/7 通过；shared、API、admin-web 三端类型检查均退出码 0。

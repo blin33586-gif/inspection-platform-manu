@@ -8,7 +8,16 @@ const report = {
   relatedObjectName: "曲阳路街道重点区域",
   issueCount: 1,
   contentSummary: "巡检完成",
-  photos: [{ title: "飞线问题", fileName: "DJI_0003.jpg", description: "现场描述", imageDataUrl: "data:image/jpeg;base64,AA==" }],
+  photos: [{
+    indexLabel: "问题 01",
+    title: "飞线问题",
+    fileName: "DJI_0003.jpg",
+    videoTime: "01:05",
+    coordinates: "31.234568, 121.456789",
+    description: "现场描述",
+    footer: "巡检宝 · 曲阳路街道重点区域 · 第 1 页",
+    imageDataUrl: "data:image/jpeg;base64,AA==",
+  }],
 };
 
 test("renders one A4 photo page and long-title wrapping rules", () => {
@@ -22,4 +31,24 @@ test("renders one A4 photo page and long-title wrapping rules", () => {
 test("escapes report text and sanitizes the download name", () => {
   assert.doesNotMatch(renderReportPdfHtml({ ...report, title: "<script>x</script>" }), /<script>x<\/script>/);
   assert.equal(safePdfFileName('巡检/报告:*?'), "巡检_报告.pdf");
+});
+
+test("renders the shared video time, coordinates, and footer on each PDF page", () => {
+  const html = renderReportPdfHtml(report);
+
+  assert.match(html, /<dt>视频时间点<\/dt><dd>01:05<\/dd>/);
+  assert.match(html, /<dt>经纬度<\/dt><dd>31\.234568, 121\.456789<\/dd>/);
+  assert.match(html, /<footer>巡检宝 · 曲阳路街道重点区域 · 第 1 页<\/footer>/);
+});
+
+test("keeps the cover to one A4 page with a bounded long-title region", () => {
+  const html = renderReportPdfHtml({
+    ...report,
+    title: "极端长标题_".repeat(200),
+  });
+
+  assert.match(html, /\.report-cover\s*\{[^}]*height:\s*297mm/);
+  assert.match(html, /\.report-cover\s*\{[^}]*overflow:\s*hidden/);
+  assert.match(html, /\.report-title\s*\{[^}]*max-height:/);
+  assert.match(html, /\.report-title\s*\{[^}]*overflow:\s*hidden/);
 });

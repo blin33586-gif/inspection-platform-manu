@@ -2,6 +2,7 @@ import type { ApiResponse } from "@xunjianbao/shared";
 import { ApiClientError } from "./api-client-error";
 import { buildApiUrl } from "./api-url";
 import { getCurrentProject, getToken } from "../auth/session";
+import { buildAuthenticatedHeaders, saveResponseAsDownload } from "./file-download";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3010/api/v1";
 
@@ -46,18 +47,7 @@ export async function downloadApiFile(path: string, fallbackFileName: string): P
   const response = await fetch(`${apiBaseUrl}${path}`, { headers: authHeaders() });
   if (!response.ok) throw await parseApiError(response);
 
-  const objectUrl = URL.createObjectURL(await response.blob());
-  const anchor = document.createElement("a");
-  anchor.href = objectUrl;
-  anchor.download = fallbackFileName;
-  anchor.hidden = true;
-  document.body.append(anchor);
-  try {
-    anchor.click();
-  } finally {
-    anchor.remove();
-    URL.revokeObjectURL(objectUrl);
-  }
+  await saveResponseAsDownload(response, fallbackFileName);
 }
 
 export async function postFormApi<T>(path: string, formData: FormData, signal?: AbortSignal): Promise<T> {
@@ -131,12 +121,7 @@ export async function postJsonApi<T>(path: string, payload: unknown): Promise<T>
 }
 
 function authHeaders(): Record<string, string> {
-  const token = getToken();
-  const projectId = getCurrentProject()?.id;
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(projectId ? { "X-Project-Id": projectId } : {}),
-  };
+  return buildAuthenticatedHeaders(getToken(), getCurrentProject()?.id);
 }
 
 async function parseApiError(response: Response): Promise<ApiClientError> {

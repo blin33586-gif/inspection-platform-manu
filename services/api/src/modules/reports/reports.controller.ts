@@ -74,7 +74,7 @@ export class ReportsController {
   async pdf(@Param("id") id: string, @Res() response: Response) {
     const result = await this.pdfService.create(id);
     response.type("application/pdf");
-    response.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}`);
+    response.setHeader("Content-Disposition", `attachment; filename="report.pdf"; filename*=UTF-8''${encodeURIComponent(result.fileName)}`);
     return response.send(Buffer.from(result.buffer));
   }
 
